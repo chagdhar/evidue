@@ -22,3 +22,11 @@ HTTP client; endpoint behavior is also verified through the running server.
 execution environment stopped it during the Node build stage, before producing
 an image; container runtime and isolated clean-checkout verification remain
 environment-blocked and are truthfully recorded in FINAL_VALIDATION.
+
+## Corrective implementation — in progress
+
+The original category-label shortcut was replaced with ordered rule evaluation
+against explicit operational events. Evidence JSON now includes source system,
+source record IDs, event types, timestamps, customer/outcome IDs, values and
+ingestion timestamps. The frontend no longer reads completed reconciliation
+results before the user starts the actual reconciliation request.

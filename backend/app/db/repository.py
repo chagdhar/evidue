@@ -3,7 +3,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, text
 
-from app.fixtures import demo_records
+from app.fixtures.demo import demo_records, events_for
 
 DB_PATH = Path(__file__).parents[3] / "data" / "evidue.db"
 engine = create_engine(f"sqlite:///{DB_PATH}", future=True)
@@ -15,7 +15,8 @@ def reset():
     initialize(); records = demo_records()
     with engine.begin() as c:
         c.execute(text("DELETE FROM determinations"))
-        c.execute(text("INSERT INTO determinations VALUES (:outcome_id,:customer_id,:intent,:status,:reason,:rule_id,:billed,:payable,:closed_at,:evidence)"), [{"outcome_id":d.claim.outcome_id,"customer_id":d.claim.customer_id,"intent":d.claim.intent,"status":d.status,"reason":d.reason,"rule_id":d.rule_id,"billed":f"{d.claim.billed_amount:.2f}","payable":f"{d.payable_amount:.2f}","closed_at":d.claim.closed_at.isoformat(),"evidence":json.dumps([r.event_id for r in d.evidence])} for d in records])
+        category = {"R1":"recontact","R2":"human","R3":"downstream","R4":"duplicate","R5":"mismatch"}
+        c.execute(text("INSERT INTO determinations VALUES (:outcome_id,:customer_id,:intent,:status,:reason,:rule_id,:billed,:payable,:closed_at,:evidence)"), [{"outcome_id":d.claim.outcome_id,"customer_id":d.claim.customer_id,"intent":d.claim.intent,"status":d.status,"reason":d.reason,"rule_id":d.rule_id,"billed":f"{d.claim.billed_amount:.2f}","payable":f"{d.payable_amount:.2f}","closed_at":d.claim.closed_at.isoformat(),"evidence":json.dumps([{"id":e.id,"source_system":e.source_system,"source_record_id":e.source_record_id,"event_type":e.event_type,"timestamp":e.timestamp.isoformat(),"customer_id":e.customer_id,"outcome_id":e.outcome_id,"values":e.values,"ingested_at":e.ingested_at.isoformat()} for e in events_for(d.claim, category.get(d.rule_id))])} for d in records])
     return summary()
 def exists():
     initialize()
