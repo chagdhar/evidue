@@ -42,3 +42,9 @@ Delivered:
 
 The financial-correctness defects identified in the follow-up audit are fixed.
 `docs/FINAL_VALIDATION.md` contains the exact commands and results.
+
+## In progress
+
+- deterministic multi-scenario demo catalog and scenario selection;
+- focused contradictory-evidence, recovery, and duplicate-window fixtures;
+- scenario-aware API, UI, evidence review, exports, and validation.

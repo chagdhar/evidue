@@ -14,6 +14,28 @@ completions/corrections, 300 failed downstream actions, 180 duplicates, and
 120 account/action mismatches. Categories are mutually exclusive. OUT-004821
 is a failed refund and is disputed.
 
+## Deterministic scenario catalog
+
+The full invoice remains the default YC demonstration. The interface also
+offers focused synthetic data sets that run through the same persistence,
+domain engine, API, evidence inspector, and exports:
+
+- `headline`: 10,000 claims; 8,320 payable; 1,680 disputed; $15,000.00
+  submitted; $12,480.00 payable; $2,520.00 deduction; $0.00 review.
+- `evidence_review`: two claims, one payable and one with contradictory directly
+  matched downstream evidence; $3.00 submitted; $1.50 payable; $0.00
+  deduction; $1.50 held for review.
+- `recovery`: a failed first downstream action followed within 24 hours by an
+  otherwise-valid claim for the same customer and intent; $3.00 submitted;
+  first claim disputed R3; second claim payable; $1.50 deduction.
+- `duplicate_window`: three otherwise-payable claims for the same customer and
+  normalized intent within 24 hours; $4.50 submitted; earliest claim payable;
+  later two disputed R4; $3.00 deduction.
+
+Scenario metadata contains only names, explanations, and the highlighted
+outcome ID. Financial values always come from persisted determinations, never
+from scenario display metadata.
+
 ## Rules and states
 
 An outcome is provisionally payable only when it is in period, identifiable,
@@ -32,11 +54,12 @@ separate fixture proves that state.
 
 FastAPI exposes the documented health, demo, contract, invoice,
 reconciliation, paginated outcomes, detail, and persisted export endpoints.
-The React `/demo` route shows the pre-run invoice, rules and evidence sources;
-then invokes the real backend engine and presents backend-derived totals,
-filters, evidence, and downloads. All screens and exports disclose: “Synthetic
-demonstration data” and “Operationally realistic data generated
-deterministically. No real customer or vendor data is shown.”
+It also exposes the deterministic scenario catalog and supports resetting to a
+selected scenario. The React `/demo` route shows the selected pre-run invoice,
+rules and evidence sources; then invokes the real backend engine and presents
+backend-derived totals, filters, evidence, and downloads. All screens and
+exports disclose: “Synthetic demonstration data” and “Operationally realistic
+data generated deterministically. No real customer or vendor data is shown.”
 
 ## Technical and financial constraints
 

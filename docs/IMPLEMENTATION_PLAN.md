@@ -1,5 +1,20 @@
 # Implementation plan
 
+## Synthetic scenario expansion
+
+1. Add a fixture-owned scenario catalog with the exact results frozen in
+   `PRODUCT_SPEC.md`.
+2. Persist the active scenario and expose catalog/status metadata through typed
+   API responses.
+3. Make reset, reconciliation, invoice totals, outcomes, evidence, and exports
+   operate on the selected scenario without special-case financial logic.
+4. Add an API-backed scenario selector that returns to an honest
+   pre-reconciliation state on change.
+5. Adapt the decision flow for dispute-free review scenarios and highlight each
+   scenario's example outcome.
+6. Add domain/API/frontend/Playwright regressions, then run full, Docker, and
+   isolated-checkout validation.
+
 ## 0. Specification and architecture
 
 Objective: freeze product behavior and system boundaries. Files: `docs/`.
