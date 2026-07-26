@@ -14,12 +14,12 @@ Result: passed.
 
 - Ruff formatting: 14 files already formatted.
 - Ruff lint: passed.
-- Pytest: 39 passed.
+- Pytest: 41 passed.
 - ESLint: passed.
-- Vitest: 2 files, 15 tests passed.
+- Vitest: 2 files, 18 tests passed.
 - TypeScript and Vite 8.1.5 production build: passed.
-- Playwright: complete financial-decision demo path passed against live FastAPI
-  and Vite servers.
+- Playwright: 2 tests passed against live FastAPI and Vite servers: the complete
+  headline financial-decision path and the focused multi-scenario path.
 
 ## Deterministic result
 
@@ -42,6 +42,26 @@ The domain, API, Playwright, and container checks agreed on:
 The separate ambiguous-evidence domain regression produced `needs_review` with
 $0.00 confirmed payable, $0.00 confirmed disputed/recommended deduction, and
 $1.50 needs-review amount.
+
+## Selectable synthetic data sets
+
+The API, frontend, Playwright, and production container agreed on four
+deterministic scenarios:
+
+- `headline`: 10,000 claims; $15,000.00 submitted; 8,320 payable; 1,680
+  disputed; $12,480.00 payable; $2,520.00 deduction; $0.00 review.
+- `evidence_review`: 2 claims; $3.00 submitted; 1 payable; 1 needs review;
+  $1.50 payable; $0.00 deduction; $1.50 review. `CASE-REVIEW-001` references
+  only its contradictory success and failure evidence.
+- `recovery`: 2 claims; $3.00 submitted; the failed first claim is R3 and the
+  valid follow-up is payable; $1.50 payable and $1.50 deduction.
+- `duplicate_window`: 3 otherwise-payable claims; $4.50 submitted; the earliest
+  remains payable and the later two are R4; $1.50 payable and $3.00 deduction.
+  `CASE-DUP-002` references `CASE-DUP-001` as its winner.
+
+Changing data sets cleared the current reconciliation and restored an honest
+ready state. Scenario metadata exposed no computed money. The headline
+reconciliation ID remained `REC-2026-06-001`.
 
 ## Financial-correctness regressions
 
@@ -90,6 +110,11 @@ Frontend and Playwright tests verify:
 - the primary dispute-package action calls the evidence export and confirms the
   disputed count and amount;
 - needs-review money remains visually separate from the confirmed deduction;
+- the selector is populated by the scenario API and switching performs a real
+  reset before displaying any new financial result;
+- a review-only scenario defaults claims to `needs_review`, displays no
+  confirmed deductions, and includes review money in the bridge;
+- the live browser exercises all four scenarios and their highlighted outcomes;
 - desktop and narrow-width layouts were visually inspected with the live API.
 
 ## Docker
@@ -101,12 +126,13 @@ docker build -t evidue-demo .
 ```
 
 Result: passed. Image ID:
-`b1b54734dce08076c3d9249212eaea4501d7f814d9d0d6da39b4885f48516e35`.
+`8ee28831bfe0e5e2129f6c89d002dc72a0381b5f3162e32d649f56aefa03f54b`.
 
-The image was run as `evidue-redesign-validation` on local port 18080. The
+The image was run as `evidue-scenarios-validation` on local port 18080. The
 following checks passed:
 
 - `GET /api/health` returned `{"status":"ok"}`.
+- `GET /api/demo/scenarios` returned the four expected scenario IDs.
 - `POST /api/demo/reset` returned 10,000 seeded claims and
   `"reconciled":false`.
 - `POST /api/reconciliations` returned the exact deterministic result above.
@@ -126,6 +152,9 @@ following checks passed:
   OUT-004821 evidence above.
 - `GET /api/reconciliations/current/exports/summary.json` matched it exactly.
 - `GET /demo` returned HTTP 200 and the production React root document.
+- Every focused scenario was reset and reconciled inside the container; its
+  exact financial buckets and highlighted determination matched the domain and
+  API regressions.
 - The production UI showed the honest ready state, completed reconciliation,
   displayed `$12,480.00` as the dominant payable amount, defaulted to 1,680
   disputed outcomes, exposed the dispute-package action, and retained the
@@ -136,12 +165,13 @@ The disposable validation container was removed afterward.
 
 ## Clean checkout
 
-A `--no-local` clone of commit `fafeab6ff6842f791edb366dc0d63fec5d0fe248`
+A `--no-local` clone of commit `041b08a`
 was created under `/tmp`. Commands:
 
 ```text
 ./scripts/bootstrap.sh
-./scripts/seed-demo.sh
+./scripts/seed-demo.sh evidence_review
+./scripts/demo-reset.sh headline
 ./scripts/dev-check.sh full
 git status --short
 ```
@@ -149,9 +179,10 @@ git status --short
 Results:
 
 - bootstrap completed with uv-managed Python 3.13.14, `npm ci`, and Chromium;
-- deterministic seed created 10,000 claims in unreconciled state;
-- full validation passed: 39 pytest tests, 15 Vitest tests, production build,
-  and the redesigned Playwright financial-decision path;
+- the argument-aware seed created the 2-claim review scenario, then reset
+  restored the 10,000-claim headline scenario in unreconciled state;
+- full validation passed: 41 pytest tests, 18 Vitest tests, production build,
+  headline Playwright path, and focused multi-scenario Playwright path;
 - `git status --short` produced no output;
 - the temporary checkout was removed afterward.
 

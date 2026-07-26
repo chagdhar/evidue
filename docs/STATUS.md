@@ -34,7 +34,10 @@ Delivered:
   recommendation, reconciliation bridge, compact finding filters,
   disputed-first claims review, wide evidence inspector, compact contract
   controls, honest evidence readiness, and primary dispute-package export;
-- 39 backend tests, 15 frontend tests, and a live Playwright golden path;
+- four selectable deterministic synthetic data sets covering the complete
+  invoice, contradictory evidence, failed-action recovery, and contextual
+  duplicate attribution, with scenario-aware reset scripts and API state;
+- 41 backend tests, 18 frontend tests, and two live Playwright paths;
 - fish-invokable bootstrap, development, seed, reset, and validation scripts;
 - a non-root, health-checked production Docker image serving React through
   FastAPI;
@@ -43,8 +46,5 @@ Delivered:
 The financial-correctness defects identified in the follow-up audit are fixed.
 `docs/FINAL_VALIDATION.md` contains the exact commands and results.
 
-## In progress
-
-- deterministic multi-scenario demo catalog and scenario selection;
-- focused contradictory-evidence, recovery, and duplicate-window fixtures;
-- scenario-aware API, UI, evidence review, exports, and validation.
+The scenario expansion is complete. `docs/FINAL_VALIDATION.md` records the exact
+financial results and validation commands for every data set.
