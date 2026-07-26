@@ -44,3 +44,23 @@ Target narration: approximately 100 seconds.
    “Finance receives a complete evidence package and can separately download
    disputed-line CSV or JSON summaries. One invoice enters; one defensible
    payable amount leaves.”
+
+## Focused follow-up cases
+
+Use **Synthetic data set** to switch cases. Each switch returns the product to
+the unreconciled state so the audience sees the decision being recomputed.
+
+- **Contradictory evidence**: run the two-line fixture and point out that
+  success and failure records for the same claim produce `needs_review`.
+  Submitted is $3.00, confirmed payable is $1.50, recommended deduction is
+  $0.00, and $1.50 is held for review.
+- **Failed action, valid follow-up**: run the two-line fixture and show that the
+  failed first outcome is R3 while the later valid outcome remains payable. An
+  invalid claim cannot become a duplicate winner.
+- **Duplicate attribution window**: run the three-line fixture and show that
+  the earliest otherwise-payable claim wins; the later two claims inside 24
+  hours are disputed under R4.
+
+Return to **Full invoice reconciliation** for the headline close. The scenario
+descriptions identify the case but never preview a financial result; all money
+appears only after the backend reconciliation runs.

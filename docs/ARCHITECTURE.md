@@ -24,6 +24,23 @@ determinations. The initial `/demo` screen therefore shows a submitted invoice,
 contract rules, and evidence sources without implying that reconciliation has
 already happened.
 
+Reset accepts a scenario ID from a fixed domain fixture catalog. The active
+scenario is persisted in the single demo-state row and exposed with its name,
+description, and highlighted outcome ID. Scenario metadata contains no
+financial results. Claims, events, determinations, summaries, exports, and UI
+values all follow the same lifecycle regardless of fixture size:
+
+- `headline` is the complete 10,000-line, five-category invoice;
+- `evidence_review` isolates contradictory directly matched evidence;
+- `recovery` proves that a failed first claim does not suppress a valid
+  follow-up;
+- `duplicate_window` shows one deterministic winner and two later R4
+  duplicates.
+
+Changing the scenario regenerates inputs and clears the current
+reconciliation. A user must run reconciliation again before any determination
+or corrected amount is shown.
+
 `POST /api/reconciliations` loads persisted claims and events, converts them to
 domain objects, attributes evidence, provisionally evaluates every claim
 without R4, builds duplicate context from only the provisional payable results,

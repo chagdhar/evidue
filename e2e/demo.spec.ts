@@ -70,3 +70,51 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
   await page.getByRole("link", { name: "Disputed-lines CSV" }).click();
   await expect((await csvDownload).suggestedFilename()).toBe("disputed-lines.csv");
 });
+
+test("focused synthetic data sets demonstrate distinct contract decisions", async ({
+  page,
+}) => {
+  await page.request.post("/api/demo/reset?scenario_id=headline");
+  await page.goto("/demo");
+
+  const selector = page.getByLabel("Synthetic data set");
+
+  await selector.click();
+  await page.getByRole("option", { name: "Contradictory evidence" }).click();
+  await expect(page.getByText("$3.00")).toBeVisible();
+  await expect(page.getByText("2 claimed outcomes from the vendor")).toBeVisible();
+  await expect(page.getByText("Ready to reconcile")).toBeVisible();
+  await page.getByRole("button", { name: "Run reconciliation" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Needs-review outcome evidence" }),
+  ).toBeVisible();
+  await expect(page.getByText("No confirmed deductions")).toBeVisible();
+  await expect(page.locator(".fact-value.disputed")).toHaveText("$0.00");
+  await expect(page.locator(".fact-value.review")).toHaveText("$1.50");
+  await expect(page.getByText("CASE-REVIEW-001")).toBeVisible();
+
+  await selector.click();
+  await page.getByRole("option", { name: "Failed action, valid follow-up" }).click();
+  await expect(page.getByText("2 claimed outcomes from the vendor")).toBeVisible();
+  await page.getByRole("button", { name: "Run reconciliation" }).click();
+  await expect(page.getByText("1 of 2 outcomes payable")).toBeVisible();
+  await expect(page.getByText("1 matching outcomes")).toBeVisible();
+  await expect(page.getByText("CASE-RECOVERY-001")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /R3 Failed downstream actions/ }),
+  ).toBeVisible();
+
+  await selector.click();
+  await page.getByRole("option", { name: "Duplicate attribution window" }).click();
+  await expect(page.getByText("$4.50")).toBeVisible();
+  await expect(page.getByText("3 claimed outcomes from the vendor")).toBeVisible();
+  await page.getByRole("button", { name: "Run reconciliation" }).click();
+  await expect(page.getByText("1 of 3 outcomes payable")).toBeVisible();
+  await expect(page.getByText("2 matching outcomes")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Review CASE-DUP-002 evidence" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Duplicate charges.*2.*\$3.00/ }),
+  ).toBeVisible();
+});

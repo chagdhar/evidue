@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.schemas import (
+    DemoScenarioResponse,
     DemoStatusResponse,
     HealthResponse,
     OutcomeDetail,
@@ -33,9 +34,17 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/demo/scenarios", response_model=list[DemoScenarioResponse])
+def demo_scenarios() -> list[dict[str, str]]:
+    return repository.scenario_catalog()
+
+
 @app.post("/api/demo/reset", response_model=DemoStatusResponse)
-def reset() -> dict[str, object]:
-    return repository.reset()
+def reset(scenario_id: str = "headline") -> dict[str, object]:
+    try:
+        return repository.reset(scenario_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @app.get("/api/demo/status", response_model=DemoStatusResponse)

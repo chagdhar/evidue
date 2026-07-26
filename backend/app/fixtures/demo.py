@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -27,6 +28,15 @@ class DemoRecord:
     claim: OutcomeClaim
     conversation: Conversation
     events: tuple[OperationalEvent, ...]
+
+
+@dataclass(frozen=True)
+class DemoScenario:
+    id: str
+    name: str
+    description: str
+    demo_outcome_id: str
+    fixture: Callable[[], list[DemoRecord]]
 
 
 def _event(
@@ -229,6 +239,161 @@ def demo_fixture() -> list[DemoRecord]:
         category = category_for(index)
         records.append(DemoRecord(claim, conversation, events_for(claim, category)))
     return records
+
+
+def _focused_record(
+    outcome_id: str,
+    customer_id: str,
+    closed_at: datetime,
+    category: str,
+    intent: str = "refund",
+) -> DemoRecord:
+    expected_action = "refund" if intent == "refund" else "order_update"
+    claim = OutcomeClaim(
+        outcome_id=outcome_id,
+        invoice_id=INVOICE_ID,
+        customer_id=customer_id,
+        intent=intent,
+        vendor_claim="resolved",
+        closed_at=closed_at,
+        expected_action=expected_action,
+        account_id=f"ACC-{outcome_id}",
+    )
+    return DemoRecord(
+        claim=claim,
+        conversation=Conversation(
+            id=f"CONV-{outcome_id}",
+            customer_id=customer_id,
+            intent=intent,
+            closed_at=closed_at,
+            outcome_id=outcome_id,
+        ),
+        events=events_for(claim, category),
+    )
+
+
+def evidence_review_fixture() -> list[DemoRecord]:
+    ambiguous = _focused_record(
+        "CASE-REVIEW-001",
+        "CUST-REVIEW-001",
+        datetime(2026, 6, 10, 10),
+        "payable",
+    )
+    failure = _event(
+        ambiguous.claim,
+        "CONTRADICTORY-FAILURE",
+        "payment_processor",
+        "downstream_failed",
+        ambiguous.claim.closed_at + timedelta(minutes=35),
+        {
+            "account_id": ambiguous.claim.account_id,
+            "action": ambiguous.claim.expected_action,
+            "result": "rejected",
+        },
+    )
+    payable = _focused_record(
+        "CASE-REVIEW-002",
+        "CUST-REVIEW-002",
+        datetime(2026, 6, 10, 11),
+        "payable",
+    )
+    return [
+        DemoRecord(
+            ambiguous.claim,
+            ambiguous.conversation,
+            (*ambiguous.events, failure),
+        ),
+        payable,
+    ]
+
+
+def recovery_fixture() -> list[DemoRecord]:
+    customer_id = "CUST-RECOVERY"
+    first_at = datetime(2026, 6, 12, 9)
+    return [
+        _focused_record(
+            "CASE-RECOVERY-001",
+            customer_id,
+            first_at,
+            "downstream",
+            "order_support",
+        ),
+        _focused_record(
+            "CASE-RECOVERY-002",
+            customer_id,
+            first_at + timedelta(hours=1),
+            "payable",
+            "order_support",
+        ),
+    ]
+
+
+def duplicate_window_fixture() -> list[DemoRecord]:
+    customer_id = "CUST-DUPLICATE-WINDOW"
+    first_at = datetime(2026, 6, 15, 9)
+    return [
+        _focused_record(
+            "CASE-DUP-001",
+            customer_id,
+            first_at,
+            "payable",
+            "cancel_subscription",
+        ),
+        _focused_record(
+            "CASE-DUP-002",
+            customer_id,
+            first_at + timedelta(hours=8),
+            "payable",
+            "cancel_subscription",
+        ),
+        _focused_record(
+            "CASE-DUP-003",
+            customer_id,
+            first_at + timedelta(hours=23),
+            "payable",
+            "cancel_subscription",
+        ),
+    ]
+
+
+SCENARIOS = (
+    DemoScenario(
+        "headline",
+        "Full invoice reconciliation",
+        "10,000 claimed outcomes across all five confirmed dispute categories.",
+        "OUT-004821",
+        demo_fixture,
+    ),
+    DemoScenario(
+        "evidence_review",
+        "Contradictory evidence",
+        "Conflicting directly matched records isolate an amount for review without deducting it.",
+        "CASE-REVIEW-001",
+        evidence_review_fixture,
+    ),
+    DemoScenario(
+        "recovery",
+        "Failed action, valid follow-up",
+        "A failed first outcome is disputed while a valid follow-up remains payable.",
+        "CASE-RECOVERY-001",
+        recovery_fixture,
+    ),
+    DemoScenario(
+        "duplicate_window",
+        "Duplicate attribution window",
+        "Three otherwise-payable claims demonstrate the deterministic 24-hour winner rule.",
+        "CASE-DUP-002",
+        duplicate_window_fixture,
+    ),
+)
+SCENARIOS_BY_ID = {scenario.id: scenario for scenario in SCENARIOS}
+
+
+def scenario_fixture(scenario_id: str) -> list[DemoRecord]:
+    try:
+        return SCENARIOS_BY_ID[scenario_id].fixture()
+    except KeyError as exc:
+        raise ValueError(f"Unknown demo scenario: {scenario_id}") from exc
 
 
 def demo_records() -> list[OutcomeDetermination]:

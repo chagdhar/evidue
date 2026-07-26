@@ -4,6 +4,12 @@ The demo deliberately implements no live integrations. A production Evidue
 deployment would retain the same deterministic domain engine while replacing
 fixture generation with ingestion adapters.
 
+The demo's selectable synthetic data sets are fixture presets, not production
+tenants, invoice templates, or mutable rule configurations. They exercise the
+same persistence, reconciliation, API, evidence-detail, and export paths with
+small purpose-built inputs. Production would select an ingested invoice by its
+stored identity instead of regenerating a scenario.
+
 ## Ingestion
 
 Vendor claims would arrive from vendor APIs and signed exports. Customer-owned

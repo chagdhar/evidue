@@ -13,7 +13,10 @@ from app.fixtures.demo import (
     CATEGORY_COUNTS,
     demo_fixture,
     demo_records,
+    duplicate_window_fixture,
     events_for,
+    evidence_review_fixture,
+    recovery_fixture,
     review_record,
 )
 
@@ -96,6 +99,58 @@ def test_ambiguous_evidence_is_review_not_a_recommended_deduction():
         "needs_review_amount": "1.50",
         "categories": {},
     }
+
+
+def test_focused_scenario_fixtures_have_exact_financial_results():
+    cases = [
+        (
+            evidence_review_fixture(),
+            {
+                "claimed_outcomes": 2,
+                "payable_outcomes": 1,
+                "disputed_outcomes": 0,
+                "needs_review_outcomes": 1,
+                "submitted_amount": "3.00",
+                "confirmed_payable_amount": "1.50",
+                "recommended_deduction": "0.00",
+                "needs_review_amount": "1.50",
+                "categories": {},
+            },
+        ),
+        (
+            recovery_fixture(),
+            {
+                "claimed_outcomes": 2,
+                "payable_outcomes": 1,
+                "disputed_outcomes": 1,
+                "needs_review_outcomes": 0,
+                "submitted_amount": "3.00",
+                "confirmed_payable_amount": "1.50",
+                "recommended_deduction": "1.50",
+                "needs_review_amount": "0.00",
+                "categories": {"R3": 1},
+            },
+        ),
+        (
+            duplicate_window_fixture(),
+            {
+                "claimed_outcomes": 3,
+                "payable_outcomes": 1,
+                "disputed_outcomes": 2,
+                "needs_review_outcomes": 0,
+                "submitted_amount": "4.50",
+                "confirmed_payable_amount": "1.50",
+                "recommended_deduction": "3.00",
+                "needs_review_amount": "0.00",
+                "categories": {"R4": 2},
+            },
+        ),
+    ]
+    for fixture, expected in cases:
+        assert (
+            summarize(reconcile([(record.claim, list(record.events)) for record in fixture]))
+            == expected
+        )
 
 
 def test_same_intent_different_customer_is_unrelated_and_inert():

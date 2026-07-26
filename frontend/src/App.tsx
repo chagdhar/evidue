@@ -37,6 +37,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
   Contract,
+  DemoScenario,
+  DemoStatus,
   Invoice,
   Outcome,
   OutcomeDetail,
@@ -46,7 +48,6 @@ import {
 import { disclosure, formatPercent, formatUsd } from "./presentation";
 
 const categoryOrder = ["R1", "R2", "R3", "R4", "R5"];
-const demoOutcomeId = "OUT-004821";
 const evidenceLabels: Record<string, string> = {
   ai_closed: "AI marked outcome resolved",
   customer_recontact: "Customer contacted support again",
@@ -193,6 +194,16 @@ function ReconciliationBridge({ summary }: { summary: Summary }) {
             </Box>
           );
         })}
+        {summary.needs_review_amount !== "0.00" && (
+          <Box className="bridge-line review">
+            <Typography>
+              <span aria-hidden="true">−</span> Held for evidence review
+            </Typography>
+            <Typography className="money">
+              − {formatUsd(summary.needs_review_amount)}
+            </Typography>
+          </Box>
+        )}
         <Box className="bridge-line result">
           <Typography>Corrected payable amount</Typography>
           <Typography className="money">
@@ -213,6 +224,7 @@ function Findings({
   selectedRule: string;
   onSelect: (ruleId: string) => void;
 }) {
+  const categories = categoryOrder.filter((ruleId) => summary.categories[ruleId]);
   return (
     <section className="major-section" aria-labelledby="findings-title">
       <Box className="section-intro">
@@ -225,16 +237,17 @@ function Findings({
         </Typography>
       </Box>
       <Paper className="findings-list">
-        <Box className="finding-heading" aria-hidden="true">
-          <span>Rule</span>
-          <span>Finding</span>
-          <span>Outcomes</span>
-          <span>Amount</span>
-          <span>% of invoice</span>
-        </Box>
-        {categoryOrder.map((ruleId) => {
+        {categories.length > 0 && (
+          <Box className="finding-heading" aria-hidden="true">
+            <span>Rule</span>
+            <span>Finding</span>
+            <span>Outcomes</span>
+            <span>Amount</span>
+            <span>% of invoice</span>
+          </Box>
+        )}
+        {categories.map((ruleId) => {
           const category = summary.categories[ruleId];
-          if (!category) return null;
           return (
             <button
               type="button"
@@ -253,6 +266,15 @@ function Findings({
             </button>
           );
         })}
+        {categories.length === 0 && (
+          <Box className="empty-findings">
+            <Typography variant="h6">No confirmed deductions</Typography>
+            <Typography color="text.secondary">
+              This data set holds {formatUsd(summary.needs_review_amount)} for
+              evidence review without recommending a deduction.
+            </Typography>
+          </Box>
+        )}
       </Paper>
     </section>
   );
@@ -369,9 +391,11 @@ function EvidenceReadiness({ sources }: { sources: string[] }) {
 
 function OutcomeInspector({
   detail,
+  demoOutcomeId,
   onClose,
 }: {
   detail: OutcomeDetail | null;
+  demoOutcomeId: string;
   onClose: () => void;
 }) {
   const timeline = detail
@@ -509,16 +533,24 @@ function OutcomeInspector({
 function ClaimsReview({
   summary,
   selectedRule,
+  demoOutcomeId,
   onRuleChange,
 }: {
   summary: Summary;
   selectedRule: string;
+  demoOutcomeId: string;
   onRuleChange: (ruleId: string) => void;
 }) {
+  const defaultStatus =
+    summary.disputed_outcomes > 0
+      ? "disputed"
+      : summary.needs_review_outcomes > 0
+        ? "needs_review"
+        : "payable";
   const [rows, setRows] = useState<Outcome[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
-  const [status, setStatus] = useState("disputed");
+  const [status, setStatus] = useState(defaultStatus);
   const [reason, setReason] = useState(selectedRule);
   const [outcomeId, setOutcomeId] = useState("");
   const [customerId, setCustomerId] = useState("");
@@ -531,9 +563,9 @@ function ClaimsReview({
 
   useEffect(() => {
     setReason(selectedRule);
-    setStatus("disputed");
+    setStatus(selectedRule ? "disputed" : defaultStatus);
     setPage(0);
-  }, [selectedRule]);
+  }, [defaultStatus, selectedRule]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -591,7 +623,11 @@ function ClaimsReview({
         <Box>
           <Typography className="eyebrow">Claims review</Typography>
           <Typography variant="h4" id="claims-title">
-            Disputed outcome evidence
+            {defaultStatus === "needs_review"
+              ? "Needs-review outcome evidence"
+              : defaultStatus === "payable"
+                ? "Payable outcome evidence"
+                : "Disputed outcome evidence"}
           </Typography>
           <Typography color="text.secondary">
             {total.toLocaleString()} matching outcomes
@@ -789,7 +825,11 @@ function ClaimsReview({
           onPageChange={(_, nextPage) => setPage(nextPage)}
         />
       </Paper>
-      <OutcomeInspector detail={detail} onClose={() => setDetail(null)} />
+      <OutcomeInspector
+        detail={detail}
+        demoOutcomeId={demoOutcomeId}
+        onClose={() => setDetail(null)}
+      />
     </section>
   );
 }
@@ -866,22 +906,28 @@ function Exports({ summary }: { summary: Summary }) {
 }
 
 export default function App() {
+  const [demoStatus, setDemoStatus] = useState<DemoStatus | null>(null);
+  const [scenarios, setScenarios] = useState<DemoScenario[]>([]);
   const [contract, setContract] = useState<Contract | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [selectedRule, setSelectedRule] = useState("");
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     async function initialize() {
       try {
-        const [status, contractResult, invoiceResult] = await Promise.all([
+        const [status, scenarioResults, contractResult, invoiceResult] = await Promise.all([
           api.status(),
+          api.scenarios(),
           api.contract(),
           api.invoice(),
         ]);
+        setDemoStatus(status);
+        setScenarios(scenarioResults);
         setContract(contractResult);
         setInvoice(invoiceResult);
         if (status.reconciled) setSummary(await api.current());
@@ -908,13 +954,36 @@ export default function App() {
     setRunning(true);
     setError("");
     try {
-      if (resetFirst) await api.reset();
+      if (resetFirst && demoStatus) {
+        setDemoStatus(await api.reset(demoStatus.scenario_id));
+      }
       setSummary(await api.reconcile());
       setSelectedRule("");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Reconciliation failed");
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function selectScenario(scenarioId: string) {
+    setSwitching(true);
+    setError("");
+    try {
+      const status = await api.reset(scenarioId);
+      const invoiceResult = await api.invoice();
+      setDemoStatus(status);
+      setInvoice(invoiceResult);
+      setSummary(null);
+      setSelectedRule("");
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Could not load synthetic data set",
+      );
+    } finally {
+      setSwitching(false);
     }
   }
 
@@ -955,6 +1024,29 @@ export default function App() {
             <Typography className="vendor-line">
               Vendor: <strong>{contract.vendor}</strong> · {month}
             </Typography>
+            {demoStatus && (
+              <Box className="scenario-control">
+                <FormControl size="small">
+                  <InputLabel id="scenario-label">Synthetic data set</InputLabel>
+                  <Select
+                    labelId="scenario-label"
+                    label="Synthetic data set"
+                    value={demoStatus.scenario_id}
+                    disabled={running || switching}
+                    onChange={(event) => void selectScenario(event.target.value)}
+                  >
+                    {scenarios.map((scenario) => (
+                      <MenuItem value={scenario.id} key={scenario.id}>
+                        {scenario.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Typography color="text.secondary" className="scenario-description">
+                  {demoStatus.scenario_description}
+                </Typography>
+              </Box>
+            )}
           </Box>
           <Box className="header-action">
             <Workflow reconciled={Boolean(summary)} />
@@ -971,15 +1063,19 @@ export default function App() {
         </header>
 
         {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
-        {running && (
+        {(running || switching) && (
           <Paper className="running">
             <CircularProgress size={22} />
             <Box>
               <Typography fontWeight={800}>
-                Evaluating persisted claims and evidence
+                {switching
+                  ? "Loading deterministic synthetic data set"
+                  : "Evaluating persisted claims and evidence"}
               </Typography>
               <Typography color="text.secondary">
-                Applying executable contract rules to every claimed outcome.
+                {switching
+                  ? "Resetting claims and operational evidence for this case."
+                  : "Applying executable contract rules to every claimed outcome."}
               </Typography>
             </Box>
           </Paper>
@@ -988,7 +1084,7 @@ export default function App() {
         <PaymentRecommendation
           invoice={invoice}
           summary={summary}
-          running={running}
+          running={running || switching}
           onRun={() => void run(false)}
         />
 
@@ -1007,8 +1103,10 @@ export default function App() {
               onSelect={setSelectedRule}
             />
             <ClaimsReview
+              key={summary.reconciliation_id}
               summary={summary}
               selectedRule={selectedRule}
+              demoOutcomeId={demoStatus?.demo_outcome_id ?? ""}
               onRuleChange={setSelectedRule}
             />
             <Exports summary={summary} />

@@ -96,6 +96,23 @@ a {
   font-size: 1.05rem !important;
 }
 
+.scenario-control {
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.scenario-control .MuiFormControl-root {
+  min-width: 250px;
+}
+
+.scenario-description {
+  max-width: 360px;
+  line-height: 1.45 !important;
+}
+
 .header-action {
   display: flex;
   align-items: flex-end;
@@ -301,6 +318,10 @@ a {
   color: var(--red);
 }
 
+.bridge-line.review {
+  color: var(--amber);
+}
+
 .bridge-line.result {
   margin-top: 5px;
   color: var(--green);
@@ -376,6 +397,11 @@ a {
 .finding-row:hover,
 .finding-row.selected {
   background: #f1f6f3;
+}
+
+.empty-findings {
+  padding: 28px 24px;
+  border-left: 5px solid var(--amber);
 }
 
 .finding-row.selected {
@@ -650,6 +676,11 @@ a {
   .header-action {
     width: 100%;
     align-items: flex-start;
+  }
+
+  .scenario-control {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .workflow {

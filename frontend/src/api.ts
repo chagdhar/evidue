@@ -3,6 +3,17 @@ export type DemoStatus = {
   reconciled: boolean;
   claimed_outcomes: number;
   billing_period: string;
+  scenario_id: string;
+  scenario_name: string;
+  scenario_description: string;
+  demo_outcome_id: string;
+};
+
+export type DemoScenario = {
+  id: string;
+  name: string;
+  description: string;
+  demo_outcome_id: string;
 };
 
 export type Rule = {
@@ -37,6 +48,8 @@ export type Invoice = {
 export type Category = { label: string; count: number; amount: string };
 export type Summary = {
   reconciliation_id: string;
+  scenario_id: string;
+  scenario_name: string;
   status: string;
   claimed_outcomes: number;
   payable_outcomes: number;
@@ -114,11 +127,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   status: () => request<DemoStatus>("/demo/status"),
+  scenarios: () => request<DemoScenario[]>("/demo/scenarios"),
   contract: () => request<Contract>("/contracts/current"),
   invoice: () => request<Invoice>("/invoices/current"),
   current: () => request<Summary>("/reconciliations/current"),
   reconcile: () => request<Summary>("/reconciliations", { method: "POST" }),
-  reset: () => request<DemoStatus>("/demo/reset", { method: "POST" }),
+  reset: (scenarioId = "headline") =>
+    request<DemoStatus>(
+      `/demo/reset?scenario_id=${encodeURIComponent(scenarioId)}`,
+      { method: "POST" },
+    ),
   outcomes: (query: URLSearchParams) =>
     request<OutcomePage>(`/reconciliations/current/outcomes?${query}`),
   outcome: (id: string) =>

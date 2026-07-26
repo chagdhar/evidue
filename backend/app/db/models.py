@@ -14,6 +14,7 @@ class DemoStateRow(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     seeded: Mapped[bool] = mapped_column(Boolean, default=False)
     reconciled: Mapped[bool] = mapped_column(Boolean, default=False)
+    scenario_id: Mapped[str] = mapped_column(String, default="headline")
 
 
 class ContractRow(Base):

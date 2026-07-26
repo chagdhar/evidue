@@ -8,7 +8,13 @@ from sqlalchemy.orm import joinedload, sessionmaker
 
 from app.domain.engine import reconcile
 from app.domain.models import RULES, OperationalEvent, OutcomeClaim
-from app.fixtures.demo import INVOICE_ID, demo_fixture
+from app.fixtures.demo import (
+    INVOICE_ID,
+    SCENARIOS,
+    SCENARIOS_BY_ID,
+    DemoScenario,
+    scenario_fixture,
+)
 
 from .models import (
     Base,
@@ -38,8 +44,13 @@ DISCLOSURE = (
 
 def initialize() -> None:
     Base.metadata.create_all(engine)
-    columns = {column["name"] for column in inspect(engine).get_columns("outcome_determinations")}
-    if columns and "confirmed_disputed_amount" not in columns:
+    determination_columns = {
+        column["name"] for column in inspect(engine).get_columns("outcome_determinations")
+    }
+    state_columns = {column["name"] for column in inspect(engine).get_columns("demo_state")}
+    if (determination_columns and "confirmed_disputed_amount" not in determination_columns) or (
+        state_columns and "scenario_id" not in state_columns
+    ):
         Base.metadata.drop_all(engine)
         Base.metadata.create_all(engine)
 
@@ -48,10 +59,24 @@ def _money(value: Decimal) -> str:
     return f"{value:.2f}"
 
 
-def reset() -> dict[str, object]:
+def _scenario_metadata(scenario: DemoScenario) -> dict[str, str]:
+    return {
+        "id": scenario.id,
+        "name": scenario.name,
+        "description": scenario.description,
+        "demo_outcome_id": scenario.demo_outcome_id,
+    }
+
+
+def scenario_catalog() -> list[dict[str, str]]:
+    return [_scenario_metadata(scenario) for scenario in SCENARIOS]
+
+
+def reset(scenario_id: str = "headline") -> dict[str, object]:
+    records = scenario_fixture(scenario_id)
+    scenario = SCENARIOS_BY_ID[scenario_id]
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
-    records = demo_fixture()
     with SessionLocal.begin() as session:
         contract = ContractRow(
             id="CONTRACT-ACME-NOVA-2026",
@@ -149,7 +174,14 @@ def reset() -> dict[str, object]:
                 for event in record.events
             ]
         )
-        session.add(DemoStateRow(id=1, seeded=True, reconciled=False))
+        session.add(
+            DemoStateRow(
+                id=1,
+                seeded=True,
+                reconciled=False,
+                scenario_id=scenario.id,
+            )
+        )
     return demo_status()
 
 
@@ -158,11 +190,18 @@ def demo_status() -> dict[str, object]:
     with SessionLocal() as session:
         state = session.get(DemoStateRow, 1)
         claim_count = session.scalar(select(func.count()).select_from(OutcomeClaimRow)) or 0
+    scenario = SCENARIOS_BY_ID.get(state.scenario_id if state else "headline")
+    if scenario is None:
+        scenario = SCENARIOS_BY_ID["headline"]
     return {
         "seeded": bool(state and state.seeded),
         "reconciled": bool(state and state.reconciled),
         "claimed_outcomes": claim_count,
         "billing_period": "2026-06-01 through 2026-06-30",
+        "scenario_id": scenario.id,
+        "scenario_name": scenario.name,
+        "scenario_description": scenario.description,
+        "demo_outcome_id": scenario.demo_outcome_id,
     }
 
 
@@ -201,8 +240,15 @@ def run_reconciliation() -> dict[str, object]:
         session.execute(delete(EvidenceReferenceRow))
         session.execute(delete(OutcomeDeterminationRow))
         session.execute(delete(ReconciliationRow))
+        state = session.get(DemoStateRow, 1)
+        scenario_id = state.scenario_id if state else "headline"
+        reconciliation_id = (
+            "REC-2026-06-001"
+            if scenario_id == "headline"
+            else f"REC-2026-06-{scenario_id.upper().replace('_', '-')}"
+        )
         reconciliation = ReconciliationRow(
-            id="REC-2026-06-001",
+            id=reconciliation_id,
             invoice_id=INVOICE_ID,
             evaluated_at=datetime(2026, 7, 1, 12),
             engine_version="2026.06.1",
@@ -257,7 +303,6 @@ def run_reconciliation() -> dict[str, object]:
                     for reference in result.evidence
                 ]
             )
-        state = session.get(DemoStateRow, 1)
         if state:
             state.reconciled = True
     return summary()
@@ -279,6 +324,10 @@ def summary() -> dict[str, object]:
             select(ReconciliationRow).order_by(ReconciliationRow.evaluated_at.desc())
         )
         price = session.scalar(select(ContractRow.price_per_outcome)) or Decimal()
+        state = session.get(DemoStateRow, 1)
+    scenario = SCENARIOS_BY_ID.get(state.scenario_id if state else "headline")
+    if scenario is None:
+        scenario = SCENARIOS_BY_ID["headline"]
     billed = sum((row.billed_amount for row in rows), Decimal())
     payable = sum((row.confirmed_payable_amount for row in rows), Decimal())
     disputed = sum((row.confirmed_disputed_amount for row in rows), Decimal())
@@ -306,6 +355,8 @@ def summary() -> dict[str, object]:
     return {
         "reconciliation_id": reconciliation.id if reconciliation else "",
         "status": "completed" if rows else "not_run",
+        "scenario_id": scenario.id,
+        "scenario_name": scenario.name,
         "claimed_outcomes": len(rows),
         "payable_outcomes": sum(row.status == "payable" for row in rows),
         "disputed_outcomes": sum(row.status == "disputed" for row in rows),

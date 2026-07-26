@@ -16,6 +16,17 @@ class DemoStatusResponse(StrictModel):
     reconciled: bool
     claimed_outcomes: int
     billing_period: str
+    scenario_id: str
+    scenario_name: str
+    scenario_description: str
+    demo_outcome_id: str
+
+
+class DemoScenarioResponse(StrictModel):
+    id: str
+    name: str
+    description: str
+    demo_outcome_id: str
 
 
 class CategorySummary(StrictModel):
@@ -27,6 +38,8 @@ class CategorySummary(StrictModel):
 class ReconciliationSummary(StrictModel):
     reconciliation_id: str
     status: str
+    scenario_id: str
+    scenario_name: str
     claimed_outcomes: int
     payable_outcomes: int
     disputed_outcomes: int

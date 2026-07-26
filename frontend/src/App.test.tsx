@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import type { Summary } from "./api";
 
 const ruleDefinitions = [
   {
@@ -76,8 +77,48 @@ const invoice = {
   billing_period_end: "2026-07-01T00:00:00",
 };
 
-const summary = {
+const scenarios = [
+  {
+    id: "headline",
+    name: "Full invoice reconciliation",
+    description: "The complete 10,000-line invoice across all confirmed dispute rules.",
+    demo_outcome_id: "OUT-004821",
+  },
+  {
+    id: "evidence_review",
+    name: "Contradictory evidence",
+    description: "Directly matched success and failure evidence requires review.",
+    demo_outcome_id: "CASE-REVIEW-001",
+  },
+  {
+    id: "recovery",
+    name: "Failed action, valid follow-up",
+    description: "An invalid first claim cannot suppress a later valid claim.",
+    demo_outcome_id: "CASE-RECOVERY-001",
+  },
+  {
+    id: "duplicate_window",
+    name: "Duplicate attribution window",
+    description: "Three otherwise-payable claims demonstrate the deterministic winner.",
+    demo_outcome_id: "CASE-DUP-002",
+  },
+];
+
+const headlineStatus = {
+  seeded: true,
+  reconciled: false,
+  claimed_outcomes: 10000,
+  billing_period: "June",
+  scenario_id: "headline",
+  scenario_name: "Full invoice reconciliation",
+  scenario_description: scenarios[0].description,
+  demo_outcome_id: "OUT-004821",
+};
+
+const summary: Summary = {
   reconciliation_id: "REC-1",
+  scenario_id: "headline",
+  scenario_name: "Headline invoice",
   status: "completed",
   claimed_outcomes: 10000,
   payable_outcomes: 8320,
@@ -98,6 +139,37 @@ const summary = {
   synthetic_disclosure: "No real customer or vendor data is shown.",
 };
 
+const reviewInvoice = {
+  ...invoice,
+  claimed_outcomes: 2,
+  submitted_amount: "3.00",
+};
+
+const reviewStatus = {
+  ...headlineStatus,
+  claimed_outcomes: 2,
+  scenario_id: "evidence_review",
+  scenario_name: "Contradictory evidence",
+  scenario_description: scenarios[1].description,
+  demo_outcome_id: "CASE-REVIEW-001",
+};
+
+const reviewSummary = {
+  ...summary,
+  reconciliation_id: "REC-REVIEW",
+  scenario_id: "evidence_review",
+  scenario_name: "Contradictory evidence",
+  claimed_outcomes: 2,
+  payable_outcomes: 1,
+  disputed_outcomes: 0,
+  needs_review_outcomes: 1,
+  submitted_amount: "3.00",
+  confirmed_payable_amount: "1.50",
+  recommended_deduction: "0.00",
+  needs_review_amount: "1.50",
+  categories: {},
+};
+
 const failedRefund = {
   outcome_id: "OUT-004821",
   customer_id: "CUST-004821",
@@ -111,6 +183,17 @@ const failedRefund = {
   confirmed_disputed_amount: "1.50",
   needs_review_amount: "0.00",
   closed_at: "2026-06-04T17:21:00",
+};
+
+const reviewOutcome = {
+  ...failedRefund,
+  outcome_id: "CASE-REVIEW-001",
+  customer_id: "CUST-REVIEW-001",
+  status: "needs_review",
+  reason: "Contradictory directly matched downstream evidence requires review",
+  rule_id: "R7",
+  confirmed_disputed_amount: "0.00",
+  needs_review_amount: "1.50",
 };
 
 const detail = {
@@ -161,6 +244,33 @@ const detail = {
   engine_version: "2026.06.1",
 };
 
+const reviewDetail = {
+  ...detail,
+  ...reviewOutcome,
+  conversation: {
+    id: "CONV-REVIEW-001",
+    intent: "refund",
+    closed_at: reviewOutcome.closed_at,
+  },
+  rule: contract.clauses[6].rule,
+  contract_clause: "Contract clause for R7",
+  evidence: [
+    { ...detail.evidence[0], id: "EV-REVIEW-CLOSED", outcome_id: reviewOutcome.outcome_id },
+    {
+      ...detail.evidence[1],
+      id: "EV-REVIEW-SUCCESS",
+      event_type: "downstream_succeeded",
+      outcome_id: reviewOutcome.outcome_id,
+    },
+    {
+      ...detail.evidence[1],
+      id: "EV-REVIEW-FAILED",
+      outcome_id: reviewOutcome.outcome_id,
+    },
+  ],
+  computed_timeline_markers: [],
+};
+
 function response(body: unknown, ok = true) {
   return Promise.resolve({
     ok,
@@ -170,19 +280,32 @@ function response(body: unknown, ok = true) {
   } as Response);
 }
 
-function mockApi(reconciled = false, summaryResult = summary) {
+function mockApi(
+  reconciled = false,
+  summaryResult = summary,
+  statusResult = headlineStatus,
+  invoiceResult = invoice,
+  outcomeResult = failedRefund,
+  detailResult = detail,
+) {
+  let activeStatus = { ...statusResult, reconciled };
+  let activeInvoice = invoiceResult;
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
     const url = String(input);
     if (url.endsWith("/api/demo/status")) {
-      return response({
-        seeded: true,
-        reconciled,
-        claimed_outcomes: 10000,
-        billing_period: "June",
-      });
+      return response(activeStatus);
+    }
+    if (url.endsWith("/api/demo/scenarios")) return response(scenarios);
+    if (url.includes("/api/demo/reset?") && options?.method === "POST") {
+      const scenarioId = new URL(url, "http://localhost").searchParams.get("scenario_id");
+      if (scenarioId === "evidence_review") {
+        activeStatus = { ...reviewStatus, reconciled: false };
+        activeInvoice = reviewInvoice;
+      }
+      return response(activeStatus);
     }
     if (url.endsWith("/api/contracts/current")) return response(contract);
-    if (url.endsWith("/api/invoices/current")) return response(invoice);
+    if (url.endsWith("/api/invoices/current")) return response(activeInvoice);
     if (url.endsWith("/api/reconciliations") && options?.method === "POST") {
       return response(summaryResult);
     }
@@ -195,11 +318,13 @@ function mockApi(reconciled = false, summaryResult = summary) {
         ? summaryResult.categories[reason as keyof typeof summaryResult.categories]?.count ?? 0
         : status === "disputed"
           ? summaryResult.disputed_outcomes
+          : status === "needs_review"
+            ? summaryResult.needs_review_outcomes
           : summaryResult.claimed_outcomes;
-      return response({ total, offset: 0, limit: 25, items: [failedRefund] });
+      return response({ total, offset: 0, limit: 25, items: [outcomeResult] });
     }
-    if (url.endsWith(`/api/reconciliations/current/outcomes/${failedRefund.outcome_id}`)) {
-      return response(detail);
+    if (url.endsWith(`/api/reconciliations/current/outcomes/${outcomeResult.outcome_id}`)) {
+      return response(detailResult);
     }
     if (url.endsWith("/api/reconciliations/current/exports/evidence.json")) {
       return response({ reconciliation: summaryResult, outcomes: [detail] });
@@ -223,6 +348,39 @@ describe("Evidue financial-decision demo", () => {
     expect(screen.getByRole("button", { name: "Run reconciliation" })).toBeInTheDocument();
     expect(screen.queryByText("$12,480.00")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Claims review" })).not.toBeInTheDocument();
+  });
+
+  it("offers each deterministic product case without embedding financial results", async () => {
+    mockApi(false);
+    render(<App />);
+
+    await userEvent.click(await screen.findByLabelText("Synthetic data set"));
+    expect(screen.getByRole("option", { name: "Full invoice reconciliation" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Contradictory evidence" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Failed action, valid follow-up" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Duplicate attribution window" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /\$/ })).not.toBeInTheDocument();
+  });
+
+  it("switches data sets through reset and returns to an honest ready state", async () => {
+    mockApi(true);
+    render(<App />);
+
+    await screen.findByText("$12,480.00");
+    await userEvent.click(screen.getByLabelText("Synthetic data set"));
+    await userEvent.click(screen.getByRole("option", { name: "Contradictory evidence" }));
+
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "/api/demo/reset?scenario_id=evidence_review",
+        { method: "POST" },
+      ),
+    );
+    expect(await screen.findByText("$3.00")).toBeInTheDocument();
+    expect(screen.getByText("2 claimed outcomes from the vendor")).toBeInTheDocument();
+    expect(screen.getByText(scenarios[1].description)).toBeInTheDocument();
+    expect(screen.queryByText("$12,480.00")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run reconciliation" })).toBeInTheDocument();
   });
 
   it("keeps both synthetic-data disclosures visible", async () => {
@@ -371,6 +529,34 @@ describe("Evidue financial-decision demo", () => {
       screen.getAllByText("$1.50").find((element) => element.classList.contains("review")),
     ).toBeInTheDocument();
     expect(screen.getByText("$2,520.00")).toHaveClass("disputed");
+  });
+
+  it("presents a review-only scenario without turning it into a deduction", async () => {
+    mockApi(
+      true,
+      reviewSummary,
+      reviewStatus,
+      reviewInvoice,
+      reviewOutcome,
+      reviewDetail,
+    );
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Needs-review outcome evidence" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("No confirmed deductions")).toBeInTheDocument();
+    expect(screen.getByText("− $1.50")).toBeInTheDocument();
+    expect(screen.getByText("CASE-REVIEW-001")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("status=needs_review"),
+        undefined,
+      ),
+    );
+    expect(
+      screen.getAllByText("$0.00").find((element) => element.classList.contains("disputed")),
+    ).toBeInTheDocument();
   });
 
   it("renders backend failures honestly", async () => {

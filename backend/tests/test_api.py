@@ -11,6 +11,7 @@ from app.main import (
     current_contract,
     current_invoice,
     current_reconciliation,
+    demo_scenarios,
     demo_status,
     disputes_csv,
     evidence_json,
@@ -40,6 +41,12 @@ def test_health_reset_seed_and_reconciliation_lifecycle():
         "reconciled": True,
         "claimed_outcomes": 10_000,
         "billing_period": "2026-06-01 through 2026-06-30",
+        "scenario_id": "headline",
+        "scenario_name": "Full invoice reconciliation",
+        "scenario_description": (
+            "10,000 claimed outcomes across all five confirmed dispute categories."
+        ),
+        "demo_outcome_id": "OUT-004821",
     }
 
 
@@ -61,7 +68,10 @@ def test_contract_and_invoice_are_persisted_inputs():
 def test_exact_reconciliation_summary_and_typed_schema():
     summary = current_reconciliation()
     ReconciliationSummary.model_validate(summary)
+    assert summary["reconciliation_id"] == "REC-2026-06-001"
     assert summary["claimed_outcomes"] == 10_000
+    assert summary["scenario_id"] == "headline"
+    assert summary["scenario_name"] == "Full invoice reconciliation"
     assert summary["payable_outcomes"] == 8_320
     assert summary["disputed_outcomes"] == 1_680
     assert summary["needs_review_outcomes"] == 0
@@ -213,3 +223,65 @@ def test_persisted_needs_review_amount_does_not_increase_deduction():
 def test_json_exports_are_serializable():
     json.dumps(summary_json())
     json.dumps(repository.outcome_detail("OUT-004821"))
+
+
+def test_scenario_catalog_and_focused_scenarios_use_real_reconciliation():
+    catalog = demo_scenarios()
+    assert [scenario["id"] for scenario in catalog] == [
+        "headline",
+        "evidence_review",
+        "recovery",
+        "duplicate_window",
+    ]
+    assert all(scenario["demo_outcome_id"] for scenario in catalog)
+
+    review_state = reset("evidence_review")
+    assert review_state["claimed_outcomes"] == 2
+    assert review_state["reconciled"] is False
+    review = reconcile()
+    assert review == {
+        "reconciliation_id": "REC-2026-06-EVIDENCE-REVIEW",
+        "status": "completed",
+        "scenario_id": "evidence_review",
+        "scenario_name": "Contradictory evidence",
+        "claimed_outcomes": 2,
+        "payable_outcomes": 1,
+        "disputed_outcomes": 0,
+        "needs_review_outcomes": 1,
+        "submitted_amount": "3.00",
+        "confirmed_payable_amount": "1.50",
+        "recommended_deduction": "0.00",
+        "needs_review_amount": "1.50",
+        "price_per_outcome": "1.50",
+        "categories": {},
+        "synthetic_disclosure": repository.DISCLOSURE,
+    }
+    review_detail = outcome("CASE-REVIEW-001")
+    assert review_detail["status"] == "needs_review"
+    assert {event["event_type"] for event in review_detail["evidence"]} == {
+        "downstream_succeeded",
+        "downstream_failed",
+    }
+
+    reset("recovery")
+    recovery = reconcile()
+    assert recovery["payable_outcomes"] == 1
+    assert recovery["disputed_outcomes"] == 1
+    assert recovery["categories"]["R3"]["count"] == 1
+    assert outcome("CASE-RECOVERY-001")["rule_id"] == "R3"
+    assert outcome("CASE-RECOVERY-002")["status"] == "payable"
+
+    reset("duplicate_window")
+    duplicate = reconcile()
+    assert duplicate["payable_outcomes"] == 1
+    assert duplicate["disputed_outcomes"] == 2
+    assert duplicate["categories"]["R4"] == {
+        "label": "Duplicate charges",
+        "count": 2,
+        "amount": "3.00",
+    }
+    assert outcome("CASE-DUP-002")["duplicate_winner_outcome_id"] == "CASE-DUP-001"
+    assert outcome("CASE-DUP-003")["duplicate_winner_outcome_id"] == "CASE-DUP-001"
+
+    reset()
+    reconcile()
