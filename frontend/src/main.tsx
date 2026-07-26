@@ -6,8 +6,12 @@ import "./style.css";
 
 const theme = createTheme({
   palette: {
-    primary: { main: "#0b5d50" },
-    background: { default: "#f4f6f3", paper: "#ffffff" },
+    primary: { main: "#1d624c", contrastText: "#ffffff" },
+    success: { main: "#1d624c" },
+    warning: { main: "#986513" },
+    error: { main: "#8d2f2a" },
+    text: { primary: "#17201f", secondary: "#63706d" },
+    background: { default: "#f5f3ed", paper: "#fffefb" },
   },
   typography: {
     fontFamily: '"Inter", "IBM Plex Sans", system-ui, sans-serif',
@@ -15,8 +19,9 @@ const theme = createTheme({
     h3: { fontWeight: 750, letterSpacing: "-0.035em" },
     h4: { fontWeight: 750 },
     h5: { fontWeight: 700 },
+    button: { fontWeight: 750, textTransform: "none" },
   },
-  shape: { borderRadius: 10 },
+  shape: { borderRadius: 8 },
 });
 
 createRoot(document.getElementById("root")!).render(

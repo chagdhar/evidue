@@ -30,11 +30,11 @@ Delivered:
 - persisted pre-reconciliation and completed lifecycle states;
 - typed FastAPI endpoints, server-side filtering/pagination, evidence detail,
   and three record-derived exports;
-- complete React/Material UI `/demo` workflow with contract rules, evidence
-  sources, backend execution, financial result, category breakdown, outcome
-  audit table, precise decisive-evidence timeline, and separately identified
-  computed contractual markers;
-- 39 backend tests, 7 frontend tests, and a live Playwright golden path;
+- focused React/Material UI `/demo` decision flow with a dominant payment
+  recommendation, reconciliation bridge, compact finding filters,
+  disputed-first claims review, wide evidence inspector, compact contract
+  controls, honest evidence readiness, and primary dispute-package export;
+- 39 backend tests, 15 frontend tests, and a live Playwright golden path;
 - fish-invokable bootstrap, development, seed, reset, and validation scripts;
 - a non-root, health-checked production Docker image serving React through
   FastAPI;

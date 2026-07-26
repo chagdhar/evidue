@@ -3,16 +3,16 @@ import {
   AppBar,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   CircularProgress,
+  Collapse,
   Container,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  Drawer,
   FormControl,
   Grid,
   InputLabel,
@@ -34,70 +34,340 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, Contract, Invoice, Outcome, OutcomeDetail, Summary } from "./api";
-import { disclosure, formatUsd } from "./presentation";
+import {
+  api,
+  Contract,
+  Invoice,
+  Outcome,
+  OutcomeDetail,
+  Rule,
+  Summary,
+} from "./api";
+import { disclosure, formatPercent, formatUsd } from "./presentation";
 
-const reasonOptions = [
-  ["R1", "Same-intent recontacts"],
-  ["R2", "Human completions or corrections"],
-  ["R3", "Failed downstream actions"],
-  ["R4", "Duplicate charges"],
-  ["R5", "Account or action mismatches"],
-];
+const categoryOrder = ["R1", "R2", "R3", "R4", "R5"];
+const demoOutcomeId = "OUT-004821";
+const evidenceLabels: Record<string, string> = {
+  ai_closed: "AI marked outcome resolved",
+  customer_recontact: "Customer contacted support again",
+  human_completion: "Human completed the work",
+  human_material_correction: "Human materially corrected the work",
+  downstream_succeeded: "Downstream action succeeded",
+  downstream_failed: "Downstream action failed",
+  human_refund_completed: "Human completed the refund",
+  duplicate_attribution: "Duplicate attribution corroborated",
+  account_action_mismatch: "Account or action mismatch recorded",
+  completion_window_expired: "Completion window expired",
+};
 
-function Metric({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "primary" | "negative";
-}) {
+function readable(value: string): string {
+  return evidenceLabels[value] ?? value.replaceAll("_", " ");
+}
+
+function ruleRequirement(rule: Rule): string {
+  if (rule.parameters.window_days) return `${rule.parameters.window_days}-day window`;
+  if (rule.parameters.window_hours) return `${rule.parameters.window_hours}-hour window`;
+  if (rule.parameters.start && rule.parameters.end_exclusive) {
+    return `${rule.parameters.start} through ${rule.parameters.end_exclusive} (exclusive)`;
+  }
+  return rule.description;
+}
+
+function statusTone(status: string): "success" | "warning" | "error" {
+  if (status === "payable") return "success";
+  if (status === "needs_review") return "warning";
+  return "error";
+}
+
+function Workflow({ reconciled }: { reconciled: boolean }) {
+  const steps = [
+    { label: "Contract loaded", state: "complete" },
+    { label: "Evidence reconciled", state: reconciled ? "complete" : "pending" },
+    {
+      label: "Payment recommendation ready",
+      state: reconciled ? "complete" : "pending",
+    },
+  ];
   return (
-    <Card className={tone === "primary" ? "metric metric-primary" : "metric"}>
-      <CardContent>
-        <Typography className="eyebrow">{label}</Typography>
-        <Typography variant={tone === "primary" ? "h2" : "h4"}>{value}</Typography>
-      </CardContent>
-    </Card>
+    <Box className="workflow" aria-label="Reconciliation workflow">
+      {steps.map((step, index) => (
+        <Box className={`workflow-step ${step.state}`} key={step.label}>
+          <span aria-hidden="true">{step.state === "complete" ? "✓" : index + 1}</span>
+          <Typography>{step.label}</Typography>
+        </Box>
+      ))}
+    </Box>
   );
 }
 
-function ContractPanel({ contract }: { contract: Contract }) {
+function PaymentRecommendation({
+  invoice,
+  summary,
+  running,
+  onRun,
+}: {
+  invoice: Invoice;
+  summary: Summary | null;
+  running: boolean;
+  onRun: () => void;
+}) {
   return (
-    <Paper className="section" id="contract-rules">
-      <Box className="section-heading">
-        <Box>
-          <Typography className="eyebrow">Contract → executable policy</Typography>
-          <Typography variant="h5">Seven deterministic billing rules</Typography>
-        </Box>
-        <Chip label={`${contract.price_per_outcome} USD / payable outcome`} />
-      </Box>
-      <Stack spacing={1.5}>
-        {contract.clauses.map((clause) => (
-          <Box className="rule-row" key={clause.id}>
+    <Paper className={`recommendation ${summary ? "reconciled" : "ready"}`}>
+      {!summary ? (
+        <>
+          <Box>
+            <Typography className="eyebrow">Submitted invoice</Typography>
+            <Typography className="submitted-amount">
+              {formatUsd(invoice.submitted_amount)}
+            </Typography>
+            <Typography color="text.secondary">
+              {invoice.claimed_outcomes.toLocaleString()} claimed outcomes from the vendor
+            </Typography>
+          </Box>
+          <Box className="ready-action">
+            <Chip label="Ready to reconcile" className="ready-chip" />
+            <Button variant="contained" size="large" disabled={running} onClick={onRun}>
+              {running ? "Running reconciliation…" : "Run reconciliation"}
+            </Button>
+          </Box>
+        </>
+      ) : (
+        <>
+          <Box className="recommendation-primary">
+            <Typography className="eyebrow">Corrected payable amount</Typography>
+            <Typography className="payable-amount">
+              {formatUsd(summary.confirmed_payable_amount)}
+            </Typography>
+            <Typography className="payable-ratio">
+              {summary.payable_outcomes.toLocaleString()} of{" "}
+              {summary.claimed_outcomes.toLocaleString()} outcomes payable
+            </Typography>
+          </Box>
+          <Box className="recommendation-facts">
             <Box>
-              <Typography fontWeight={700}>
-                {clause.rule.id} · {clause.rule.title}
-              </Typography>
-              <Typography color="text.secondary">{clause.text}</Typography>
+              <Typography className="fact-label">Submitted invoice</Typography>
+              <Typography className="fact-value">{formatUsd(summary.submitted_amount)}</Typography>
             </Box>
             <Box>
-              <Typography className="eyebrow">Executable interpretation</Typography>
-              <Typography>{clause.rule.description}</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Evidence: {clause.rule.evidence_required.join(", ")}
+              <Typography className="fact-label">Recommended deduction</Typography>
+              <Typography className="fact-value disputed">
+                {formatUsd(summary.recommended_deduction)}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography className="fact-label">Needs review</Typography>
+              <Typography className="fact-value review">
+                {formatUsd(summary.needs_review_amount)}
               </Typography>
             </Box>
           </Box>
-        ))}
-      </Stack>
+        </>
+      )}
     </Paper>
   );
 }
 
-function OutcomeDialog({
+function ReconciliationBridge({ summary }: { summary: Summary }) {
+  return (
+    <section className="major-section" aria-labelledby="bridge-title">
+      <Box className="section-intro">
+        <Typography className="eyebrow">Reconciliation bridge</Typography>
+        <Typography variant="h4" id="bridge-title">
+          From submitted invoice to payable amount
+        </Typography>
+      </Box>
+      <Paper className="bridge">
+        <Box className="bridge-line start">
+          <Typography>Submitted invoice</Typography>
+          <Typography className="money">{formatUsd(summary.submitted_amount)}</Typography>
+        </Box>
+        {categoryOrder.map((ruleId) => {
+          const category = summary.categories[ruleId];
+          if (!category) return null;
+          return (
+            <Box className="bridge-line deduction" key={ruleId}>
+              <Typography>
+                <span aria-hidden="true">−</span> {category.label}
+              </Typography>
+              <Typography className="money">− {formatUsd(category.amount)}</Typography>
+            </Box>
+          );
+        })}
+        <Box className="bridge-line result">
+          <Typography>Corrected payable amount</Typography>
+          <Typography className="money">
+            = {formatUsd(summary.confirmed_payable_amount)}
+          </Typography>
+        </Box>
+      </Paper>
+    </section>
+  );
+}
+
+function Findings({
+  summary,
+  selectedRule,
+  onSelect,
+}: {
+  summary: Summary;
+  selectedRule: string;
+  onSelect: (ruleId: string) => void;
+}) {
+  return (
+    <section className="major-section" aria-labelledby="findings-title">
+      <Box className="section-intro">
+        <Typography className="eyebrow">Confirmed findings</Typography>
+        <Typography variant="h4" id="findings-title">
+          Why {formatUsd(summary.recommended_deduction)} should be deducted
+        </Typography>
+        <Typography color="text.secondary">
+          Select a finding to review the affected claims and their evidence.
+        </Typography>
+      </Box>
+      <Paper className="findings-list">
+        <Box className="finding-heading" aria-hidden="true">
+          <span>Rule</span>
+          <span>Finding</span>
+          <span>Outcomes</span>
+          <span>Amount</span>
+          <span>% of invoice</span>
+        </Box>
+        {categoryOrder.map((ruleId) => {
+          const category = summary.categories[ruleId];
+          if (!category) return null;
+          return (
+            <button
+              type="button"
+              className={`finding-row${selectedRule === ruleId ? " selected" : ""}`}
+              onClick={() => onSelect(ruleId)}
+              aria-pressed={selectedRule === ruleId}
+              key={ruleId}
+            >
+              <span className="rule-id">{ruleId}</span>
+              <span className="finding-label">{category.label}</span>
+              <span className="numeric">{category.count.toLocaleString()}</span>
+              <span className="numeric">{formatUsd(category.amount)}</span>
+              <span className="numeric">
+                {formatPercent(category.amount, summary.submitted_amount)}
+              </span>
+            </button>
+          );
+        })}
+      </Paper>
+    </section>
+  );
+}
+
+function ContractRulesDialog({
+  contract,
+  open,
+  onClose,
+}: {
+  contract: Contract;
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle component="div">
+        <Typography className="eyebrow">Clause-to-rule mapping</Typography>
+        <Typography variant="h4" component="h2">All contract rules</Typography>
+      </DialogTitle>
+      <DialogContent>
+        <Stack divider={<Divider flexItem />} spacing={0}>
+          {contract.clauses.map((clause) => (
+            <Box className="rule-detail" key={clause.id}>
+              <Box>
+                <Typography className="rule-id">{clause.rule.id}</Typography>
+                <Typography variant="h6">{clause.rule.title}</Typography>
+                <Typography color="text.secondary">{clause.text}</Typography>
+              </Box>
+              <Box>
+                <Typography className="eyebrow">Executable rule</Typography>
+                <Typography>{clause.rule.description}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Evidence required: {clause.rule.evidence_required.join(", ")}
+                </Typography>
+              </Box>
+            </Box>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close contract rules</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function ContractSummary({ contract }: { contract: Contract }) {
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const rules = Object.fromEntries(
+    contract.clauses.map((clause) => [clause.rule.id, clause.rule]),
+  );
+  const items = [
+    ["Price per payable outcome", formatUsd(contract.price_per_outcome)],
+    ["Recontact window", ruleRequirement(rules.R1)],
+    ["Human correction window", ruleRequirement(rules.R2)],
+    ["Downstream completion window", ruleRequirement(rules.R3)],
+    ["Duplicate attribution window", ruleRequirement(rules.R4)],
+    ["Account and action matching", rules.R5.description],
+  ];
+  return (
+    <section className="major-section" aria-labelledby="contract-title">
+      <Box className="section-intro horizontal">
+        <Box>
+          <Typography className="eyebrow">Contract controls</Typography>
+          <Typography variant="h4" id="contract-title">
+            Executable billing terms
+          </Typography>
+        </Box>
+        <Button variant="outlined" onClick={() => setRulesOpen(true)}>
+          View all contract rules
+        </Button>
+      </Box>
+      <Paper className="contract-summary">
+        {items.map(([label, value]) => (
+          <Box className="contract-item" key={label}>
+            <Typography className="fact-label">{label}</Typography>
+            <Typography>{value}</Typography>
+          </Box>
+        ))}
+      </Paper>
+      <ContractRulesDialog
+        contract={contract}
+        open={rulesOpen}
+        onClose={() => setRulesOpen(false)}
+      />
+    </section>
+  );
+}
+
+function EvidenceReadiness({ sources }: { sources: string[] }) {
+  return (
+    <section className="major-section" aria-labelledby="evidence-readiness-title">
+      <Box className="section-intro">
+        <Typography className="eyebrow">Evidence coverage</Typography>
+        <Typography variant="h4" id="evidence-readiness-title">
+          Available source systems
+        </Typography>
+      </Box>
+      <Paper className="source-list">
+        {sources.map((source) => (
+          <Box className="source-row" key={source}>
+            <span aria-hidden="true" />
+            <Typography fontWeight={700}>{source}</Typography>
+            <Typography color="text.secondary">
+              Available for deterministic reconciliation
+            </Typography>
+          </Box>
+        ))}
+      </Paper>
+    </section>
+  );
+}
+
+function OutcomeInspector({
   detail,
   onClose,
 }: {
@@ -107,139 +377,163 @@ function OutcomeDialog({
   const timeline = detail
     ? [
         ...detail.evidence.map((event) => ({
-          kind: "evidence" as const,
+          kind:
+            event.source_system === "nova_agent"
+              ? ("vendor" as const)
+              : ("operational" as const),
           id: event.id,
           timestamp: event.timestamp,
-          title: event.event_type,
-          source: event.source_system,
-          caption: `Source record ${event.source_record_id} · ingested ${new Date(
-            event.ingested_at,
-          ).toLocaleString()}`,
+          title: readable(event.event_type),
+          source: event.source_system.replaceAll("_", " "),
+          record: event.source_record_id,
+          caption:
+            event.source_system === "nova_agent"
+              ? "Vendor-provided evidence"
+              : "Imported operational evidence",
         })),
         ...detail.computed_timeline_markers.map((marker) => ({
           kind: "computed" as const,
           id: marker.id,
           timestamp: marker.timestamp,
-          title: marker.marker_type,
-          source: "Computed contract deadline",
-          caption: `${marker.description}; this is not imported operational evidence.`,
+          title: readable(marker.marker_type),
+          source: "Evidue contract engine",
+          record: marker.id,
+          caption: `${marker.description}. Evidue-computed deadline—not imported evidence.`,
         })),
       ].sort((left, right) => left.timestamp.localeCompare(right.timestamp))
     : [];
+
   return (
-    <Dialog open={Boolean(detail)} onClose={onClose} maxWidth="md" fullWidth>
+    <Drawer
+      anchor="right"
+      open={Boolean(detail)}
+      onClose={onClose}
+      PaperProps={{ className: "evidence-drawer" }}
+    >
       {detail && (
-        <>
-          <DialogTitle>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Box>
-                <Typography className="eyebrow">Outcome evidence</Typography>
-                <Typography variant="h5">{detail.outcome_id}</Typography>
-              </Box>
+        <Box className="inspector">
+          <Box className="inspector-header">
+            <Box>
+              <Typography className="eyebrow">Outcome evidence inspector</Typography>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="h4" className="mono">
+                  {detail.outcome_id}
+                </Typography>
+                {detail.outcome_id === demoOutcomeId && (
+                  <Chip label="Demo example" className="demo-chip" size="small" />
+                )}
+              </Stack>
+            </Box>
+            <Button onClick={onClose}>Close</Button>
+          </Box>
+
+          <Box className="comparison-grid">
+            <Box className="comparison-panel vendor">
+              <Typography className="eyebrow">Vendor claim</Typography>
+              <Typography variant="h6">Marked {detail.vendor_claim}</Typography>
+              <dl>
+                <dt>Claimed action</dt>
+                <dd>{readable(detail.expected_action)}</dd>
+                <dt>Billed amount</dt>
+                <dd>{formatUsd(detail.billed_amount)}</dd>
+              </dl>
+            </Box>
+            <Box className="comparison-panel contract">
+              <Typography className="eyebrow">Contract obligation</Typography>
+              {detail.rule ? (
+                <>
+                  <Typography variant="h6">
+                    {detail.rule.id} · {detail.rule.title}
+                  </Typography>
+                  <Typography>{detail.contract_clause}</Typography>
+                  <Typography className="requirement">
+                    {ruleRequirement(detail.rule)}
+                  </Typography>
+                </>
+              ) : (
+                <Typography>All applicable billing rules must pass.</Typography>
+              )}
+            </Box>
+            <Box className="comparison-panel determination">
+              <Typography className="eyebrow">Evidue determination</Typography>
               <Chip
-                color={
-                  detail.status === "disputed"
-                    ? "error"
-                    : detail.status === "needs_review"
-                      ? "warning"
-                      : "success"
-                }
+                size="small"
+                color={statusTone(detail.status)}
                 label={detail.status.replace("_", " ")}
               />
-            </Stack>
-          </DialogTitle>
-          <DialogContent>
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={6} md={3}>
-                <Typography className="eyebrow">Vendor claim</Typography>
-                <Typography>{detail.vendor_claim}</Typography>
-              </Grid>
-              <Grid item xs={6} md={3}>
-                <Typography className="eyebrow">Billed</Typography>
-                <Typography>{formatUsd(detail.billed_amount)}</Typography>
-              </Grid>
-              <Grid item xs={6} md={3}>
-                <Typography className="eyebrow">Confirmed payable</Typography>
-                <Typography fontWeight={700}>
+              <Typography className="determination-reason">{detail.reason}</Typography>
+              <Box>
+                <Typography className="fact-label">Confirmed payable</Typography>
+                <Typography className="inspector-payable">
                   {formatUsd(detail.confirmed_payable_amount)}
                 </Typography>
-              </Grid>
-              <Grid item xs={6} md={3}>
-                <Typography className="eyebrow">Conversation</Typography>
-                <Typography>{detail.conversation.id}</Typography>
-              </Grid>
-            </Grid>
-            <Alert
-              severity={
-                detail.status === "disputed"
-                  ? "error"
-                  : detail.status === "needs_review"
-                    ? "warning"
-                    : "success"
-              }
-            >
-              {detail.reason}
-            </Alert>
-            {detail.rule && (
-              <Box sx={{ my: 3 }}>
-                <Typography className="eyebrow">Contract clause and rule</Typography>
-                <Typography fontWeight={700}>
-                  {detail.rule.id} · {detail.rule.title}
-                </Typography>
-                <Typography>{detail.contract_clause}</Typography>
-                <Typography color="text.secondary">{detail.rule.description}</Typography>
               </Box>
-            )}
-            <Typography className="eyebrow">Chronological operational evidence</Typography>
-            <Box className="timeline">
-              {timeline.map((item) => (
-                <Box
-                  className={`timeline-event${item.kind === "computed" ? " computed" : ""}`}
-                  key={item.id}
-                >
-                  <span />
-                  <Box>
-                    <Typography fontWeight={700}>
-                      {item.title.replaceAll("_", " ")}
-                    </Typography>
-                    <Typography variant="body2">
-                      {new Date(item.timestamp).toLocaleString()} · {item.source}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {item.caption}
-                    </Typography>
-                  </Box>
-                </Box>
-              ))}
             </Box>
-            <Divider sx={{ my: 2 }} />
-            <Typography variant="caption">
-              Evaluated {new Date(detail.evaluated_at).toLocaleString()} with engine{" "}
-              {detail.engine_version}
-            </Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={onClose}>Close</Button>
-          </DialogActions>
-        </>
+          </Box>
+
+          <Box className="timeline-heading">
+            <Typography className="eyebrow">Evidence timeline</Typography>
+            <Typography variant="h5">What happened, in order</Typography>
+          </Box>
+          <Box className="timeline">
+            {timeline.map((item) => (
+              <Box className={`timeline-event ${item.kind}`} key={item.id}>
+                <span aria-hidden="true" />
+                <Box>
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                    <Typography fontWeight={800}>{item.title}</Typography>
+                    <Chip size="small" variant="outlined" label={item.caption} />
+                  </Stack>
+                  <Typography className="timeline-time">
+                    {new Date(item.timestamp).toLocaleString()}
+                  </Typography>
+                  <Typography variant="body2">
+                    Source: {item.source} · Record:{" "}
+                    <span className="mono">{item.record}</span>
+                  </Typography>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+          <Divider />
+          <Typography variant="caption" color="text.secondary">
+            Evaluated {new Date(detail.evaluated_at).toLocaleString()} · Engine{" "}
+            {detail.engine_version}
+          </Typography>
+        </Box>
       )}
-    </Dialog>
+    </Drawer>
   );
 }
 
-function OutcomesTable({ summary }: { summary: Summary }) {
+function ClaimsReview({
+  summary,
+  selectedRule,
+  onRuleChange,
+}: {
+  summary: Summary;
+  selectedRule: string;
+  onRuleChange: (ruleId: string) => void;
+}) {
   const [rows, setRows] = useState<Outcome[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
-  const [status, setStatus] = useState("");
-  const [reason, setReason] = useState("");
+  const [status, setStatus] = useState("disputed");
+  const [reason, setReason] = useState(selectedRule);
   const [outcomeId, setOutcomeId] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [intent, setIntent] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [detail, setDetail] = useState<OutcomeDetail | null>(null);
   const limit = 25;
+
+  useEffect(() => {
+    setReason(selectedRule);
+    setStatus("disputed");
+    setPage(0);
+  }, [selectedRule]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -277,146 +571,297 @@ function OutcomesTable({ summary }: { summary: Summary }) {
     }
   }
 
-  function updateFilter(setter: (value: string) => void, value: string) {
+  function clearAdvanced() {
+    setOutcomeId("");
+    setCustomerId("");
+    setIntent("");
     setPage(0);
-    setter(value);
+  }
+
+  function showAllClaims() {
+    setStatus("");
+    setReason("");
+    onRuleChange("");
+    clearAdvanced();
   }
 
   return (
-    <Paper className="section" id="outcomes">
-      <Box className="section-heading">
+    <section className="major-section" aria-labelledby="claims-title">
+      <Box className="section-intro horizontal">
         <Box>
-          <Typography className="eyebrow">Claim-level audit</Typography>
-          <Typography variant="h5">Outcome determinations</Typography>
+          <Typography className="eyebrow">Claims review</Typography>
+          <Typography variant="h4" id="claims-title">
+            Disputed outcome evidence
+          </Typography>
+          <Typography color="text.secondary">
+            {total.toLocaleString()} matching outcomes
+            {reason ? ` · ${reason} selected` : ""}
+          </Typography>
         </Box>
-        <Chip label={`${total.toLocaleString()} matching outcomes`} />
-      </Box>
-      <Grid container spacing={1.5} sx={{ mb: 2 }}>
-        <Grid item xs={12} md={2}>
-          <FormControl fullWidth size="small">
-            <InputLabel id="status-label">Status</InputLabel>
-            <Select
-              labelId="status-label"
-              label="Status"
-              value={status}
-              onChange={(event) => updateFilter(setStatus, event.target.value)}
-            >
-              <MenuItem value="">All statuses</MenuItem>
-              <MenuItem value="payable">Payable</MenuItem>
-              <MenuItem value="disputed">Disputed</MenuItem>
-              <MenuItem value="needs_review">Needs review</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} md={2}>
-          <FormControl fullWidth size="small">
-            <InputLabel id="reason-label">Dispute reason</InputLabel>
-            <Select
-              labelId="reason-label"
-              label="Dispute reason"
-              value={reason}
-              onChange={(event) => updateFilter(setReason, event.target.value)}
-            >
-              <MenuItem value="">All reasons</MenuItem>
-              {reasonOptions.map(([id, label]) => (
-                <MenuItem value={id} key={id}>{label}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} md={2}>
-          <TextField
-            fullWidth
-            size="small"
-            label="Outcome ID"
-            value={outcomeId}
-            onChange={(event) => updateFilter(setOutcomeId, event.target.value)}
-          />
-        </Grid>
-        <Grid item xs={12} md={2}>
-          <TextField
-            fullWidth
-            size="small"
-            label="Customer ID"
-            value={customerId}
-            onChange={(event) => updateFilter(setCustomerId, event.target.value)}
-          />
-        </Grid>
-        <Grid item xs={12} md={2}>
-          <FormControl fullWidth size="small">
-            <InputLabel id="intent-label">Intent</InputLabel>
-            <Select
-              labelId="intent-label"
-              label="Intent"
-              value={intent}
-              onChange={(event) => updateFilter(setIntent, event.target.value)}
-            >
-              <MenuItem value="">All intents</MenuItem>
-              <MenuItem value="order_support">Order support</MenuItem>
-              <MenuItem value="cancel_subscription">Cancel subscription</MenuItem>
-              <MenuItem value="refund">Refund</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} md={2}>
+        <Stack direction="row" spacing={1} flexWrap="wrap">
+          <Button onClick={showAllClaims}>Show all claims</Button>
           <Button
-            fullWidth
             variant="outlined"
-            onClick={() => {
-              setStatus("");
-              setReason("");
-              setOutcomeId("");
-              setCustomerId("");
-              setIntent("");
-              setPage(0);
-            }}
+            onClick={() => setFiltersOpen((current) => !current)}
+            aria-expanded={filtersOpen}
           >
-            Clear filters
+            {filtersOpen ? "Hide advanced filters" : "Advanced filters"}
           </Button>
-        </Grid>
-      </Grid>
+        </Stack>
+      </Box>
+
+      <Collapse in={filtersOpen}>
+        <Paper className="filter-panel">
+          <Grid container spacing={1.5}>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="status-label">Status</InputLabel>
+                <Select
+                  labelId="status-label"
+                  label="Status"
+                  value={status}
+                  onChange={(event) => {
+                    setStatus(event.target.value);
+                    setPage(0);
+                  }}
+                >
+                  <MenuItem value="">All statuses</MenuItem>
+                  <MenuItem value="payable">Payable</MenuItem>
+                  <MenuItem value="disputed">Disputed</MenuItem>
+                  <MenuItem value="needs_review">Needs review</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="reason-label">Failed rule</InputLabel>
+                <Select
+                  labelId="reason-label"
+                  label="Failed rule"
+                  value={reason}
+                  onChange={(event) => {
+                    setReason(event.target.value);
+                    onRuleChange(event.target.value);
+                    setPage(0);
+                  }}
+                >
+                  <MenuItem value="">All rules</MenuItem>
+                  {categoryOrder.map((ruleId) => (
+                    <MenuItem value={ruleId} key={ruleId}>
+                      {ruleId} · {summary.categories[ruleId]?.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Outcome ID"
+                value={outcomeId}
+                onChange={(event) => {
+                  setOutcomeId(event.target.value);
+                  setPage(0);
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Customer ID"
+                value={customerId}
+                onChange={(event) => {
+                  setCustomerId(event.target.value);
+                  setPage(0);
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="intent-label">Intent</InputLabel>
+                <Select
+                  labelId="intent-label"
+                  label="Intent"
+                  value={intent}
+                  onChange={(event) => {
+                    setIntent(event.target.value);
+                    setPage(0);
+                  }}
+                >
+                  <MenuItem value="">All intents</MenuItem>
+                  <MenuItem value="order_support">Order support</MenuItem>
+                  <MenuItem value="cancel_subscription">Cancel subscription</MenuItem>
+                  <MenuItem value="refund">Refund</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <Button fullWidth variant="outlined" onClick={clearAdvanced}>
+                Clear advanced
+              </Button>
+            </Grid>
+          </Grid>
+        </Paper>
+      </Collapse>
+
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {loading && <LinearProgress />}
-      <TableContainer>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              {["Outcome ID", "Customer ID", "Intent", "Vendor claim", "Evidue status", "Dispute reason", "Billed", "Confirmed payable", "Needs review", "Closed"].map((heading) => (
-                <TableCell key={heading}>{heading}</TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {!loading && rows.length === 0 && (
-              <TableRow><TableCell colSpan={10}>No outcomes match these filters.</TableCell></TableRow>
-            )}
-            {rows.map((row) => (
-              <TableRow hover key={row.outcome_id} onClick={() => void openOutcome(row.outcome_id)} className="clickable-row">
-                <TableCell><Link component="button">{row.outcome_id}</Link></TableCell>
-                <TableCell>{row.customer_id}</TableCell>
-                <TableCell>{row.intent.replaceAll("_", " ")}</TableCell>
-                <TableCell>{row.vendor_claim}</TableCell>
-                <TableCell><Chip size="small" color={row.status === "disputed" ? "error" : row.status === "needs_review" ? "warning" : "success"} label={row.status.replace("_", " ")} /></TableCell>
-                <TableCell>{row.status === "disputed" ? row.reason : "—"}</TableCell>
-                <TableCell>{formatUsd(row.billed_amount)}</TableCell>
-                <TableCell>{formatUsd(row.confirmed_payable_amount)}</TableCell>
-                <TableCell>{formatUsd(row.needs_review_amount)}</TableCell>
-                <TableCell>{new Date(row.closed_at).toLocaleString()}</TableCell>
+      <Paper className="claims-table">
+        {loading && <LinearProgress />}
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                {[
+                  "Outcome",
+                  "Customer",
+                  "Issue",
+                  "Failed rule",
+                  "Evidence summary",
+                  "Billed",
+                  "Payable",
+                  "Status",
+                ].map((heading) => (
+                  <TableCell key={heading}>{heading}</TableCell>
+                ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <TablePagination
-        component="div"
-        count={total}
-        page={page}
-        rowsPerPage={limit}
-        rowsPerPageOptions={[limit]}
-        onPageChange={(_, nextPage) => setPage(nextPage)}
-      />
-      <OutcomeDialog detail={detail} onClose={() => setDetail(null)} />
-    </Paper>
+            </TableHead>
+            <TableBody>
+              {!loading && rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8}>No outcomes match these filters.</TableCell>
+                </TableRow>
+              )}
+              {rows.map((row) => (
+                <TableRow
+                  hover
+                  key={row.outcome_id}
+                  className={row.outcome_id === demoOutcomeId ? "demo-row" : ""}
+                >
+                  <TableCell>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Link
+                        component="button"
+                        className="mono"
+                        onClick={() => void openOutcome(row.outcome_id)}
+                        aria-label={`Review ${row.outcome_id} evidence`}
+                      >
+                        {row.outcome_id}
+                      </Link>
+                      {row.outcome_id === demoOutcomeId && (
+                        <Chip label="Demo example" size="small" className="demo-chip" />
+                      )}
+                    </Stack>
+                  </TableCell>
+                  <TableCell className="mono">{row.customer_id}</TableCell>
+                  <TableCell>{row.reason}</TableCell>
+                  <TableCell>
+                    <span className="rule-id">{row.rule_id ?? "—"}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Button size="small" onClick={() => void openOutcome(row.outcome_id)}>
+                      Review timeline
+                    </Button>
+                  </TableCell>
+                  <TableCell className="numeric">{formatUsd(row.billed_amount)}</TableCell>
+                  <TableCell className="numeric">
+                    {formatUsd(row.confirmed_payable_amount)}
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      color={statusTone(row.status)}
+                      label={row.status.replace("_", " ")}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <TablePagination
+          component="div"
+          count={total}
+          page={page}
+          rowsPerPage={limit}
+          rowsPerPageOptions={[limit]}
+          onPageChange={(_, nextPage) => setPage(nextPage)}
+        />
+      </Paper>
+      <OutcomeInspector detail={detail} onClose={() => setDetail(null)} />
+    </section>
+  );
+}
+
+function Exports({ summary }: { summary: Summary }) {
+  const [message, setMessage] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function downloadPackage() {
+    setDownloading(true);
+    setError("");
+    try {
+      const response = await fetch(
+        "/api/reconciliations/current/exports/evidence.json",
+      );
+      if (!response.ok) throw new Error(`Export failed (${response.status})`);
+      const payload = await response.json();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "evidue-dispute-package.json";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setMessage(
+        `Dispute package ready: ${summary.disputed_outcomes.toLocaleString()} disputed outcomes · ${formatUsd(summary.recommended_deduction)}.`,
+      );
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not export package");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <section className="major-section export-section" aria-labelledby="exports-title">
+      <Box className="section-intro">
+        <Typography className="eyebrow">Defensible handoff</Typography>
+        <Typography variant="h4" id="exports-title">
+          Export the payment decision
+        </Typography>
+        <Typography color="text.secondary">
+          Download the disputed claims, decisive evidence, and reconciliation totals.
+        </Typography>
+      </Box>
+      <Paper className="export-actions">
+        <Button
+          variant="contained"
+          size="large"
+          disabled={downloading}
+          onClick={() => void downloadPackage()}
+        >
+          {downloading ? "Preparing dispute package…" : "Download dispute package"}
+        </Button>
+        <Box className="secondary-exports" aria-label="Other export formats">
+          <Link href="/api/reconciliations/current/exports/disputes.csv">
+            Disputed-lines CSV
+          </Link>
+          <Link href="/api/reconciliations/current/exports/evidence.json">
+            Evidence JSON
+          </Link>
+          <Link href="/api/reconciliations/current/exports/summary.json">
+            Summary JSON
+          </Link>
+        </Box>
+      </Paper>
+      {message && <Alert severity="success" sx={{ mt: 2 }}>{message}</Alert>}
+      {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+    </section>
   );
 }
 
@@ -424,6 +869,7 @@ export default function App() {
   const [contract, setContract] = useState<Contract | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [selectedRule, setSelectedRule] = useState("");
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
@@ -448,10 +894,15 @@ export default function App() {
     void initialize();
   }, []);
 
-  const categoryRows = useMemo(
-    () => summary ? Object.entries(summary.categories) : [],
-    [summary],
-  );
+  const month = useMemo(() => {
+    if (!invoice) return "";
+    const date = new Date(`${invoice.billing_period_start.slice(0, 10)}T00:00:00Z`);
+    return date.toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  }, [invoice]);
 
   async function run(resetFirst = false) {
     setRunning(true);
@@ -459,6 +910,7 @@ export default function App() {
     try {
       if (resetFirst) await api.reset();
       setSummary(await api.reconcile());
+      setSelectedRule("");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Reconciliation failed");
     } finally {
@@ -467,94 +919,104 @@ export default function App() {
   }
 
   if (loading) {
-    return <Box className="center"><CircularProgress /><Typography>Loading deterministic demo inputs…</Typography></Box>;
+    return (
+      <Box className="center">
+        <CircularProgress />
+        <Typography>Loading deterministic demo inputs…</Typography>
+      </Box>
+    );
   }
   if (!contract || !invoice) {
-    return <Container sx={{ py: 8 }}><Alert severity="error">{error || "Demo inputs unavailable"}</Alert></Container>;
+    return (
+      <Container sx={{ py: 8 }}>
+        <Alert severity="error">{error || "Demo inputs unavailable"}</Alert>
+      </Container>
+    );
   }
 
   return (
     <>
-      <AppBar position="static" color="transparent" elevation={0}>
-        <Toolbar>
-          <Typography variant="h5" fontWeight={800}>Evidue</Typography>
+      <AppBar position="sticky" color="transparent" elevation={0} className="app-header">
+        <Toolbar className="header-inner">
+          <Typography className="wordmark">Evidue</Typography>
           <Box sx={{ flexGrow: 1 }} />
-          <Chip label="Synthetic demonstration data" color="warning" />
+          <Chip label="Synthetic demonstration data" className="synthetic-badge" />
         </Toolbar>
       </AppBar>
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Alert icon={false} severity="info" className="disclosure">
+      <Container maxWidth="lg" className="page-shell">
+        <Alert icon={false} className="disclosure">
           <strong>Synthetic demonstration data.</strong> {disclosure}
         </Alert>
-        <Box className="hero">
+
+        <header className="reconciliation-header">
           <Box>
             <Typography className="eyebrow">Independent invoice reconciliation</Typography>
-            <Typography variant="h3">{contract.customer} × {contract.vendor}</Typography>
-            <Typography color="text.secondary">
-              June 1–30, 2026 · {invoice.claimed_outcomes.toLocaleString()} vendor-claimed outcomes
+            <Typography variant="h2">{contract.customer}</Typography>
+            <Typography className="vendor-line">
+              Vendor: <strong>{contract.vendor}</strong> · {month}
             </Typography>
           </Box>
-          <Button variant="contained" size="large" disabled={running} onClick={() => void run(Boolean(summary))}>
-            {running ? "Running reconciliation…" : summary ? "Reset and run again" : "Run reconciliation"}
-          </Button>
-        </Box>
+          <Box className="header-action">
+            <Workflow reconciled={Boolean(summary)} />
+            {summary && (
+              <Button
+                variant="outlined"
+                disabled={running}
+                onClick={() => void run(true)}
+              >
+                {running ? "Running reconciliation…" : "Reset and run"}
+              </Button>
+            )}
+          </Box>
+        </header>
+
         {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
         {running && (
           <Paper className="running">
-            <CircularProgress size={24} />
-            <Box><Typography fontWeight={700}>Evaluating persisted claims and evidence</Typography><Typography color="text.secondary">The backend is applying the executable contract to every outcome.</Typography></Box>
+            <CircularProgress size={22} />
+            <Box>
+              <Typography fontWeight={800}>
+                Evaluating persisted claims and evidence
+              </Typography>
+              <Typography color="text.secondary">
+                Applying executable contract rules to every claimed outcome.
+              </Typography>
+            </Box>
           </Paper>
         )}
-        {!summary ? (
-          <Grid container spacing={2} sx={{ mb: 4 }}>
-            <Grid item xs={12} md={4}><Metric label="Vendor invoice" value={formatUsd(invoice.submitted_amount)} /></Grid>
-            <Grid item xs={12} md={4}><Metric label="Claimed outcomes" value={invoice.claimed_outcomes.toLocaleString()} /></Grid>
-            <Grid item xs={12} md={4}><Metric label="Reconciliation status" value="Ready to run" /></Grid>
-          </Grid>
-        ) : (
+
+        <PaymentRecommendation
+          invoice={invoice}
+          summary={summary}
+          running={running}
+          onRun={() => void run(false)}
+        />
+
+        {summary && (
           <>
-            <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid item xs={12} md={6}><Metric tone="primary" label="Correct payable amount" value={formatUsd(summary.confirmed_payable_amount)} /></Grid>
-              <Grid item xs={12} md={3}><Metric label="Vendor invoice" value={formatUsd(summary.submitted_amount)} /></Grid>
-              <Grid item xs={12} md={3}><Metric label="Recommended deduction" value={formatUsd(summary.recommended_deduction)} /></Grid>
-            </Grid>
-            <Alert severity="success" className="deterministic-message">
-              Every dollar is produced by deterministic rules evaluated against traceable evidence—not by a model&apos;s guess.
-            </Alert>
-            <Grid container spacing={2} sx={{ my: 2 }}>
-              <Grid item xs={12} md={3}><Metric label="Claimed outcomes" value={summary.claimed_outcomes.toLocaleString()} /></Grid>
-              <Grid item xs={12} md={3}><Metric label="Payable outcomes" value={summary.payable_outcomes.toLocaleString()} /></Grid>
-              <Grid item xs={12} md={3}><Metric label="Disputed outcomes" value={summary.disputed_outcomes.toLocaleString()} /></Grid>
-              <Grid item xs={12} md={3}><Metric label="Needs-review amount" value={formatUsd(summary.needs_review_amount)} /></Grid>
-            </Grid>
-            <Paper className="section">
-              <Box className="section-heading">
-                <Box><Typography className="eyebrow">Recommended deduction</Typography><Typography variant="h5">Dispute breakdown</Typography></Box>
-                <Stack direction="row" spacing={1}>
-                  <Button href="/api/reconciliations/current/exports/disputes.csv" variant="outlined">Dispute CSV</Button>
-                  <Button href="/api/reconciliations/current/exports/evidence.json" variant="outlined">Evidence JSON</Button>
-                  <Button href="/api/reconciliations/current/exports/summary.json" variant="outlined">Summary JSON</Button>
-                </Stack>
-              </Box>
-              <Grid container spacing={1.5}>
-                {categoryRows.map(([ruleId, category]) => (
-                  <Grid item xs={12} sm={6} lg key={ruleId}>
-                    <Box className="category-card"><Typography className="eyebrow">{ruleId}</Typography><Typography fontWeight={700}>{category.label}</Typography><Typography variant="h5">{category.count.toLocaleString()}</Typography><Typography color="text.secondary">{formatUsd(category.amount)}</Typography></Box>
-                  </Grid>
-                ))}
-              </Grid>
-            </Paper>
-            <OutcomesTable summary={summary} />
+            <ReconciliationBridge summary={summary} />
+            <Box className="trust-strip">
+              <Typography>
+                No model decides whether a charge is payable. Every amount is
+                reproduced from contract rules and traceable source evidence.
+              </Typography>
+            </Box>
+            <Findings
+              summary={summary}
+              selectedRule={selectedRule}
+              onSelect={setSelectedRule}
+            />
+            <ClaimsReview
+              summary={summary}
+              selectedRule={selectedRule}
+              onRuleChange={setSelectedRule}
+            />
+            <Exports summary={summary} />
           </>
         )}
-        <ContractPanel contract={contract} />
-        <Paper className="section">
-          <Typography className="eyebrow">Customer-owned operational evidence</Typography>
-          <Typography variant="h5" sx={{ mb: 2 }}>Available evidence sources</Typography>
-          <Stack direction="row" useFlexGap flexWrap="wrap" spacing={1}>
-            {contract.evidence_sources.map((source) => <Chip key={source} label={source} variant="outlined" />)}
-          </Stack>
-        </Paper>
+
+        <ContractSummary contract={contract} />
+        <EvidenceReadiness sources={contract.evidence_sources} />
       </Container>
     </>
   );
