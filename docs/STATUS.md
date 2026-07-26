@@ -8,6 +8,17 @@ implementation targets Python `>=3.13` and was validated on 3.14. The working
 tree was clean before this work. Product specification and implementation plan
 are frozen; architecture and implementation follow.
 
+## Milestones 1–5 — complete
+
+Foundation, deterministic engine, SQLite API, frontend demonstration, exports,
+developer scripts, Docker definition and regression tests are implemented.
+`./scripts/dev-check.sh fast` passed: Ruff, 3 pytest tests, ESLint and Vite
+production build. The installed Starlette TestClient is incompatible with its
+HTTP client; endpoint behavior is also verified through the running server.
+
 ## Next
 
-Milestone 1: repository foundation.
+`./scripts/dev-check.sh full` passed. Docker build was attempted twice but this
+execution environment stopped it during the Node build stage, before producing
+an image; container runtime and isolated clean-checkout verification remain
+environment-blocked and are truthfully recorded in FINAL_VALIDATION.
