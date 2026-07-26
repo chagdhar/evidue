@@ -1,56 +1,148 @@
 import csv
 import io
-import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.db import repository as repo
-from app.domain.models import RULES
+from app.api.schemas import (
+    DemoStatusResponse,
+    HealthResponse,
+    OutcomeDetail,
+    OutcomePage,
+    ReconciliationSummary,
+)
+from app.db import repository
 
-app = FastAPI(title="Evidue")
-def ensure():
-    if not repo.exists(): repo.reset()
-def row_view(r):
-    return {**r, "evidence": json.loads(r["evidence"])}
-@app.get("/api/health")
-def health(): return {"status":"ok"}
-@app.post("/api/demo/reset")
-def reset(): return repo.reset()
-@app.get("/api/demo/status")
-def status(): return {"seeded":repo.exists(), "period":"2026-06-01 through 2026-06-30"}
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    repository.initialize()
+    if not repository.demo_status()["seeded"]:
+        repository.reset()
+    yield
+
+
+app = FastAPI(title="Evidue", version="0.1.0", lifespan=lifespan)
+
+
+@app.get("/api/health", response_model=HealthResponse)
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/api/demo/reset", response_model=DemoStatusResponse)
+def reset() -> dict[str, object]:
+    return repository.reset()
+
+
+@app.get("/api/demo/status", response_model=DemoStatusResponse)
+def demo_status() -> dict[str, object]:
+    return repository.demo_status()
+
+
 @app.get("/api/contracts/current")
-def contract(): return {"customer":"Acme Commerce","vendor":"Nova Support AI","period":"2026-06-01/2026-06-30","price_per_outcome":"1.50","rules":[r.__dict__ for r in RULES],"evidence_sources":["Nova Support AI agent log","Acme support desk","Payment processor","Order operations"]}
+def current_contract() -> dict[str, object]:
+    try:
+        return repository.contract()
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
 @app.get("/api/invoices/current")
-def invoice(): return {"invoice_id":"INV-NOVA-2026-06","submitted_amount":"15000.00","claimed_outcomes":10000,"status":"submitted"}
-@app.post("/api/reconciliations")
-def reconcile(): return repo.reset()
-@app.get("/api/reconciliations/current")
-def current(): ensure(); return repo.summary()
-@app.get("/api/reconciliations/current/outcomes")
-def outcomes(offset:int=0,limit:int=50,status:str|None=None,search:str|None=None,reason:str|None=None):
-    ensure(); limit=min(max(limit,1),100); total,rows=repo.list_rows(offset,limit,status,search,reason); return {"total":total,"offset":offset,"limit":limit,"items":[row_view(r) for r in rows]}
-@app.get("/api/reconciliations/current/outcomes/{outcome_id}")
-def outcome(outcome_id:str):
-    ensure(); r=repo.get_row(outcome_id)
-    if not r: raise HTTPException(404,"Outcome not found")
-    response=row_view(r)
-    if outcome_id == "OUT-004821": response["timeline"]=["AI agent initiates a refund","Payment processor rejects the refund","Contractual two-hour completion window expires","Human agent completes the refund later"]
-    return response
+def current_invoice() -> dict[str, object]:
+    try:
+        return repository.invoice()
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post("/api/reconciliations", response_model=ReconciliationSummary)
+def reconcile() -> dict[str, object]:
+    return repository.run_reconciliation()
+
+
+@app.get("/api/reconciliations/current", response_model=ReconciliationSummary)
+def current_reconciliation() -> dict[str, object]:
+    if not repository.demo_status()["reconciled"]:
+        raise HTTPException(404, "Reconciliation has not been run")
+    return repository.summary()
+
+
+@app.get("/api/reconciliations/current/outcomes", response_model=OutcomePage)
+def outcomes(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=100),
+    status: str | None = None,
+    reason: str | None = None,
+    outcome_id: str | None = None,
+    customer_id: str | None = None,
+    intent: str | None = None,
+    search: str | None = None,
+) -> dict[str, object]:
+    if not repository.demo_status()["reconciled"]:
+        raise HTTPException(409, "Run reconciliation before requesting determinations")
+    total, rows = repository.list_outcomes(
+        offset, limit, status, reason, outcome_id, customer_id, intent, search
+    )
+    return {"total": total, "offset": offset, "limit": limit, "items": rows}
+
+
+@app.get(
+    "/api/reconciliations/current/outcomes/{outcome_id}",
+    response_model=OutcomeDetail,
+)
+def outcome(outcome_id: str) -> dict[str, object]:
+    detail = repository.outcome_detail(outcome_id)
+    if detail is None:
+        raise HTTPException(404, "Outcome not found")
+    return detail
+
+
 @app.get("/api/reconciliations/current/exports/disputes.csv")
-def disputes():
-    ensure(); _, rows=repo.list_rows(0,10000,status="disputed"); out=io.StringIO(); writer=csv.DictWriter(out,fieldnames=["outcome_id","customer_id","intent","status","reason","rule_id","billed","payable","closed_at"]); writer.writeheader(); [writer.writerow({k:r[k] for k in writer.fieldnames}) for r in rows]; return Response(out.getvalue(),media_type="text/csv",headers={"Content-Disposition":"attachment; filename=disputed-lines.csv"})
+def disputes_csv() -> Response:
+    rows = repository.all_disputes()
+    output = io.StringIO()
+    fields = [
+        "outcome_id",
+        "customer_id",
+        "intent",
+        "vendor_claim",
+        "status",
+        "reason",
+        "rule_id",
+        "billed_amount",
+        "payable_amount",
+        "closed_at",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({field: row[field] for field in fields})
+    return Response(
+        output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=disputed-lines.csv"},
+    )
+
+
 @app.get("/api/reconciliations/current/exports/evidence.json")
-def evidence():
-    ensure(); _, rows=repo.list_rows(0,10000); return [row_view(r) for r in rows]
+def evidence_json() -> dict[str, object]:
+    return repository.evidence_package()
+
+
 @app.get("/api/reconciliations/current/exports/summary.json")
-def summary_export(): ensure(); return repo.summary()
+def summary_json() -> dict[str, object]:
+    return repository.summary()
+
+
 dist = Path(__file__).parents[2] / "frontend_dist"
 if dist.exists():
+
     @app.get("/demo", include_in_schema=False)
-    def demo_page():
+    def demo_page() -> FileResponse:
         return FileResponse(dist / "index.html")
 
-    app.mount("/", StaticFiles(directory=dist, html=True), name="demo")
+    app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")
