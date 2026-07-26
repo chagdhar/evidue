@@ -40,8 +40,9 @@ const summary = {
   disputed_outcomes: 1680,
   needs_review_outcomes: 0,
   submitted_amount: "15000.00",
-  payable_amount: "12480.00",
+  confirmed_payable_amount: "12480.00",
   recommended_deduction: "2520.00",
+  needs_review_amount: "0.00",
   price_per_outcome: "1.50",
   categories: {
     R1: { label: "Same-intent recontacts", count: 720, amount: "1080.00" },
@@ -61,7 +62,9 @@ const failedRefund = {
   reason: "Promised downstream action failed within the required two-hour window",
   rule_id: "R3",
   billed_amount: "1.50",
-  payable_amount: "0.00",
+  confirmed_payable_amount: "0.00",
+  confirmed_disputed_amount: "1.50",
+  needs_review_amount: "0.00",
   closed_at: "2026-06-04T17:21:00",
 };
 
@@ -74,7 +77,7 @@ function response(body: unknown, ok = true) {
   } as Response);
 }
 
-function mockApi(reconciled = false) {
+function mockApi(reconciled = false, summaryResult = summary) {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, options) => {
     const url = String(input);
     if (url.endsWith("/api/demo/status")) {
@@ -82,8 +85,10 @@ function mockApi(reconciled = false) {
     }
     if (url.endsWith("/api/contracts/current")) return response(contract);
     if (url.endsWith("/api/invoices/current")) return response(invoice);
-    if (url.endsWith("/api/reconciliations") && options?.method === "POST") return response(summary);
-    if (url.endsWith("/api/reconciliations/current")) return response(summary);
+    if (url.endsWith("/api/reconciliations") && options?.method === "POST") {
+      return response(summaryResult);
+    }
+    if (url.endsWith("/api/reconciliations/current")) return response(summaryResult);
     if (url.includes("/api/reconciliations/current/outcomes?")) {
       return response({ total: 1, offset: 0, limit: 25, items: [failedRefund] });
     }
@@ -95,6 +100,7 @@ function mockApi(reconciled = false) {
         conversation: { id: "CONV-004821", intent: "refund", closed_at: failedRefund.closed_at },
         contract_clause: "Downstream completion is required.",
         rule: contract.clauses[2].rule,
+        duplicate_winner_outcome_id: null,
         evidence: [
           {
             id: "EV-1",
@@ -106,6 +112,14 @@ function mockApi(reconciled = false) {
             outcome_id: failedRefund.outcome_id,
             values: { action: "refund" },
             ingested_at: "2026-07-01T08:00:00",
+          },
+        ],
+        computed_timeline_markers: [
+          {
+            id: "COMPUTED-DEADLINE",
+            marker_type: "completion_window_expired",
+            timestamp: "2026-06-04T19:21:00",
+            description: "Computed contractual two-hour completion deadline",
           },
         ],
         evaluated_at: "2026-07-01T12:00:00",
@@ -163,5 +177,20 @@ describe("Evidue demo", () => {
     mockApi(false).mockImplementationOnce(() => response({}, false));
     render(<App />);
     expect(await screen.findByText(/Request failed/)).toBeInTheDocument();
+  });
+
+  it("shows needs-review money separately from the recommended deduction", async () => {
+    mockApi(true, {
+      ...summary,
+      payable_outcomes: 8319,
+      needs_review_outcomes: 1,
+      confirmed_payable_amount: "12478.50",
+      recommended_deduction: "2520.00",
+      needs_review_amount: "1.50",
+    });
+    render(<App />);
+    expect(await screen.findByText("Needs-review amount")).toBeInTheDocument();
+    expect(screen.getAllByText("$1.50")).toHaveLength(2);
+    expect(screen.getByText("$2,520.00")).toBeInTheDocument();
   });
 });

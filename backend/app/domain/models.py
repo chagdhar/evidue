@@ -5,6 +5,12 @@ from typing import Literal
 
 Money = Decimal
 DeterminationStatus = Literal["payable", "disputed", "needs_review"]
+AttributionKind = Literal[
+    "directly_matched",
+    "requires_review",
+    "unrelated",
+    "contradictory",
+]
 PRICE = Decimal("1.50")
 
 
@@ -83,6 +89,30 @@ class OperationalEvent:
 class EvidenceReference:
     event_id: str
     purpose: str
+    outcome_id: str | None
+
+
+@dataclass(frozen=True)
+class AttributedEvidence:
+    event: OperationalEvent
+    classification: AttributionKind
+    reason: str
+
+
+@dataclass(frozen=True)
+class EvidenceAttribution:
+    directly_matched: tuple[AttributedEvidence, ...]
+    requires_review: tuple[AttributedEvidence, ...]
+    unrelated: tuple[AttributedEvidence, ...]
+    contradictory: tuple[AttributedEvidence, ...]
+
+
+@dataclass(frozen=True)
+class DuplicateDecision:
+    winner_outcome_id: str
+    duplicate_outcome_id: str
+    winner_closed_at: datetime
+    duplicate_closed_at: datetime
 
 
 @dataclass(frozen=True)
@@ -92,8 +122,11 @@ class OutcomeDetermination:
     reason: str
     rule_id: str | None
     evidence: tuple[EvidenceReference, ...]
-    payable_amount: Money
+    confirmed_payable_amount: Money
+    confirmed_disputed_amount: Money
+    needs_review_amount: Money
     evaluated_at: datetime
+    duplicate_decision: DuplicateDecision | None = None
     engine_version: str = "2026.06.1"
 
 
@@ -132,14 +165,14 @@ RULES = (
         "Single attribution",
         "Only one outcome is billable for a customer and intent in 24 hours.",
         {"window_hours": "24"},
-        ("ai_closed", "duplicate_attribution"),
+        ("claim_context", "ai_closed"),
     ),
     ContractRule(
         "R5",
         "Account and action match",
         "Operational evidence matches the expected account and action.",
         {},
-        ("ai_closed", "account_verified"),
+        ("ai_closed", "account_action_mismatch"),
     ),
     ContractRule(
         "R6",

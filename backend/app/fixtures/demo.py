@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from app.domain.engine import evaluate
+from app.domain.engine import evaluate, reconcile
 from app.domain.models import (
     Conversation,
     OperationalEvent,
@@ -92,7 +92,11 @@ def events_for(claim: OutcomeClaim, category: str) -> tuple[OperationalEvent, ..
                 "payment_processor",
                 "downstream_failed",
                 at + timedelta(minutes=20),
-                {"action": claim.expected_action, "result": "rejected"},
+                {
+                    "account_id": claim.account_id,
+                    "action": claim.expected_action,
+                    "result": "rejected",
+                },
             )
         )
     elif category == "duplicate":
@@ -112,7 +116,7 @@ def events_for(claim: OutcomeClaim, category: str) -> tuple[OperationalEvent, ..
                     "billing_export",
                     "duplicate_attribution",
                     at + timedelta(minutes=35),
-                    {"original_outcome_id": f"OUT-{max(1, int(claim.outcome_id[-6:]) - 1):06d}"},
+                    {"original_outcome_id": (f"OUT-{int(claim.outcome_id[-6:]) - 1380:06d}")},
                 ),
             ]
         )
@@ -131,9 +135,14 @@ def events_for(claim: OutcomeClaim, category: str) -> tuple[OperationalEvent, ..
                     claim,
                     "MISMATCH",
                     "product_accounts",
-                    "account_verified",
+                    "account_action_mismatch",
                     at + timedelta(minutes=35),
-                    {"account_id": "ACC-WRONG", "action": claim.expected_action},
+                    {
+                        "account_id": claim.account_id,
+                        "action": claim.expected_action,
+                        "observed_account_id": "ACC-WRONG",
+                        "observed_action": claim.expected_action,
+                    },
                 ),
             ]
         )
@@ -151,14 +160,6 @@ def events_for(claim: OutcomeClaim, category: str) -> tuple[OperationalEvent, ..
     if claim.outcome_id == "OUT-004821":
         events.extend(
             [
-                _event(
-                    claim,
-                    "WINDOW",
-                    "evidue_engine",
-                    "completion_window_expired",
-                    at + timedelta(hours=2),
-                    {"action": "refund"},
-                ),
                 _event(
                     claim,
                     "HUMAN-LATE",
@@ -203,10 +204,11 @@ def demo_fixture() -> list[DemoRecord]:
             if outcome_id == "OUT-004821"
             else ("cancel_subscription" if intent == "cancel_subscription" else "order_update")
         )
+        duplicate_winner_index = index - 1380 if 1381 <= index <= 1560 else index
         claim = OutcomeClaim(
             outcome_id=outcome_id,
             invoice_id=INVOICE_ID,
-            customer_id=f"CUST-{index:06d}",
+            customer_id=f"CUST-{duplicate_winner_index:06d}",
             intent=intent,
             vendor_claim="resolved",
             closed_at=closed_at,
@@ -226,7 +228,7 @@ def demo_fixture() -> list[DemoRecord]:
 
 
 def demo_records() -> list[OutcomeDetermination]:
-    return [evaluate(record.claim, list(record.events)) for record in demo_fixture()]
+    return reconcile([(record.claim, list(record.events)) for record in demo_fixture()])
 
 
 def review_record() -> OutcomeDetermination:

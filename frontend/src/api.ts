@@ -43,8 +43,9 @@ export type Summary = {
   disputed_outcomes: number;
   needs_review_outcomes: number;
   submitted_amount: string;
-  payable_amount: string;
+  confirmed_payable_amount: string;
   recommended_deduction: string;
+  needs_review_amount: string;
   price_per_outcome: string;
   categories: Record<string, Category>;
   synthetic_disclosure: string;
@@ -59,7 +60,9 @@ export type Outcome = {
   reason: string;
   rule_id: string | null;
   billed_amount: string;
-  payable_amount: string;
+  confirmed_payable_amount: string;
+  confirmed_disputed_amount: string;
+  needs_review_amount: string;
   closed_at: string;
 };
 
@@ -82,6 +85,13 @@ export type OutcomeDetail = Outcome & {
   contract_clause: string | null;
   rule: Rule | null;
   evidence: EvidenceEvent[];
+  computed_timeline_markers: Array<{
+    id: string;
+    marker_type: string;
+    timestamp: string;
+    description: string;
+  }>;
+  duplicate_winner_outcome_id: string | null;
   evaluated_at: string;
   engine_version: string;
 };

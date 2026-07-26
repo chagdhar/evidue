@@ -104,6 +104,28 @@ function OutcomeDialog({
   detail: OutcomeDetail | null;
   onClose: () => void;
 }) {
+  const timeline = detail
+    ? [
+        ...detail.evidence.map((event) => ({
+          kind: "evidence" as const,
+          id: event.id,
+          timestamp: event.timestamp,
+          title: event.event_type,
+          source: event.source_system,
+          caption: `Source record ${event.source_record_id} · ingested ${new Date(
+            event.ingested_at,
+          ).toLocaleString()}`,
+        })),
+        ...detail.computed_timeline_markers.map((marker) => ({
+          kind: "computed" as const,
+          id: marker.id,
+          timestamp: marker.timestamp,
+          title: marker.marker_type,
+          source: "Computed contract deadline",
+          caption: `${marker.description}; this is not imported operational evidence.`,
+        })),
+      ].sort((left, right) => left.timestamp.localeCompare(right.timestamp))
+    : [];
   return (
     <Dialog open={Boolean(detail)} onClose={onClose} maxWidth="md" fullWidth>
       {detail && (
@@ -115,7 +137,13 @@ function OutcomeDialog({
                 <Typography variant="h5">{detail.outcome_id}</Typography>
               </Box>
               <Chip
-                color={detail.status === "disputed" ? "error" : "success"}
+                color={
+                  detail.status === "disputed"
+                    ? "error"
+                    : detail.status === "needs_review"
+                      ? "warning"
+                      : "success"
+                }
                 label={detail.status.replace("_", " ")}
               />
             </Stack>
@@ -131,15 +159,25 @@ function OutcomeDialog({
                 <Typography>{formatUsd(detail.billed_amount)}</Typography>
               </Grid>
               <Grid item xs={6} md={3}>
-                <Typography className="eyebrow">Payable</Typography>
-                <Typography fontWeight={700}>{formatUsd(detail.payable_amount)}</Typography>
+                <Typography className="eyebrow">Confirmed payable</Typography>
+                <Typography fontWeight={700}>
+                  {formatUsd(detail.confirmed_payable_amount)}
+                </Typography>
               </Grid>
               <Grid item xs={6} md={3}>
                 <Typography className="eyebrow">Conversation</Typography>
                 <Typography>{detail.conversation.id}</Typography>
               </Grid>
             </Grid>
-            <Alert severity={detail.status === "disputed" ? "error" : "success"}>
+            <Alert
+              severity={
+                detail.status === "disputed"
+                  ? "error"
+                  : detail.status === "needs_review"
+                    ? "warning"
+                    : "success"
+              }
+            >
               {detail.reason}
             </Alert>
             {detail.rule && (
@@ -154,19 +192,21 @@ function OutcomeDialog({
             )}
             <Typography className="eyebrow">Chronological operational evidence</Typography>
             <Box className="timeline">
-              {detail.evidence.map((event) => (
-                <Box className="timeline-event" key={event.id}>
+              {timeline.map((item) => (
+                <Box
+                  className={`timeline-event${item.kind === "computed" ? " computed" : ""}`}
+                  key={item.id}
+                >
                   <span />
                   <Box>
                     <Typography fontWeight={700}>
-                      {event.event_type.replaceAll("_", " ")}
+                      {item.title.replaceAll("_", " ")}
                     </Typography>
                     <Typography variant="body2">
-                      {new Date(event.timestamp).toLocaleString()} · {event.source_system}
+                      {new Date(item.timestamp).toLocaleString()} · {item.source}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Source record {event.source_record_id} · ingested{" "}
-                      {new Date(event.ingested_at).toLocaleString()}
+                      {item.caption}
                     </Typography>
                   </Box>
                 </Box>
@@ -341,14 +381,14 @@ function OutcomesTable({ summary }: { summary: Summary }) {
         <Table size="small">
           <TableHead>
             <TableRow>
-              {["Outcome ID", "Customer ID", "Intent", "Vendor claim", "Evidue status", "Dispute reason", "Billed", "Payable", "Closed"].map((heading) => (
+              {["Outcome ID", "Customer ID", "Intent", "Vendor claim", "Evidue status", "Dispute reason", "Billed", "Confirmed payable", "Needs review", "Closed"].map((heading) => (
                 <TableCell key={heading}>{heading}</TableCell>
               ))}
             </TableRow>
           </TableHead>
           <TableBody>
             {!loading && rows.length === 0 && (
-              <TableRow><TableCell colSpan={9}>No outcomes match these filters.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10}>No outcomes match these filters.</TableCell></TableRow>
             )}
             {rows.map((row) => (
               <TableRow hover key={row.outcome_id} onClick={() => void openOutcome(row.outcome_id)} className="clickable-row">
@@ -356,10 +396,11 @@ function OutcomesTable({ summary }: { summary: Summary }) {
                 <TableCell>{row.customer_id}</TableCell>
                 <TableCell>{row.intent.replaceAll("_", " ")}</TableCell>
                 <TableCell>{row.vendor_claim}</TableCell>
-                <TableCell><Chip size="small" color={row.status === "disputed" ? "error" : "success"} label={row.status.replace("_", " ")} /></TableCell>
+                <TableCell><Chip size="small" color={row.status === "disputed" ? "error" : row.status === "needs_review" ? "warning" : "success"} label={row.status.replace("_", " ")} /></TableCell>
                 <TableCell>{row.status === "disputed" ? row.reason : "—"}</TableCell>
                 <TableCell>{formatUsd(row.billed_amount)}</TableCell>
-                <TableCell>{formatUsd(row.payable_amount)}</TableCell>
+                <TableCell>{formatUsd(row.confirmed_payable_amount)}</TableCell>
+                <TableCell>{formatUsd(row.needs_review_amount)}</TableCell>
                 <TableCell>{new Date(row.closed_at).toLocaleString()}</TableCell>
               </TableRow>
             ))}
@@ -473,7 +514,7 @@ export default function App() {
         ) : (
           <>
             <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid item xs={12} md={6}><Metric tone="primary" label="Correct payable amount" value={formatUsd(summary.payable_amount)} /></Grid>
+              <Grid item xs={12} md={6}><Metric tone="primary" label="Correct payable amount" value={formatUsd(summary.confirmed_payable_amount)} /></Grid>
               <Grid item xs={12} md={3}><Metric label="Vendor invoice" value={formatUsd(summary.submitted_amount)} /></Grid>
               <Grid item xs={12} md={3}><Metric label="Recommended deduction" value={formatUsd(summary.recommended_deduction)} /></Grid>
             </Grid>
@@ -481,9 +522,10 @@ export default function App() {
               Every dollar is produced by deterministic rules evaluated against traceable evidence—not by a model&apos;s guess.
             </Alert>
             <Grid container spacing={2} sx={{ my: 2 }}>
-              <Grid item xs={12} md={4}><Metric label="Claimed outcomes" value={summary.claimed_outcomes.toLocaleString()} /></Grid>
-              <Grid item xs={12} md={4}><Metric label="Payable outcomes" value={summary.payable_outcomes.toLocaleString()} /></Grid>
-              <Grid item xs={12} md={4}><Metric label="Disputed outcomes" value={summary.disputed_outcomes.toLocaleString()} /></Grid>
+              <Grid item xs={12} md={3}><Metric label="Claimed outcomes" value={summary.claimed_outcomes.toLocaleString()} /></Grid>
+              <Grid item xs={12} md={3}><Metric label="Payable outcomes" value={summary.payable_outcomes.toLocaleString()} /></Grid>
+              <Grid item xs={12} md={3}><Metric label="Disputed outcomes" value={summary.disputed_outcomes.toLocaleString()} /></Grid>
+              <Grid item xs={12} md={3}><Metric label="Needs-review amount" value={formatUsd(summary.needs_review_amount)} /></Grid>
             </Grid>
             <Paper className="section">
               <Box className="section-heading">

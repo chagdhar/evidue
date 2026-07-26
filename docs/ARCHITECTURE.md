@@ -25,14 +25,36 @@ contract rules, and evidence sources without implying that reconciliation has
 already happened.
 
 `POST /api/reconciliations` loads persisted claims and events, converts them to
-domain objects, evaluates each claim, and stores:
+domain objects, attributes evidence, builds invoice-wide duplicate context,
+evaluates each claim, and stores:
 
 - reconciliation identity and engine version;
-- status, reason, applied contract rule, billed amount, and payable amount;
-- references from every determination to the operational events it considered.
+- status, reason, applied contract rule, billed amount, confirmed payable
+  amount, confirmed disputed amount, and needs-review amount;
+- references only to the operational events used by the decisive rule;
+- the winning outcome ID for a contextual duplicate determination.
 
 Aggregates and exports query stored determinations. The route and frontend do not
 contain the headline payable totals.
+
+## Evidence attribution
+
+Before applying a billing rule, the domain engine classifies evidence as
+`directly_matched`, `requires_review`, `unrelated`, or `contradictory`.
+
+A direct match requires the event's customer ID and outcome ID to equal the
+claim. Account-sensitive downstream events must also match the claim account,
+and action-sensitive events must match the expected action. Missing outcome
+identifiers and duplicate source records require review. Events associated with
+another customer, outcome, account, or action are unrelated and cannot make a
+claim payable or disputed. Conflicting directly matched terminal events are
+contradictory and require review.
+
+This attribution result is a domain value, independent of persistence and HTTP
+transport. Determinations retain only the directly matched evidence actually
+used by their decisive rule. A completion-window deadline is calculated from
+the contract and claim close time; it is exposed separately as a computed
+timeline marker and is never represented as imported customer-owned evidence.
 
 ## Deterministic rule ordering
 
@@ -43,8 +65,26 @@ fixture is mutually exclusive, so each disputed line has exactly one financial
 reason. Missing or contradictory evidence becomes `needs_review` and is not an
 automatic deduction.
 
+Duplicate detection is based on reconciliation context, not an evidence label.
+Claims with the same customer ID and normalized intent are ordered by
+`closed_at`, then lexicographically by outcome ID. The earliest claim is the
+deterministic winner; later claims closed within 24 hours are duplicates of that
+winner. The determination references the winner and duplicate outcome IDs and
+their closing evidence. A directly matched `duplicate_attribution` event can
+corroborate the conclusion but cannot create it.
+
 ## Money
 
 Domain and persistence amounts use Python `Decimal` and SQL `NUMERIC(12, 2)`.
 JSON serializes money as fixed two-decimal strings. React formats those strings
 for display but never adds, subtracts, or determines payability.
+
+Every stored determination has three mutually exclusive financial buckets:
+
+- payable: confirmed payable equals billed; disputed and review are zero;
+- disputed: confirmed disputed equals billed; payable and review are zero;
+- needs review: review equals billed; payable and disputed are zero.
+
+The summary preserves the identity `submitted = confirmed payable + confirmed
+disputed + needs review`. `recommended_deduction` is the sum of confirmed
+disputed amounts only.

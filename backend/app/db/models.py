@@ -115,7 +115,12 @@ class OutcomeDeterminationRow(Base):
     status: Mapped[str] = mapped_column(String, index=True)
     reason: Mapped[str] = mapped_column(Text)
     billed_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
-    payable_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    confirmed_payable_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    confirmed_disputed_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    needs_review_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    duplicate_winner_outcome_id: Mapped[str | None] = mapped_column(
+        ForeignKey("outcome_claims.outcome_id"), nullable=True
+    )
     evaluated_at: Mapped[datetime] = mapped_column(DateTime)
     engine_version: Mapped[str] = mapped_column(String)
 

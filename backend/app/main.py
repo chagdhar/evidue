@@ -114,7 +114,9 @@ def disputes_csv() -> Response:
         "reason",
         "rule_id",
         "billed_amount",
-        "payable_amount",
+        "confirmed_payable_amount",
+        "confirmed_disputed_amount",
+        "needs_review_amount",
         "closed_at",
     ]
     writer = csv.DictWriter(output, fieldnames=fields)

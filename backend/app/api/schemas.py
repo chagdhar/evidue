@@ -32,8 +32,9 @@ class ReconciliationSummary(StrictModel):
     disputed_outcomes: int
     needs_review_outcomes: int
     submitted_amount: str
-    payable_amount: str
+    confirmed_payable_amount: str
     recommended_deduction: str
+    needs_review_amount: str
     price_per_outcome: str
     categories: dict[str, CategorySummary]
     synthetic_disclosure: str
@@ -48,7 +49,9 @@ class OutcomeListItem(StrictModel):
     reason: str
     rule_id: str | None
     billed_amount: str
-    payable_amount: str
+    confirmed_payable_amount: str
+    confirmed_disputed_amount: str
+    needs_review_amount: str
     closed_at: str
 
 
@@ -66,5 +69,7 @@ class OutcomeDetail(OutcomeListItem):
     contract_clause: str | None
     rule: dict[str, Any] | None
     evidence: list[dict[str, Any]]
+    computed_timeline_markers: list[dict[str, Any]]
+    duplicate_winner_outcome_id: str | None
     evaluated_at: str
     engine_version: str

@@ -1,12 +1,12 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import create_engine, delete, func, or_, select
+from sqlalchemy import create_engine, delete, func, inspect, or_, select
 from sqlalchemy.orm import joinedload, sessionmaker
 
-from app.domain.engine import evaluate
+from app.domain.engine import reconcile
 from app.domain.models import RULES, OperationalEvent, OutcomeClaim
 from app.fixtures.demo import INVOICE_ID, demo_fixture
 
@@ -38,6 +38,10 @@ DISCLOSURE = (
 
 def initialize() -> None:
     Base.metadata.create_all(engine)
+    columns = {column["name"] for column in inspect(engine).get_columns("outcome_determinations")}
+    if columns and "confirmed_disputed_amount" not in columns:
+        Base.metadata.drop_all(engine)
+        Base.metadata.create_all(engine)
 
 
 def _money(value: Decimal) -> str:
@@ -210,11 +214,15 @@ def run_reconciliation() -> dict[str, object]:
         for event in event_rows:
             if event.outcome_id:
                 by_outcome.setdefault(event.outcome_id, []).append(event)
-        for claim_row in claims:
-            domain_events = [
-                _domain_event(event) for event in by_outcome.get(claim_row.outcome_id, [])
-            ]
-            result = evaluate(_domain_claim(claim_row), domain_events)
+        domain_inputs = [
+            (
+                _domain_claim(claim_row),
+                [_domain_event(event) for event in by_outcome.get(claim_row.outcome_id, [])],
+            )
+            for claim_row in claims
+        ]
+        results = reconcile(domain_inputs)
+        for claim_row, result in zip(claims, results, strict=True):
             determination = OutcomeDeterminationRow(
                 reconciliation_id=reconciliation.id,
                 outcome_id=claim_row.outcome_id,
@@ -222,7 +230,14 @@ def run_reconciliation() -> dict[str, object]:
                 status=result.status,
                 reason=result.reason,
                 billed_amount=result.claim.billed_amount,
-                payable_amount=result.payable_amount,
+                confirmed_payable_amount=result.confirmed_payable_amount,
+                confirmed_disputed_amount=result.confirmed_disputed_amount,
+                needs_review_amount=result.needs_review_amount,
+                duplicate_winner_outcome_id=(
+                    result.duplicate_decision.winner_outcome_id
+                    if result.duplicate_decision
+                    else None
+                ),
                 evaluated_at=result.evaluated_at,
                 engine_version=result.engine_version,
             )
@@ -251,7 +266,9 @@ def summary() -> dict[str, object]:
                 OutcomeDeterminationRow.status,
                 OutcomeDeterminationRow.rule_id,
                 OutcomeDeterminationRow.billed_amount,
-                OutcomeDeterminationRow.payable_amount,
+                OutcomeDeterminationRow.confirmed_payable_amount,
+                OutcomeDeterminationRow.confirmed_disputed_amount,
+                OutcomeDeterminationRow.needs_review_amount,
             )
         ).all()
         reconciliation = session.scalar(
@@ -259,7 +276,9 @@ def summary() -> dict[str, object]:
         )
         price = session.scalar(select(ContractRow.price_per_outcome)) or Decimal()
     billed = sum((row.billed_amount for row in rows), Decimal())
-    payable = sum((row.payable_amount for row in rows), Decimal())
+    payable = sum((row.confirmed_payable_amount for row in rows), Decimal())
+    disputed = sum((row.confirmed_disputed_amount for row in rows), Decimal())
+    review = sum((row.needs_review_amount for row in rows), Decimal())
     categories: dict[str, dict[str, object]] = {}
     labels = {
         "R1": "Same-intent recontacts",
@@ -276,7 +295,7 @@ def summary() -> dict[str, object]:
             )
             category["count"] = int(category["count"]) + 1
             category["amount_decimal"] = (
-                Decimal(str(category["amount_decimal"])) + row.billed_amount
+                Decimal(str(category["amount_decimal"])) + row.confirmed_disputed_amount
             )
     for category in categories.values():
         category["amount"] = _money(Decimal(str(category.pop("amount_decimal"))))
@@ -288,8 +307,9 @@ def summary() -> dict[str, object]:
         "disputed_outcomes": sum(row.status == "disputed" for row in rows),
         "needs_review_outcomes": sum(row.status == "needs_review" for row in rows),
         "submitted_amount": _money(billed),
-        "payable_amount": _money(payable),
-        "recommended_deduction": _money(billed - payable),
+        "confirmed_payable_amount": _money(payable),
+        "recommended_deduction": _money(disputed),
+        "needs_review_amount": _money(review),
         "price_per_outcome": _money(price),
         "categories": categories,
         "synthetic_disclosure": DISCLOSURE,
@@ -408,7 +428,9 @@ def _outcome_view(
         "reason": determination.reason,
         "rule_id": determination.rule_id,
         "billed_amount": _money(determination.billed_amount),
-        "payable_amount": _money(determination.payable_amount),
+        "confirmed_payable_amount": _money(determination.confirmed_payable_amount),
+        "confirmed_disputed_amount": _money(determination.confirmed_disputed_amount),
+        "needs_review_amount": _money(determination.needs_review_amount),
         "closed_at": claim.closed_at.isoformat(),
     }
 
@@ -426,7 +448,11 @@ def outcome_detail(outcome_id: str) -> dict[str, object] | None:
         determination, claim, conversation = row
         events = session.scalars(
             select(OperationalEventRow)
-            .where(OperationalEventRow.outcome_id == outcome_id)
+            .join(
+                EvidenceReferenceRow,
+                EvidenceReferenceRow.event_id == OperationalEventRow.id,
+            )
+            .where(EvidenceReferenceRow.determination_id == determination.id)
             .order_by(OperationalEventRow.timestamp, OperationalEventRow.id)
         ).all()
         rule = (
@@ -474,6 +500,19 @@ def outcome_detail(outcome_id: str) -> dict[str, object] | None:
             ],
             "evaluated_at": determination.evaluated_at.isoformat(),
             "engine_version": determination.engine_version,
+            "duplicate_winner_outcome_id": determination.duplicate_winner_outcome_id,
+            "computed_timeline_markers": (
+                [
+                    {
+                        "id": f"COMPUTED-{outcome_id}-R3-DEADLINE",
+                        "marker_type": "completion_window_expired",
+                        "timestamp": (claim.closed_at + timedelta(hours=2)).isoformat(),
+                        "description": ("Computed contractual two-hour completion deadline"),
+                    }
+                ]
+                if determination.rule_id == "R3"
+                else []
+            ),
         }
     )
     return result
