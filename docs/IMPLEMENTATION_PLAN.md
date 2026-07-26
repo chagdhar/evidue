@@ -58,3 +58,15 @@ Objective: verify a fresh clone independently. Files: `docs/FINAL_VALIDATION.md`
 Acceptance: bootstrap, checks, image/container and clean-checkout evidence
 recorded truthfully. Validation: documented commands. Risk: network/Docker
 availability. Completion commit: `docs: record final validation`.
+
+## Completion record
+
+- Milestone 0: `082e5e0`
+- Milestones 1–5 prototype checkpoint: `04e4abb`
+- Corrective deterministic-rule checkpoint: `5920ba9`
+- Persisted domain, fixture, SQLAlchemy, API, and backend-test rebuild:
+  `f7860da`
+- Complete React workflow, Vitest, and Playwright golden path: `4ed9a4d`
+- Production Docker and handoff documentation: `6aa05d1`
+- Clean-checkout reproducibility fix: `5836117`
+- Final validation record and generated-file cleanup: `523643e`
