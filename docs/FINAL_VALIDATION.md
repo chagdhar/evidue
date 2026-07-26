@@ -16,10 +16,10 @@ Result: passed.
 - Ruff lint: passed.
 - Pytest: 39 passed.
 - ESLint: passed.
-- Vitest: 2 files, 7 tests passed.
+- Vitest: 2 files, 15 tests passed.
 - TypeScript and Vite 8.1.5 production build: passed.
-- Playwright: complete golden demo path passed against live FastAPI and Vite
-  servers.
+- Playwright: complete financial-decision demo path passed against live FastAPI
+  and Vite servers.
 
 ## Deterministic result
 
@@ -72,6 +72,26 @@ Domain and API tests verify:
 - each determination exposes only decisive evidence;
 - completion-window expiry is a computed marker, not imported evidence.
 
+## Interface regressions
+
+Frontend and Playwright tests verify:
+
+- the pre-reconciliation screen shows only submitted invoice data and a ready
+  action;
+- both required synthetic-data disclosures remain visible;
+- the corrected payable amount is the dominant financial value;
+- the subtraction bridge uses API summary totals and category values;
+- claims default to server-filtered disputed outcomes;
+- selecting a finding applies its rule filter to the claims request;
+- OUT-004821 is visibly marked as the demo example;
+- the evidence inspector presents vendor claim, contract obligation,
+  determination, readable timeline labels, source systems, and source records;
+- all clause-to-executable-rule mappings remain accessible;
+- the primary dispute-package action calls the evidence export and confirms the
+  disputed count and amount;
+- needs-review money remains visually separate from the confirmed deduction;
+- desktop and narrow-width layouts were visually inspected with the live API.
+
 ## Docker
 
 Command:
@@ -81,9 +101,9 @@ docker build -t evidue-demo .
 ```
 
 Result: passed. Image ID:
-`5b6a57aa0b34799977653ca6a607de850e052574295b9cd204eb1b86f1b5a777`.
+`b1b54734dce08076c3d9249212eaea4501d7f814d9d0d6da39b4885f48516e35`.
 
-The image was run as `evidue-duplicate-validation` on local port 18080. The
+The image was run as `evidue-redesign-validation` on local port 18080. The
 following checks passed:
 
 - `GET /api/health` returned `{"status":"ok"}`.
@@ -106,13 +126,17 @@ following checks passed:
   OUT-004821 evidence above.
 - `GET /api/reconciliations/current/exports/summary.json` matched it exactly.
 - `GET /demo` returned HTTP 200 and the production React root document.
+- The production UI showed the honest ready state, completed reconciliation,
+  displayed `$12,480.00` as the dominant payable amount, defaulted to 1,680
+  disputed outcomes, exposed the dispute-package action, and retained the
+  synthetic-data disclosure.
 - Docker reported `running healthy`.
 
 The disposable validation container was removed afterward.
 
 ## Clean checkout
 
-A `--no-local` clone of commit `1d66d6eca39ceabf9e61ad284dfeb56dac402f84`
+A `--no-local` clone of commit `fafeab6ff6842f791edb366dc0d63fec5d0fe248`
 was created under `/tmp`. Commands:
 
 ```text
@@ -126,8 +150,8 @@ Results:
 
 - bootstrap completed with uv-managed Python 3.13.14, `npm ci`, and Chromium;
 - deterministic seed created 10,000 claims in unreconciled state;
-- full validation passed: 39 pytest tests, 7 Vitest tests, production build,
-  and Playwright golden path;
+- full validation passed: 39 pytest tests, 15 Vitest tests, production build,
+  and the redesigned Playwright financial-decision path;
 - `git status --short` produced no output;
 - the temporary checkout was removed afterward.
 
