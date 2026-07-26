@@ -16,13 +16,17 @@ is a failed refund and is disputed.
 
 ## Rules and states
 
-An outcome is payable only when it is in period, identifiable, has matching
-account/action evidence, no duplicate in its 24-hour attribution window, no
-same-intent recontact within seven calendar days, no material human completion
-within 24 hours, and any promised downstream action succeeds within two hours.
-Incomplete or contradictory evidence produces `needs_review`, never an
-automatic deduction. The headline fixture has none; a separate fixture proves
-that state.
+An outcome is provisionally payable only when it is in period, identifiable,
+has matching account/action evidence, has no same-intent recontact within seven
+calendar days, has no material human completion within 24 hours, and any
+promised downstream action succeeds within two hours. R4 duplicate attribution
+then applies only among these otherwise-payable claims. For each customer and
+normalized intent, the earliest provisional claim in a 24-hour window remains
+payable and later provisional claims are disputed; close time and then outcome
+ID determine the winner. A disputed or needs-review claim can never be the
+duplicate winner. Incomplete or contradictory evidence produces
+`needs_review`, never an automatic deduction. The headline fixture has none; a
+separate fixture proves that state.
 
 ## Product surface
 

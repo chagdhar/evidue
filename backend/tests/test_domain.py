@@ -28,6 +28,21 @@ def _payable_record():
     return demo_fixture()[2000]
 
 
+def _claim_with_events(
+    outcome_id: str,
+    customer_id: str,
+    closed_at: datetime,
+    category: str = "payable",
+):
+    claim = replace(
+        _payable_record().claim,
+        outcome_id=outcome_id,
+        customer_id=customer_id,
+        closed_at=closed_at,
+    )
+    return claim, list(events_for(claim, category))
+
+
 def test_exact_demo_totals_and_mutually_exclusive_categories():
     records = demo_records()
     assert summarize(records) == {
@@ -240,6 +255,142 @@ def test_duplicate_detection_uses_claim_context_and_deterministic_winner():
     }
     assert winner_record.claim.outcome_id in duplicate.reason
     assert loser_claim.outcome_id in duplicate.reason
+
+
+def test_failed_claim_cannot_win_duplicate_attribution():
+    at = datetime(2026, 6, 10, 9)
+    failed = _claim_with_events("OUT-R3-FIRST", "CUST-PRECEDENCE-1", at, "downstream")
+    valid = _claim_with_events(
+        "OUT-VALID-SECOND",
+        "CUST-PRECEDENCE-1",
+        at + timedelta(hours=1),
+    )
+
+    by_id = {item.claim.outcome_id: item for item in reconcile([failed, valid])}
+
+    assert by_id["OUT-R3-FIRST"].rule_id == "R3"
+    assert by_id["OUT-VALID-SECOND"].status == "payable"
+    assert by_id["OUT-VALID-SECOND"].duplicate_decision is None
+
+
+def test_needs_review_claim_cannot_win_duplicate_attribution():
+    at = datetime(2026, 6, 10, 9)
+    review_claim, review_events = _claim_with_events(
+        "OUT-REVIEW-FIRST",
+        "CUST-PRECEDENCE-2",
+        at,
+    )
+    valid = _claim_with_events(
+        "OUT-VALID-SECOND",
+        "CUST-PRECEDENCE-2",
+        at + timedelta(hours=1),
+    )
+
+    by_id = {
+        item.claim.outcome_id: item
+        for item in reconcile([(review_claim, review_events[:1]), valid])
+    }
+
+    assert by_id["OUT-REVIEW-FIRST"].status == "needs_review"
+    assert by_id["OUT-VALID-SECOND"].status == "payable"
+    assert by_id["OUT-VALID-SECOND"].duplicate_decision is None
+
+
+def test_out_of_period_claim_cannot_win_duplicate_attribution():
+    outside = _claim_with_events(
+        "OUT-R6-FIRST",
+        "CUST-PRECEDENCE-3",
+        datetime(2026, 5, 31, 23, 30),
+    )
+    valid = _claim_with_events(
+        "OUT-VALID-SECOND",
+        "CUST-PRECEDENCE-3",
+        datetime(2026, 6, 1, 0, 30),
+    )
+
+    by_id = {item.claim.outcome_id: item for item in reconcile([outside, valid])}
+
+    assert by_id["OUT-R6-FIRST"].rule_id == "R6"
+    assert by_id["OUT-VALID-SECOND"].status == "payable"
+    assert by_id["OUT-VALID-SECOND"].duplicate_decision is None
+
+
+def test_two_otherwise_payable_claims_make_only_the_later_claim_r4():
+    at = datetime(2026, 6, 10, 9)
+    first = _claim_with_events("OUT-PAYABLE-1", "CUST-PRECEDENCE-4", at)
+    second = _claim_with_events(
+        "OUT-PAYABLE-2",
+        "CUST-PRECEDENCE-4",
+        at + timedelta(hours=1),
+    )
+
+    by_id = {item.claim.outcome_id: item for item in reconcile([second, first])}
+
+    assert by_id["OUT-PAYABLE-1"].status == "payable"
+    duplicate = by_id["OUT-PAYABLE-2"]
+    assert duplicate.rule_id == "R4"
+    assert duplicate.duplicate_decision is not None
+    assert duplicate.duplicate_decision.winner_outcome_id == "OUT-PAYABLE-1"
+    assert {reference.outcome_id for reference in duplicate.evidence} == {
+        "OUT-PAYABLE-1",
+        "OUT-PAYABLE-2",
+    }
+
+
+def test_three_otherwise_payable_claims_in_one_window_make_later_two_r4():
+    at = datetime(2026, 6, 10, 9)
+    claims = [
+        _claim_with_events("OUT-PAYABLE-1", "CUST-PRECEDENCE-5", at),
+        _claim_with_events(
+            "OUT-PAYABLE-2",
+            "CUST-PRECEDENCE-5",
+            at + timedelta(hours=8),
+        ),
+        _claim_with_events(
+            "OUT-PAYABLE-3",
+            "CUST-PRECEDENCE-5",
+            at + timedelta(hours=23),
+        ),
+    ]
+
+    by_id = {item.claim.outcome_id: item for item in reconcile(claims)}
+
+    assert by_id["OUT-PAYABLE-1"].status == "payable"
+    assert by_id["OUT-PAYABLE-2"].rule_id == "R4"
+    assert by_id["OUT-PAYABLE-3"].rule_id == "R4"
+    assert {
+        by_id[outcome_id].duplicate_decision.winner_outcome_id
+        for outcome_id in ("OUT-PAYABLE-2", "OUT-PAYABLE-3")
+        if by_id[outcome_id].duplicate_decision
+    } == {"OUT-PAYABLE-1"}
+
+
+def test_otherwise_payable_claims_more_than_24_hours_apart_are_both_payable():
+    at = datetime(2026, 6, 10, 9)
+    first = _claim_with_events("OUT-PAYABLE-1", "CUST-PRECEDENCE-6", at)
+    second = _claim_with_events(
+        "OUT-PAYABLE-2",
+        "CUST-PRECEDENCE-6",
+        at + timedelta(hours=24, seconds=1),
+    )
+
+    results = reconcile([first, second])
+
+    assert [item.status for item in results] == ["payable", "payable"]
+    assert all(item.duplicate_decision is None for item in results)
+
+
+def test_duplicate_timestamp_tie_is_broken_deterministically_by_outcome_id():
+    at = datetime(2026, 6, 10, 9)
+    higher = _claim_with_events("OUT-TIE-002", "CUST-PRECEDENCE-7", at)
+    lower = _claim_with_events("OUT-TIE-001", "CUST-PRECEDENCE-7", at)
+
+    by_id = {item.claim.outcome_id: item for item in reconcile([higher, lower])}
+
+    assert by_id["OUT-TIE-001"].status == "payable"
+    assert by_id["OUT-TIE-002"].rule_id == "R4"
+    assert by_id["OUT-TIE-002"].duplicate_decision is not None
+    assert by_id["OUT-TIE-002"].duplicate_decision.winner_outcome_id == "OUT-TIE-001"
 
 
 def test_duplicate_label_alone_cannot_create_a_duplicate_determination():

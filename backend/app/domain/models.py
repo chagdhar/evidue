@@ -163,8 +163,11 @@ RULES = (
     ContractRule(
         "R4",
         "Single attribution",
-        "Only one outcome is billable for a customer and intent in 24 hours.",
-        {"window_hours": "24"},
+        (
+            "Among otherwise-payable claims, only the earliest outcome for a customer "
+            "and normalized intent is billable in 24 hours."
+        ),
+        {"window_hours": "24", "applies_after": "R1,R2,R3,R5,R6,R7"},
         ("claim_context", "ai_closed"),
     ),
     ContractRule(

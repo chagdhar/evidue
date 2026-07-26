@@ -25,8 +25,9 @@ contract rules, and evidence sources without implying that reconciliation has
 already happened.
 
 `POST /api/reconciliations` loads persisted claims and events, converts them to
-domain objects, attributes evidence, builds invoice-wide duplicate context,
-evaluates each claim, and stores:
+domain objects, attributes evidence, provisionally evaluates every claim
+without R4, builds duplicate context from only the provisional payable results,
+applies R4 in a second pass, and stores:
 
 - reconciliation identity and engine version;
 - status, reason, applied contract rule, billed amount, confirmed payable
@@ -58,20 +59,24 @@ timeline marker and is never represented as imported customer-owned evidence.
 
 ## Deterministic rule ordering
 
-The engine evaluates minimum identifiers, contradictory evidence, billing
-period, recontact, human completion, downstream completion, duplicate
-attribution, and account/action match in a fixed order. The synthetic headline
-fixture is mutually exclusive, so each disputed line has exactly one financial
-reason. Missing or contradictory evidence becomes `needs_review` and is not an
-automatic deduction.
+The first pass evaluates minimum identifiers and contradictory evidence (R7),
+billing period (R6), recontact (R1), human completion (R2), downstream
+completion (R3), and account/action match (R5). The second pass applies
+duplicate attribution (R4) only to claims whose provisional result is payable.
+The synthetic headline fixture is mutually exclusive, so each disputed line has
+exactly one financial reason. Missing or contradictory evidence becomes
+`needs_review` and is not an automatic deduction.
 
 Duplicate detection is based on reconciliation context, not an evidence label.
-Claims with the same customer ID and normalized intent are ordered by
-`closed_at`, then lexicographically by outcome ID. The earliest claim is the
-deterministic winner; later claims closed within 24 hours are duplicates of that
-winner. The determination references the winner and duplicate outcome IDs and
-their closing evidence. A directly matched `duplicate_attribution` event can
-corroborate the conclusion but cannot create it.
+Provisionally payable claims with the same customer ID and normalized intent are
+ordered by `closed_at`, then lexicographically by outcome ID. The earliest
+otherwise-payable claim is the deterministic winner; later otherwise-payable
+claims closed within 24 hours are duplicates of that winner. A disputed or
+needs-review result from the first pass is excluded and cannot become a winner
+or an R4 duplicate. The determination references the winner and duplicate
+outcome IDs and their closing evidence. A directly matched
+`duplicate_attribution` event can corroborate the conclusion but cannot create
+it.
 
 ## Money
 

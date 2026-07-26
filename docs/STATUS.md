@@ -19,8 +19,9 @@ Delivered:
   and contradictory classifications;
 - customer/outcome/account/action isolation, duplicate-record handling, and
   contradictory-evidence regression coverage;
-- invoice-context duplicate detection using normalized intent and a documented
-  deterministic winner, with both outcome IDs retained;
+- two-pass invoice-context duplicate detection among otherwise-payable claims
+  using normalized intent and a documented deterministic winner, with disputed
+  and needs-review claims excluded and both outcome IDs retained;
 - mutually exclusive confirmed-payable, confirmed-disputed, and needs-review
   financial buckets, with deductions derived only from confirmed disputes;
 - SQLAlchemy models for contracts, clauses, rules, invoices, claims,
@@ -33,7 +34,7 @@ Delivered:
   sources, backend execution, financial result, category breakdown, outcome
   audit table, precise decisive-evidence timeline, and separately identified
   computed contractual markers;
-- 32 backend tests, 7 frontend tests, and a live Playwright golden path;
+- 39 backend tests, 7 frontend tests, and a live Playwright golden path;
 - fish-invokable bootstrap, development, seed, reset, and validation scripts;
 - a non-root, health-checked production Docker image serving React through
   FastAPI;

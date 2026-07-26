@@ -77,7 +77,11 @@ def reset() -> dict[str, object]:
             "R1": "A resolution is not billable when the customer recontacts support for the same intent within seven calendar days.",
             "R2": "A resolution is not billable when a human completes or materially corrects the promised work within 24 hours.",
             "R3": "A promised downstream action must complete successfully within two hours.",
-            "R4": "Only one outcome is billable for the same customer and intent in a 24-hour attribution window.",
+            "R4": (
+                "Among claims that pass R1, R2, R3, R5, R6, and R7, only the earliest "
+                "outcome is billable for the same customer and normalized intent in a "
+                "24-hour attribution window."
+            ),
             "R5": "Evidence must match the expected customer account and promised action.",
             "R6": "The outcome must occur during the invoice billing period.",
             "R7": "The claim must include sufficient identifiers to associate supporting evidence.",

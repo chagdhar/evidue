@@ -177,9 +177,15 @@ def _result(
     )
 
 
-def _duplicate_decisions(claims: list[OutcomeClaim]) -> dict[str, DuplicateDecision]:
+def _duplicate_decisions(
+    provisional: list[OutcomeDetermination],
+) -> dict[str, DuplicateDecision]:
+    """Find duplicates only among claims that passed every non-R4 rule."""
     groups: dict[tuple[str, str], list[OutcomeClaim]] = defaultdict(list)
-    for claim in claims:
+    for determination in provisional:
+        if determination.status != "payable":
+            continue
+        claim = determination.claim
         groups[(claim.customer_id, normalize_intent(claim.intent))].append(claim)
 
     decisions: dict[str, DuplicateDecision] = {}
@@ -332,6 +338,27 @@ def evaluate(
             decisive,
         )
 
+    mismatch = next(
+        (
+            event
+            for event in direct
+            if event.event_type == "account_action_mismatch"
+            and (
+                event.values.get("observed_account_id") != claim.account_id
+                or event.values.get("observed_action") != claim.expected_action
+            )
+        ),
+        None,
+    )
+    if mismatch:
+        return _result(
+            claim,
+            "disputed",
+            "Customer account or expected action did not match operational evidence",
+            "R5",
+            [mismatch],
+        )
+
     if duplicate_decision:
         winner_closure = next(
             (
@@ -358,27 +385,6 @@ def evaluate(
             duplicate_decision,
         )
 
-    mismatch = next(
-        (
-            event
-            for event in direct
-            if event.event_type == "account_action_mismatch"
-            and (
-                event.values.get("observed_account_id") != claim.account_id
-                or event.values.get("observed_action") != claim.expected_action
-            )
-        ),
-        None,
-    )
-    if mismatch:
-        return _result(
-            claim,
-            "disputed",
-            "Customer account or expected action did not match operational evidence",
-            "R5",
-            [mismatch],
-        )
-
     return _result(
         claim,
         "payable",
@@ -391,19 +397,24 @@ def evaluate(
 def reconcile(
     claim_evidence: list[tuple[OutcomeClaim, list[OperationalEvent]]],
 ) -> list[OutcomeDetermination]:
-    decisions = _duplicate_decisions([claim for claim, _ in claim_evidence])
+    provisional = [evaluate(claim, events) for claim, events in claim_evidence]
+    decisions = _duplicate_decisions(provisional)
     events_by_outcome = {claim.outcome_id: events for claim, events in claim_evidence}
-    return [
-        evaluate(
-            claim,
-            events,
-            decisions.get(claim.outcome_id),
-            events_by_outcome.get(decisions[claim.outcome_id].winner_outcome_id, [])
-            if claim.outcome_id in decisions
-            else None,
+    final: list[OutcomeDetermination] = []
+    for determination, (claim, events) in zip(provisional, claim_evidence, strict=True):
+        decision = decisions.get(claim.outcome_id)
+        if decision is None:
+            final.append(determination)
+            continue
+        final.append(
+            evaluate(
+                claim,
+                events,
+                decision,
+                events_by_outcome[decision.winner_outcome_id],
+            )
         )
-        for claim, events in claim_evidence
-    ]
+    return final
 
 
 def summarize(items: list[OutcomeDetermination]) -> dict[str, object]:

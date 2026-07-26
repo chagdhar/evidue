@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("complete Evidue golden demo path", async ({ page }) => {
-  await page.request.post("http://127.0.0.1:8000/api/demo/reset");
+  await page.request.post("/api/demo/reset");
   await page.goto("/demo");
 
   await expect(page.getByText("Synthetic demonstration data.")).toBeVisible();

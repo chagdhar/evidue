@@ -39,10 +39,12 @@ determinations.
 
 ## Contextual duplicates and contractual deadlines
 
-Duplicate detection would remain invoice-contextual: same customer, normalized
-intent, and a 24-hour window. The deterministic winner is the earliest closed
-claim, with outcome ID as a stable tie-breaker. Imported duplicate labels may
-corroborate but never replace this comparison.
+Duplicate detection would remain invoice-contextual and second-pass: only claims
+that provisionally pass every non-duplicate rule are grouped by customer and
+normalized intent in a 24-hour window. The deterministic winner is the earliest
+otherwise-payable closed claim, with outcome ID as a stable tie-breaker.
+Disputed and needs-review claims cannot become winners. Imported duplicate
+labels may corroborate but never replace this comparison.
 
 Contractual deadlines are derived from the applicable rule and stored claim
 time. They may be shown as computed audit markers, but are not asserted to be

@@ -116,7 +116,7 @@ def events_for(claim: OutcomeClaim, category: str) -> tuple[OperationalEvent, ..
                     "billing_export",
                     "duplicate_attribution",
                     at + timedelta(minutes=35),
-                    {"original_outcome_id": (f"OUT-{int(claim.outcome_id[-6:]) - 1380:06d}")},
+                    {"original_outcome_id": (f"OUT-{int(claim.outcome_id[-6:]) - 300:06d}")},
                 ),
             ]
         )
@@ -180,12 +180,16 @@ def category_for(index: int) -> str:
         return "recontact"
     if index <= 1080:
         return "human"
+    if index <= 1260:
+        return "payable"
     if index <= 1380:
-        return "payable" if index == 1081 else "downstream"
+        return "downstream"
     if index <= 1560:
         return "duplicate"
     if index <= 1680:
         return "mismatch"
+    if index <= 1859:
+        return "downstream"
     return "payable"
 
 
@@ -204,7 +208,7 @@ def demo_fixture() -> list[DemoRecord]:
             if outcome_id == "OUT-004821"
             else ("cancel_subscription" if intent == "cancel_subscription" else "order_update")
         )
-        duplicate_winner_index = index - 1380 if 1381 <= index <= 1560 else index
+        duplicate_winner_index = index - 300 if 1381 <= index <= 1560 else index
         claim = OutcomeClaim(
             outcome_id=outcome_id,
             invoice_id=INVOICE_ID,

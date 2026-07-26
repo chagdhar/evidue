@@ -50,6 +50,10 @@ def test_contract_and_invoice_are_persisted_inputs():
     assert contract["vendor"] == "Nova Support AI"
     assert contract["price_per_outcome"] == "1.50"
     assert len(contract["clauses"]) == 7
+    r4 = next(clause for clause in contract["clauses"] if clause["rule"]["id"] == "R4")
+    assert "claims that pass R1, R2, R3, R5, R6, and R7" in r4["text"]
+    assert "otherwise-payable claims" in r4["rule"]["description"]
+    assert r4["rule"]["parameters"]["applies_after"] == "R1,R2,R3,R5,R6,R7"
     assert invoice["claimed_outcomes"] == 10_000
     assert invoice["submitted_amount"] == "15000.00"
 
@@ -135,11 +139,11 @@ def test_out_004821_detail_has_decisive_evidence_and_computed_deadline():
 def test_duplicate_detail_references_winner_and_duplicate_claims():
     detail = outcome("OUT-001381")
     assert detail["rule_id"] == "R4"
-    assert detail["duplicate_winner_outcome_id"] == "OUT-000001"
+    assert detail["duplicate_winner_outcome_id"] == "OUT-001081"
     assert "OUT-001381" in detail["reason"]
-    assert "OUT-000001" in detail["reason"]
+    assert "OUT-001081" in detail["reason"]
     assert {event["outcome_id"] for event in detail["evidence"]} == {
-        "OUT-000001",
+        "OUT-001081",
         "OUT-001381",
     }
 
@@ -176,7 +180,7 @@ def test_persisted_needs_review_amount_does_not_increase_deduction():
     with repository.SessionLocal.begin() as session:
         row = session.scalar(
             select(OutcomeDeterminationRow).where(
-                OutcomeDeterminationRow.outcome_id == "OUT-001681"
+                OutcomeDeterminationRow.outcome_id == "OUT-001860"
             )
         )
         assert row is not None
@@ -194,7 +198,7 @@ def test_persisted_needs_review_amount_does_not_increase_deduction():
     with repository.SessionLocal.begin() as session:
         row = session.scalar(
             select(OutcomeDeterminationRow).where(
-                OutcomeDeterminationRow.outcome_id == "OUT-001681"
+                OutcomeDeterminationRow.outcome_id == "OUT-001860"
             )
         )
         assert row is not None
