@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-uv sync --group dev
+UV_CACHE_DIR=/tmp/evidue-uv-cache uv sync --group dev
 npm --prefix frontend install
+npm install
+npx playwright install chromium

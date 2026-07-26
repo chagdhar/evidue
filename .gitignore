@@ -4,3 +4,8 @@ __pycache__/
 data/
 frontend/node_modules/
 frontend/dist/
+frontend/tsconfig.tsbuildinfo
+node_modules/
+test-results/
+playwright-report/
+docs/GIT_HISTORY.txt
