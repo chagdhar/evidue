@@ -14,7 +14,7 @@ Result: passed.
 
 - Ruff formatting: 14 files already formatted.
 - Ruff lint: passed.
-- Pytest: 32 passed.
+- Pytest: 39 passed.
 - ESLint: passed.
 - Vitest: 2 files, 7 tests passed.
 - TypeScript and Vite 8.1.5 production build: passed.
@@ -58,6 +58,16 @@ Domain and API tests verify:
 - `needs_review` money never increases the recommended deduction;
 - duplicate status requires claim comparison by customer, normalized intent,
   close time, and the 24-hour window;
+- a failed R3 claim followed by a valid claim leaves the valid claim payable;
+- a needs-review claim followed by a valid claim leaves the valid claim payable;
+- an out-of-period R6 claim followed by a valid in-period claim leaves the
+  valid claim payable;
+- two otherwise-payable claims within 24 hours produce one payable winner and
+  one R4 duplicate;
+- three otherwise-payable claims in one window produce one payable winner and
+  two R4 duplicates;
+- otherwise-payable claims more than 24 hours apart both remain payable;
+- equal closure timestamps are deterministically ordered by outcome ID;
 - a duplicate label alone cannot create a duplicate;
 - each determination exposes only decisive evidence;
 - completion-window expiry is a computed marker, not imported evidence.
@@ -71,15 +81,20 @@ docker build -t evidue-demo .
 ```
 
 Result: passed. Image ID:
-`936ce738fdb9d3bf19a59fd6f8bf20aa05faccd89b9ce3224957797ab55dbb11`.
+`5b6a57aa0b34799977653ca6a607de850e052574295b9cd204eb1b86f1b5a777`.
 
-The image was run as `evidue-financial-validation` on local port 18080. The
+The image was run as `evidue-duplicate-validation` on local port 18080. The
 following checks passed:
 
 - `GET /api/health` returned `{"status":"ok"}`.
 - `POST /api/demo/reset` returned 10,000 seeded claims and
   `"reconciled":false`.
 - `POST /api/reconciliations` returned the exact deterministic result above.
+- The R4 category contained exactly 180 outcomes / $270.00.
+- `GET /api/contracts/current` stated that R4 applies after R1, R2, R3, R5,
+  R6, and R7 and only among otherwise-payable claims.
+- `GET /api/reconciliations/current/outcomes/OUT-001381` returned R4, winning
+  outcome `OUT-001081`, and evidence references for both outcome closures.
 - `GET /api/reconciliations/current` and the summary export agreed.
 - `GET /api/reconciliations/current/outcomes/OUT-004821` returned disputed R3,
   $1.50 confirmed disputed, and only `ai_closed`, `downstream_failed`, and late
@@ -97,7 +112,7 @@ The disposable validation container was removed afterward.
 
 ## Clean checkout
 
-A `--no-local` clone of commit `55bad9d265fbb168648c85b89909d3dbcb26e699`
+A `--no-local` clone of commit `1d66d6eca39ceabf9e61ad284dfeb56dac402f84`
 was created under `/tmp`. Commands:
 
 ```text
@@ -111,7 +126,7 @@ Results:
 
 - bootstrap completed with uv-managed Python 3.13.14, `npm ci`, and Chromium;
 - deterministic seed created 10,000 claims in unreconciled state;
-- full validation passed: 32 pytest tests, 7 Vitest tests, production build,
+- full validation passed: 39 pytest tests, 7 Vitest tests, production build,
   and Playwright golden path;
 - `git status --short` produced no output;
 - the temporary checkout was removed afterward.
@@ -125,9 +140,8 @@ were changed during review to sum persisted disputed determinations rather than
 multiply a category count by a price constant. Bootstrap was changed from
 `npm install` to `npm ci` after the first isolated clone changed its lockfile.
 
-`npm audit` reports one React Router RSC-mode advisory through
-`react-router-dom`. This application uses only client-side declarative
-`BrowserRouter`, serves static assets, and implements no React Server
-Components, actions, or server-side rendering. No currently published router
-version in the audit database avoids all overlapping advisories; the exposure
-is not reachable in this architecture.
+`npm audit` reports two high-severity package entries (`react-router-dom` and
+its transitive `react-router`) for one React Router RSC-mode advisory. This
+application uses only client-side declarative `BrowserRouter`, serves static
+assets, and implements no React Server Components, actions, or server-side
+rendering, so the affected RSC action path is not used in this architecture.
