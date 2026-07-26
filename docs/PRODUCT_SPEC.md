@@ -39,6 +39,5 @@ deterministically. No real customer or vendor data is shown.”
 The monorepo uses FastAPI, SQLAlchemy/SQLite, Pydantic, React/TypeScript/Vite,
 Material UI, pytest, Ruff, ESLint, Vitest, Playwright, and Docker. Monetary
 arithmetic uses `Decimal` and decimal-string JSON fields; totals are derived
-from persisted determinations, never route or UI constants. Python 3.14 is
-used in this environment as a forward-compatible runtime for the required
-Python 3.13 codebase.
+from persisted determinations, never route or UI constants. The final
+validation uses uv-managed CPython 3.13.14.
