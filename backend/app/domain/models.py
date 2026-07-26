@@ -19,3 +19,28 @@ class OutcomeDetermination:
 class ContractRule:
     id: str; title: str; description: str
 RULES = (ContractRule("R1", "No same-intent recontact", "No same-intent customer contact within seven calendar days."), ContractRule("R2", "No human completion", "No human completion or material correction within 24 hours."), ContractRule("R3", "Downstream action succeeds", "Promised action succeeds within two hours."), ContractRule("R4", "Single attribution", "Only one billable outcome per customer and intent in 24 hours."), ContractRule("R5", "Account and action match", "Evidence matches expected account and action."), ContractRule("R6", "Billing period", "Outcome closes in the billing period."), ContractRule("R7", "Sufficient identifiers", "Claim identifiers associate operational evidence."))
+
+
+@dataclass(frozen=True)
+class Contract:
+    id: str; customer: str; vendor: str; period_start: datetime; period_end: datetime
+
+
+@dataclass(frozen=True)
+class ContractClause:
+    id: str; contract_id: str; text: str; rule_id: str
+
+
+@dataclass(frozen=True)
+class Invoice:
+    id: str; contract_id: str; submitted_at: datetime; submitted_amount: Decimal
+
+
+@dataclass(frozen=True)
+class Conversation:
+    id: str; customer_id: str; intent: str; closed_at: datetime; outcome_id: str
+
+
+@dataclass(frozen=True)
+class Reconciliation:
+    id: str; invoice_id: str; evaluated_at: datetime; engine_version: str
