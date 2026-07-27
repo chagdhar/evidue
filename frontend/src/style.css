@@ -1,20 +1,23 @@
 :root {
-  color-scheme: light;
-  --ink: #10213a;
-  --indigo: #4f46e5;
-  --indigo-soft: #eef0ff;
-  --muted: #65758b;
-  --line: #d7e0ec;
-  --soft-line: #e9eef5;
-  --paper: #ffffff;
-  --canvas: #f4f7fb;
-  --green: #087f5b;
-  --green-soft: #e8f6f1;
-  --red: #c2414a;
-  --red-soft: #fceaec;
-  --amber: #b86b00;
-  --amber-soft: #fff3d6;
-  --navy: #101c3a;
+  color-scheme: dark;
+  --ink: #f2f5ff;
+  --indigo: #8b8cff;
+  --indigo-strong: #696adb;
+  --indigo-soft: #202347;
+  --muted: #9ca9bf;
+  --line: #2a3549;
+  --soft-line: #202a3b;
+  --paper: #111827;
+  --paper-raised: #162033;
+  --paper-soft: #0d1422;
+  --canvas: #070b14;
+  --green: #42d7a1;
+  --green-soft: #12382f;
+  --red: #ff7b86;
+  --red-soft: #3d1e28;
+  --amber: #f6bd62;
+  --amber-soft: #3a2c18;
+  --navy: #e6ebff;
 }
 
 html {
@@ -1250,3 +1253,254 @@ a {
 .comparison-panel.contract { border-top-color: var(--amber); }
 .comparison-panel.determination { border-top-color: var(--green); }
 .synthetic-badge { box-shadow: inset 0 0 0 1px rgba(184, 107, 0, 0.04); }
+
+
+/* Dark financial-control theme: reduce exposed white and increase depth */
+body,
+.product-shell,
+.product-body,
+.evidence-drawer {
+  background: var(--canvas) !important;
+}
+
+.app-header {
+  color: var(--ink) !important;
+  background: rgba(7, 11, 20, 0.92) !important;
+  border-bottom-color: var(--line);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.24) !important;
+}
+
+.wordmark,
+.product-page-intro h3,
+.reconciliation-header h2 {
+  color: var(--ink) !important;
+}
+
+.MuiPaper-root,
+.hero-control,
+.recommendation,
+.vendor-hero,
+.dispute-hero,
+.receipt-card,
+.overview-panel,
+.workspace-panel,
+.ledger-node,
+.two-sided-grid > .MuiPaper-root,
+.source-grid > .MuiPaper-root,
+.package-actions > .MuiPaper-root,
+.activity-list,
+.invoice-list-table,
+.contract-summary,
+.source-list,
+.export-actions,
+.findings-list,
+.claims-table,
+.preflight-risk-list,
+.bridge,
+.comparison-panel {
+  color: var(--ink);
+  background: var(--paper) !important;
+  border-color: var(--line) !important;
+}
+
+.hero-control,
+.vendor-hero,
+.recommendation,
+.receipt-card,
+.dispute-hero {
+  background: linear-gradient(145deg, var(--paper-raised), var(--paper)) !important;
+}
+
+.disclosure,
+.approval-note,
+.trust-note,
+.filter-panel,
+.export-section,
+.separation-panel {
+  color: var(--ink) !important;
+  background: var(--paper-soft) !important;
+  border-color: var(--line) !important;
+}
+
+.disclosure {
+  color: var(--muted) !important;
+}
+
+.synthetic-badge,
+.demo-chip {
+  color: #ffd98f !important;
+  background: var(--amber-soft) !important;
+  border-color: #6d5126 !important;
+}
+
+.finding-heading,
+.claims-table thead th,
+.invoice-list-head {
+  color: #aeb9cd;
+  background: #0c1320;
+}
+
+.finding-row,
+.preflight-risk-list button,
+.vendor-kpis > div,
+.boundary-flow > div {
+  color: var(--ink);
+  background: #111827;
+}
+
+.finding-row:hover,
+.finding-row.selected,
+.preflight-risk-list button:hover,
+.activity-list > button:hover,
+.invoice-list-table > button:hover {
+  background: #1a2340 !important;
+}
+
+.finding-row.selected {
+  box-shadow: inset 4px 0 var(--indigo);
+}
+
+.vendor-kpis,
+.comparison-grid {
+  background: var(--line);
+  border-color: var(--line);
+}
+
+.vendor-page {
+  --vendor: #9b9cff;
+  --vendor-soft: #24264d;
+}
+
+.vendor-chip {
+  color: #d9d9ff !important;
+  background: var(--vendor-soft) !important;
+}
+
+.vendor-page .eyebrow,
+.risk-action,
+.preflight-actions > div > span,
+.vendor-kpis .primary-money {
+  color: #aaaaff !important;
+}
+
+.separation-panel,
+.ledger-node.vendor,
+.two-sided-grid > .MuiPaper-root:first-child {
+  background: #12162b !important;
+}
+
+.ledger-node.customer,
+.two-sided-grid > .MuiPaper-root:last-child {
+  background: #0f211f !important;
+}
+
+.schema-list span {
+  color: #d8deeb;
+  background: #182235;
+}
+
+.fix-callout {
+  color: #f4f5ff;
+  background: #24264d;
+  border: 1px solid #3d4172;
+}
+
+.requirement {
+  color: #ffd98f;
+  background: var(--amber-soft);
+}
+
+.demo-row {
+  background: #282115 !important;
+}
+
+.timeline {
+  border-left-color: #34415a;
+}
+
+.timeline-event > span {
+  border-color: var(--canvas);
+}
+
+.platform-story,
+.example-preflight,
+.trust-strip {
+  background: linear-gradient(145deg, #10162b, #0b1020) !important;
+  border: 1px solid #2d3854;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.34) !important;
+}
+
+.platform-rail button {
+  background: rgba(139, 140, 255, 0.09);
+  border-color: rgba(139, 140, 255, 0.28);
+}
+
+.platform-rail button:hover {
+  background: rgba(139, 140, 255, 0.16);
+}
+
+.platform-heading .eyebrow,
+.platform-heading .MuiTypography-colorTextSecondary,
+.platform-rail button small,
+.shared-rail small,
+.example-preflight .MuiTypography-colorTextSecondary {
+  color: #aab5d0 !important;
+}
+
+.payable-ratio { color: #72e0b8; }
+.bridge-line { color: #aeb9cd; }
+.bridge-line.start { color: var(--ink); }
+.rule-id { color: #aab5c9; }
+.source-row > span { background: #8b8cff; }
+
+.MuiInputBase-root,
+.MuiOutlinedInput-root,
+.MuiSelect-select,
+.MuiTablePagination-root {
+  color: var(--ink) !important;
+  background: #0e1625 !important;
+}
+
+.MuiOutlinedInput-notchedOutline {
+  border-color: #34415a !important;
+}
+
+.MuiInputLabel-root,
+.MuiFormHelperText-root,
+.MuiTypography-colorTextSecondary {
+  color: var(--muted) !important;
+}
+
+.MuiDivider-root,
+.MuiTableCell-root {
+  border-color: var(--soft-line) !important;
+}
+
+.MuiChip-outlined {
+  border-color: #46536c !important;
+}
+
+.MuiButton-containedPrimary {
+  color: #090d1a !important;
+  background: linear-gradient(135deg, #aaaaff, #7779ed) !important;
+  box-shadow: 0 10px 28px rgba(119, 121, 237, 0.28) !important;
+}
+
+.MuiButton-containedPrimary:hover {
+  background: linear-gradient(135deg, #bbbbff, #8587f5) !important;
+  box-shadow: 0 14px 34px rgba(119, 121, 237, 0.38) !important;
+}
+
+.MuiButton-outlined {
+  color: #c9ceff !important;
+  border-color: #515a8f !important;
+}
+
+.MuiButton-text {
+  color: #aaaaff !important;
+}
+
+.center {
+  color: var(--ink);
+  background: var(--canvas);
+}

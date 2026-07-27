@@ -1,27 +1,20 @@
-# Evidue UI color system
+# Evidue UI Color System
 
-The final demo separates brand identity from financial meaning.
+## Theme
 
-## Brand
+The final demo uses a dark financial-control interface designed to reduce exposed white surfaces and create a more credible operations-console feel.
 
-- Midnight navy `#101C3A`: platform architecture, trust surfaces, primary headings
-- Evidue indigo `#4F46E5`: navigation, primary actions, vendor preflight, shared-platform accents
-- Indigo soft `#EEF0FF`: selected and hover surfaces
+## Brand colors
 
-## Financial states
+- Canvas: near-black navy `#070B14`
+- Primary surface: deep slate `#111827`
+- Raised surface: blue slate `#162033`
+- Brand accent: periwinkle indigo `#8B8CFF`
 
-- Confirmed payable emerald `#087F5B`
-- Confirmed dispute coral `#C2414A`
-- Needs review amber `#B86B00`
+## Financial semantics
 
-These colors must keep their semantic meaning. Indigo should not be used to represent a payable or disputed outcome.
+- Confirmed payable: emerald `#42D7A1`
+- Confirmed disputed: coral `#FF7B86`
+- Needs review: amber `#F6BD62`
 
-## Neutrals
-
-- Canvas `#F4F7FB`
-- Paper `#FFFFFF`
-- Primary text `#10213A`
-- Secondary text `#65758B`
-- Border `#D7E0EC`
-
-The palette is intentionally restrained and optimized for a finance-control product rather than consumer AI or generic analytics styling.
+Brand colors never replace financial-state colors. Indigo identifies Evidue actions and vendor workflows; emerald, coral, and amber remain reserved for financial meaning.
