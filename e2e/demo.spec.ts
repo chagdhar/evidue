@@ -11,7 +11,7 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
     ),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "What requires attention" })).toBeVisible();
-  await expect(page.getByText("$15,000.00")).toBeVisible();
+  await expect(page.getByText("$15,000.00", { exact: true })).toBeVisible();
   await expect(page.getByText("One invoice, seven approved rules")).toBeVisible();
   await expect(page.getByLabel("Synthetic data set")).toHaveCount(0);
   await expect(page.getByText("$12,480.00")).not.toBeVisible();
@@ -21,14 +21,14 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
   await expect(page.getByText("10,000 claimed outcomes from the vendor")).toBeVisible();
   await expect(page.getByText("Ready to reconcile")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Executable billing terms" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Real records are collected and matched before reconciliation" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Real records are collected and matched before reconciliation" }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Run reconciliation" }).click();
   await expect(page.getByText("Evaluating persisted claims and evidence")).toBeVisible();
   await expect(page.locator(".payable-amount")).toHaveText("$12,480.00", {
     timeout: 60_000,
   });
-  await expect(page.getByText("$2,520.00").first()).toBeVisible();
+  await expect(page.getByText("$2,520.00", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("8,320 of 10,000 outcomes payable")).toBeVisible();
   await expect(
     page.getByText(
@@ -85,9 +85,9 @@ test("production-shaped data collection is inspectable before reconciliation", a
   await expect(page.getByText("50,302")).toBeVisible();
   await expect(page.getByText("100.00%")).toBeVisible();
   await expect(page.getByText("25", { exact: true })).toBeVisible();
-  await expect(page.getByText("Vendor claim manifest")).toBeVisible();
+  await expect(page.getByText("Vendor claim manifest", { exact: true })).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: "Payment processor" })).toBeVisible();
-  await expect(page.getByText("Contract documents")).toBeVisible();
+  await expect(page.getByText("Contract documents", { exact: true })).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Raw record → normalized evidence" })).toBeVisible();
   await expect(page.getByText("As received from source")).toBeVisible();
@@ -150,7 +150,7 @@ test("two-sided product story connects vendor preflight to independent verificat
 
   await expect(page.getByRole("heading", { name: "Prove before invoicing. Verify before payment." })).toBeVisible();
   await expect(page.getByText("Evidue Prove")).toBeVisible();
-  await expect(page.getByText("Outcome ledger")).toBeVisible();
+  await expect(page.getByRole("main").getByText("Outcome Ledger", { exact: true })).toBeVisible();
   await expect(page.getByText("Evidue Verify")).toBeVisible();
 
   await page.getByRole("link", { name: "Vendor Preflight" }).click();

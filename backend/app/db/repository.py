@@ -17,7 +17,6 @@ from app.fixtures.demo import (
 )
 from app.ingestion.demo_pipeline import CONNECTORS, build_ingestion_bundle
 
-
 from .models import (
     Base,
     ConnectorRow,

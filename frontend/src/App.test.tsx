@@ -591,7 +591,7 @@ describe("Evidue financial-decision demo", () => {
     expect(screen.getByText("AI marked outcome resolved")).toBeInTheDocument();
     expect(screen.getByText("Downstream action failed")).toBeInTheDocument();
     expect(screen.getByText("Completion window expired")).toBeInTheDocument();
-    expect(screen.getByText(/processor-4821/)).toBeInTheDocument();
+    expect(screen.getAllByText(/processor-4821/).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Customer-owned operational evidence")).toBeInTheDocument();
     expect(screen.getByText(/Evidue-computed deadline/)).toBeInTheDocument();
   });
