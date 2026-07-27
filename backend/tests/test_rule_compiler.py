@@ -1,8 +1,6 @@
 import json
 
 import pytest
-from pydantic import ValidationError
-
 from app.contracts.compiler import (
     RECORDED_PROPOSAL_PATH,
     CompilationProposal,
@@ -10,6 +8,7 @@ from app.contracts.compiler import (
     to_rule_program,
 )
 from app.db import repository
+from pydantic import ValidationError
 
 
 def test_recorded_llm_output_is_schema_valid_and_executable():
@@ -54,3 +53,41 @@ def test_compile_approve_then_reconcile_uses_approved_version():
     summary = repository.run_reconciliation()
     assert summary["confirmed_payable_amount"] == "12480.00"
     assert summary["recommended_deduction"] == "2520.00"
+
+
+def test_custom_contract_requires_live_gemini(monkeypatch):
+    repository.reset()
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    custom = "CUSTOM TERMS\n" + (
+        "A supported outcome requires payment success within three hours. " * 4
+    )
+    with pytest.raises(ValueError, match="Custom contract text requires"):
+        repository.compile_contract_rules("auto", contract_text=custom)
+
+
+def test_compilation_history_preserves_exact_source_text():
+    repository.reset()
+    contract = repository.contract()
+    proposal = repository.compile_contract_rules(
+        "recorded",
+        contract_text=str(contract["demo_contract_text"]),
+        source_document="demo-order-form.txt",
+    )
+    history = repository.list_compilations()
+    assert history[0]["id"] == proposal["id"]
+    assert history[0]["source_document"] == "demo-order-form.txt"
+    assert history[0]["source_text"] == contract["demo_contract_text"]
+    assert history[0]["validation"]["schema_valid"] is True
+
+
+def test_only_latest_pending_proposal_can_be_approved():
+    repository.reset()
+    older = repository.compile_contract_rules("recorded")
+    newer = repository.compile_contract_rules("recorded")
+    with pytest.raises(ValueError, match="superseded"):
+        repository.approve_compilation(str(older["id"]))
+    repository.approve_compilation(str(newer["id"]))
+    statuses = {item["id"]: item["status"] for item in repository.list_compilations()}
+    assert statuses[older["id"]] == "superseded"
+    assert statuses[newer["id"]] == "approved"
+    assert sum(status == "approved" for status in statuses.values()) == 1

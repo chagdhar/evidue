@@ -50,6 +50,46 @@ def normalize_intent(intent: str) -> str:
     return " ".join(intent.casefold().replace("_", " ").replace("-", " ").split())
 
 
+def _is_prohibited_event(
+    event: OperationalEvent,
+    *,
+    event_types: set[str],
+    anchor: datetime,
+    limit: datetime,
+    compare_event: object | None,
+    compare_claim: object | None,
+    normalizer: object | None,
+    claim: OutcomeClaim,
+) -> bool:
+    if event.event_type not in event_types or not (anchor < event.timestamp <= limit):
+        return False
+    if compare_event and compare_claim:
+        return _normalize(
+            event.values.get(str(compare_event), ""),
+            normalizer,
+        ) == _normalize(
+            _claim_value(claim, str(compare_claim)),
+            normalizer,
+        )
+    return True
+
+
+def _has_field_mismatch(
+    event: OperationalEvent,
+    *,
+    event_type: str,
+    comparisons: list[dict[str, object]],
+    claim: OutcomeClaim,
+) -> bool:
+    if event.event_type != event_type:
+        return False
+    return any(
+        event.values.get(str(comparison["event_field"]))
+        != str(_claim_value(claim, str(comparison["claim_field"])))
+        for comparison in comparisons
+    )
+
+
 def attribute_evidence(claim: OutcomeClaim, events: list[OperationalEvent]) -> EvidenceAttribution:
     """Classify source evidence before any approved contract rule can inspect it."""
     direct: list[AttributedEvidence] = []
@@ -358,16 +398,23 @@ def evaluate(
             compare_claim = p.get("compare_claim_field")
             normalizer = p.get("normalization")
 
-            def prohibited(event: OperationalEvent) -> bool:
-                if event.event_type not in event_types or not (anchor < event.timestamp <= limit):
-                    return False
-                if compare_event and compare_claim:
-                    return _normalize(event.values.get(str(compare_event), ""), normalizer) == _normalize(
-                        _claim_value(claim, str(compare_claim)), normalizer
+            found = next(
+                (
+                    event
+                    for event in direct
+                    if _is_prohibited_event(
+                        event,
+                        event_types=event_types,
+                        anchor=anchor,
+                        limit=limit,
+                        compare_event=compare_event,
+                        compare_claim=compare_claim,
+                        normalizer=normalizer,
+                        claim=claim,
                     )
-                return True
-
-            found = next((event for event in direct if prohibited(event)), None)
+                ),
+                None,
+            )
             if found:
                 reason = (
                     "Same-intent recontact within seven calendar days"
@@ -430,16 +477,24 @@ def evaluate(
             event_type = str(p["event_type"])
             comparisons = p["comparisons"]
 
-            def mismatch(event: OperationalEvent) -> bool:
-                if event.event_type != event_type:
-                    return False
-                return any(
-                    event.values.get(str(comparison["event_field"]))
-                    != str(_claim_value(claim, str(comparison["claim_field"])))
-                    for comparison in comparisons  # type: ignore[union-attr]
-                )
-
-            found = next((event for event in direct if mismatch(event)), None)
+            typed_comparisons = [
+                comparison
+                for comparison in comparisons
+                if isinstance(comparison, dict)
+            ]
+            found = next(
+                (
+                    event
+                    for event in direct
+                    if _has_field_mismatch(
+                        event,
+                        event_type=event_type,
+                        comparisons=typed_comparisons,
+                        claim=claim,
+                    )
+                ),
+                None,
+            )
             if found:
                 return _rule_failure(
                     claim,

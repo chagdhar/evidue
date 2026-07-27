@@ -16,6 +16,8 @@ PRICE = Decimal("1.50")
 
 @dataclass(frozen=True)
 class ExecutableRule:
+    """Validated rule emitted by the contract compiler."""
+
     id: str
     title: str
     description: str
@@ -30,6 +32,8 @@ class ExecutableRule:
 
 @dataclass(frozen=True)
 class RuleProgram:
+    """Immutable, human-approved input to the deterministic engine."""
+
     compilation_id: str
     version: int
     source_hash: str
@@ -37,7 +41,7 @@ class RuleProgram:
 
     @property
     def engine_version(self) -> str:
-        return f"rules/{self.version}:{self.compilation_id}"
+        return f"deterministic-v2/program-{self.version}"
 
 
 @dataclass(frozen=True)
@@ -162,33 +166,3 @@ class Reconciliation:
     invoice_id: str
     evaluated_at: datetime
     engine_version: str
-
-
-@dataclass(frozen=True)
-class ExecutableRule:
-    """Validated rule emitted by the contract compiler."""
-
-    id: str
-    title: str
-    description: str
-    clause_text: str
-    operation: str
-    parameters: dict[str, object]
-    evidence_required: tuple[str, ...]
-    priority: int
-    consequence: DeterminationStatus
-    compilation_id: str
-
-
-@dataclass(frozen=True)
-class RuleProgram:
-    """Immutable, human-approved input to the deterministic engine."""
-
-    compilation_id: str
-    version: int
-    source_hash: str
-    rules: tuple[ExecutableRule, ...]
-
-    @property
-    def engine_version(self) -> str:
-        return f"deterministic-v2/program-{self.version}"

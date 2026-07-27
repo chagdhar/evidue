@@ -52,7 +52,7 @@ class RuleProposal(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_operation_parameters(self) -> "RuleProposal":
+    def validate_operation_parameters(self) -> RuleProposal:
         p = self.parameters
         required: dict[str, set[str]] = {
             "validate_evidence_envelope": {"required_claim_fields", "closure_event_type"},
@@ -104,7 +104,7 @@ class CompilationProposal(BaseModel):
     rules: list[RuleProposal] = Field(min_length=1, max_length=50)
 
     @model_validator(mode="after")
-    def unique_rules(self) -> "CompilationProposal":
+    def unique_rules(self) -> CompilationProposal:
         ids = [rule.id for rule in self.rules]
         priorities = [rule.priority for rule in self.rules]
         if len(ids) != len(set(ids)):

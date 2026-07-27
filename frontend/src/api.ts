@@ -32,12 +32,13 @@ export type RuleCompilation = {
   id: string;
   contract_id: string;
   source_document: string;
+  source_text: string;
   source_hash: string;
   prompt_hash: string;
   provider: string;
   model: string;
   compiler_version: string;
-  status: "pending_approval" | "approved";
+  status: "pending_approval" | "approved" | "superseded";
   version: number;
   live_model_call: boolean;
   created_at: string;
@@ -45,6 +46,13 @@ export type RuleCompilation = {
   rules: Array<Rule & { clause_text: string }>;
   safety_boundary: string;
   fallback_reason?: string | null;
+  validation: {
+    schema_valid: boolean;
+    allowlisted_operations: boolean;
+    unique_rule_ids: boolean;
+    unique_priorities: boolean;
+    rule_count: number;
+  };
 };
 
 export type Contract = {
@@ -57,6 +65,8 @@ export type Contract = {
   clauses: Array<{ id: string; text: string; rule: Rule }>;
   evidence_sources: string[];
   contract_text: string;
+  demo_contract_text: string;
+  live_compilation_available: boolean;
   compilation: RuleCompilation;
   latest_compilation: RuleCompilation;
 };
@@ -232,7 +242,14 @@ export type DataSourceSamples = {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, options);
   if (!response.ok) {
-    const message = await response.text();
+    const body = await response.text();
+    let message = body;
+    try {
+      const parsed = JSON.parse(body) as { detail?: string };
+      message = parsed.detail || body;
+    } catch {
+      // Keep the plain-text response.
+    }
     throw new Error(message || `Request failed (${response.status})`);
   }
   return response.json() as Promise<T>;
@@ -242,8 +259,19 @@ export const api = {
   status: () => request<DemoStatus>("/demo/status"),
   scenarios: () => request<DemoScenario[]>("/demo/scenarios"),
   contract: () => request<Contract>("/contracts/current"),
-  compileContract: (mode: "auto" | "live" | "recorded" = "auto") =>
-    request<RuleCompilation>(`/contracts/current/compile?mode=${mode}`, { method: "POST" }),
+  compileContract: (
+    mode: "auto" | "live" | "recorded" = "auto",
+    contractText?: string,
+    sourceDocument = "Acme-Nova-Outcome-Pricing-Order-Form.pdf",
+  ) =>
+    request<RuleCompilation>(`/contracts/current/compile?mode=${mode}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: contractText === undefined
+        ? undefined
+        : JSON.stringify({ contract_text: contractText, source_document: sourceDocument }),
+    }),
+  compilations: () => request<RuleCompilation[]>("/contracts/current/compilations"),
   approveCompilation: (compilationId: string) =>
     request<RuleCompilation>(
       `/contracts/current/compilations/${encodeURIComponent(compilationId)}/approve`,

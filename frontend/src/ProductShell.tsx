@@ -16,6 +16,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from "@mui/material";
 import { TemplateIcon } from "./TemplateIcons";
@@ -30,6 +31,7 @@ import {
   DemoStatus,
   Invoice,
   RawRecordSample,
+  RuleCompilation,
   Summary,
 } from "./api";
 import { DashboardShell } from "./DashboardShell";
@@ -381,121 +383,356 @@ export function InvoicesPage() {
   );
 }
 
+function compilationStatusColor(status: RuleCompilation["status"]): "success" | "warning" | "default" {
+  if (status === "approved") return "success";
+  if (status === "pending_approval") return "warning";
+  return "default";
+}
+
+function ruleFingerprint(rule: RuleCompilation["rules"][number]): string {
+  return JSON.stringify({
+    operation: rule.operation,
+    parameters: rule.parameters,
+    consequence: rule.consequence,
+    priority: rule.priority,
+    evidence_required: rule.evidence_required,
+    clause_text: rule.clause_text,
+  });
+}
+
 export function ContractsPage() {
-  const { contract: loadedContract, loading, error } = useProductData();
   const [contract, setContract] = useState<Contract | null>(null);
-  const [working, setWorking] = useState(false);
+  const [history, setHistory] = useState<RuleCompilation[]>([]);
+  const [draft, setDraft] = useState("");
+  const [sourceDocument, setSourceDocument] = useState("Acme-Nova-Outcome-Pricing-Order-Form.pdf");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [workingAction, setWorkingAction] = useState<"compile" | "approve" | null>(null);
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
 
-  useEffect(() => {
-    if (loadedContract) setContract(loadedContract);
-  }, [loadedContract]);
+  const refresh = useCallback(async (preserveDraft = true) => {
+    const [contractResult, historyResult] = await Promise.all([api.contract(), api.compilations()]);
+    setContract(contractResult);
+    setHistory(historyResult);
+    setSourceDocument(contractResult.latest_compilation.source_document);
+    if (!preserveDraft || !draft) {
+      const visibleSource = contractResult.latest_compilation.status === "pending_approval"
+        ? contractResult.latest_compilation.source_text
+        : contractResult.contract_text;
+      setDraft(visibleSource);
+    }
+    return contractResult;
+  }, [draft]);
 
-  async function compileRules(mode: "auto" | "live" | "recorded" = "auto") {
-    setWorking(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError("");
+      try {
+        const [contractResult, historyResult] = await Promise.all([api.contract(), api.compilations()]);
+        if (cancelled) return;
+        setContract(contractResult);
+        setHistory(historyResult);
+        setDraft(
+          contractResult.latest_compilation.status === "pending_approval"
+            ? contractResult.latest_compilation.source_text
+            : contractResult.contract_text,
+        );
+        setSourceDocument(contractResult.latest_compilation.source_document);
+      } catch (requestError) {
+        if (!cancelled) setLoadError(requestError instanceof Error ? requestError.message : "Could not load contract controls");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function compileRules(mode: "auto" | "recorded") {
+    if (!contract) return;
+    const text = mode === "recorded" ? contract.demo_contract_text : draft;
+    setWorkingAction("compile");
     setActionError("");
     setNotice("");
+    if (mode === "recorded") {
+      setDraft(contract.demo_contract_text);
+      setSourceDocument("Acme-Nova-Outcome-Pricing-Order-Form.pdf");
+    }
     try {
-      const proposal = await api.compileContract(mode);
-      setContract(await api.contract());
+      const proposal = await api.compileContract(
+        mode,
+        text,
+        mode === "recorded" ? "Acme-Nova-Outcome-Pricing-Order-Form.pdf" : sourceDocument,
+      );
+      await refresh(true);
       setNotice(
         proposal.live_model_call
-          ? `Gemini produced rule proposal v${proposal.version}. Review and approve it before reconciliation.`
-          : `Validated recorded Gemini proposal v${proposal.version} loaded for the offline demo. Review and approve it before reconciliation.`,
+          ? `Gemini produced proposal v${proposal.version}. It is validated but cannot affect an invoice until a person approves it.`
+          : `Recorded Gemini proposal v${proposal.version} was replayed and validated for the bundled contract.`,
       );
     } catch (requestError) {
       setActionError(requestError instanceof Error ? requestError.message : "Rule compilation failed");
     } finally {
-      setWorking(false);
+      setWorkingAction(null);
     }
   }
 
   async function approveRules() {
-    if (!contract) return;
-    setWorking(true);
+    if (!contract || contract.latest_compilation.status !== "pending_approval") return;
+    setWorkingAction("approve");
     setActionError("");
     setNotice("");
     try {
-      await api.approveCompilation(contract.latest_compilation.id);
-      setContract(await api.contract());
-      setNotice("Approved rule version is now the only program used by the deterministic reconciliation engine.");
+      const approved = await api.approveCompilation(contract.latest_compilation.id);
+      await refresh(true);
+      setNotice(
+        `Version ${approved.version} is active. Existing determinations were invalidated and the next reconciliation will run only the deterministic program shown below.`,
+      );
     } catch (requestError) {
       setActionError(requestError instanceof Error ? requestError.message : "Approval failed");
     } finally {
-      setWorking(false);
+      setWorkingAction(null);
     }
   }
 
-  if (loading || !contract) return <LoadingPage />;
-  if (error) return <ErrorPage message={error} />;
-  const pending = contract.latest_compilation.status === "pending_approval";
-  const compilation = pending ? contract.latest_compilation : contract.compilation;
+  if (loading) return <LoadingPage />;
+  if (loadError || !contract) return <ErrorPage message={loadError || "Contract controls are unavailable"} />;
+
+  const active = contract.compilation;
+  const latest = contract.latest_compilation;
+  const pending = latest.status === "pending_approval";
+  const proposal = pending ? latest : active;
+  const sourceTextChanged = draft.trim() !== proposal.source_text.trim();
+  const sourceDocumentChanged = sourceDocument.trim() !== proposal.source_document.trim();
+  const draftChanged = sourceTextChanged || sourceDocumentChanged;
+  const customDraftWithoutKey = !contract.live_compilation_available && draft.trim() !== contract.demo_contract_text.trim();
+  const activeRules = new Map(active.rules.map((rule) => [rule.id, rule]));
+  const proposalRules = new Map(proposal.rules.map((rule) => [rule.id, rule]));
+  const changedRules = proposal.rules.filter((rule) => {
+    const previous = activeRules.get(rule.id);
+    return !previous || ruleFingerprint(previous) !== ruleFingerprint(rule);
+  }).length;
+  const removedRules = active.rules.filter((rule) => !proposalRules.has(rule.id)).length;
 
   return (
     <PageFrame testId="contracts-page">
       <PageHeader
         eyebrow="Contract rule compiler"
-        title="Natural-language terms become deterministic controls"
-        body="Gemini proposes a constrained rule program from the contract. A human approves the version. The LLM never sees invoice outcomes and never decides whether a charge is payable."
+        title="Compile contract language into an approvable rule program"
+        body="The visible contract text is sent to Gemini, the response is constrained to allowlisted operations, and a human-approved immutable version is the only input the deterministic reconciliation engine can execute."
         action={
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-            <Button variant="outlined" disabled={working} onClick={() => compileRules("recorded")}>Replay recorded Gemini output</Button>
-            <Button variant="contained" disabled={working} onClick={() => compileRules("auto")}>
-              {working ? <CircularProgress size={20} /> : "Compile contract"}
+            <Button
+              variant="outlined"
+              disabled={workingAction !== null}
+              onClick={() => void compileRules("recorded")}
+            >
+              Replay recorded Gemini result
+            </Button>
+            <Button
+              variant="contained"
+              disabled={workingAction !== null || draft.trim().length < 50 || customDraftWithoutKey}
+              onClick={() => void compileRules("auto")}
+              startIcon={workingAction === "compile" ? <CircularProgress size={18} color="inherit" /> : undefined}
+            >
+              {contract.live_compilation_available ? "Compile with Gemini" : "Compile bundled contract"}
             </Button>
           </Stack>
         }
       />
+
       {actionError && <Alert severity="error" sx={{ mb: 2 }}>{actionError}</Alert>}
       {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
+      {customDraftWithoutKey && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          This draft differs from the bundled contract. Add <code>GEMINI_API_KEY</code> to compile custom terms, or restore/replay the recorded demo contract.
+        </Alert>
+      )}
 
-      <Box className="template-stats-grid template-stats-grid-3">
-        <MetricCard label="Compiler" value={compilation.model} helper={`${compilation.provider} · schema constrained`} />
-        <MetricCard label="Rule version" value={`v${compilation.version}`} helper={`${compilation.rules.length} validated operations`} />
-        <MetricCard label="Approval state" value={pending ? "Pending human approval" : "Approved"} helper={compilation.live_model_call ? "Live model call" : "Recorded model response"} tone={pending ? "warning" : "success"} />
+      <Box className="contract-compiler-flow" aria-label="Contract compilation trust boundary">
+        {[
+          ["1", "Contract source", "Editable natural-language terms"],
+          ["2", "Gemini proposal", "No access to invoice outcomes"],
+          ["3", "Schema validator", "Allowlisted operations only"],
+          ["4", pending ? "Human approval" : "Approved version", pending ? "Required before execution" : `Active v${active.version}`],
+          ["5", "Deterministic engine", "Evaluates evidence and money"],
+        ].map(([number, title, body], index) => (
+          <Box className={`contract-compiler-stage ${index === 3 && pending ? "pending" : ""}`} key={number}>
+            <span>{number}</span><Box><strong>{title}</strong><small>{body}</small></Box>
+          </Box>
+        ))}
+      </Box>
+
+      <Box className="template-stats-grid template-stats-grid-3" sx={{ mt: 2 }}>
+        <MetricCard label="Active program" value={`v${active.version}`} helper={`${active.rules.length} rules · ${active.id}`} tone="success" />
+        <MetricCard label="Latest proposal" value={`v${proposal.version}`} helper={pending ? `${changedRules} changed/added · ${removedRules} removed` : "Matches active program"} tone={pending ? "warning" : "neutral"} />
+        <MetricCard label="Compiler mode" value={proposal.live_model_call ? "Live Gemini" : "Recorded Gemini"} helper={`${proposal.model} · schema constrained`} />
+      </Box>
+
+      <Box className="contract-workbench">
+        <SectionCard
+          title="Contract source"
+          eyebrow="Exactly what the compiler reads"
+          action={
+            <Button
+              size="small"
+              disabled={workingAction !== null || draft === contract.demo_contract_text}
+              onClick={() => {
+                setDraft(contract.demo_contract_text);
+                setSourceDocument("Acme-Nova-Outcome-Pricing-Order-Form.pdf");
+                setActionError("");
+              }}
+            >
+              Restore bundled contract
+            </Button>
+          }
+        >
+          <TextField
+            label="Source document"
+            fullWidth
+            value={sourceDocument}
+            onChange={(event) => setSourceDocument(event.target.value)}
+            disabled={workingAction !== null}
+            sx={{ mb: 1.5 }}
+          />
+          <TextField
+            label="Contract text"
+            fullWidth
+            multiline
+            minRows={15}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            disabled={workingAction !== null}
+            helperText={`${draft.length.toLocaleString()} characters${draftChanged ? " · source differs from the displayed proposal" : " · exact source for the displayed proposal"}`}
+          />
+        </SectionCard>
+
+        <SectionCard
+          title={pending ? `Review proposal v${proposal.version}` : `Approved program v${active.version}`}
+          eyebrow="Validated compiler output"
+          action={pending ? (
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+              <Button
+                variant="outlined"
+                disabled={workingAction !== null || !draftChanged}
+                onClick={() => {
+                  setDraft(proposal.source_text);
+                  setSourceDocument(proposal.source_document);
+                  setActionError("");
+                }}
+              >
+                Load proposal source
+              </Button>
+              <Button
+                variant="contained"
+                color="success"
+                disabled={workingAction !== null || draftChanged}
+                onClick={() => void approveRules()}
+                startIcon={workingAction === "approve" ? <CircularProgress size={18} color="inherit" /> : undefined}
+              >
+                Approve immutable version
+              </Button>
+            </Stack>
+          ) : <Chip label="Active and executable" color="success" size="small" />}
+        >
+          {pending && draftChanged && (
+            <Alert severity="error" sx={{ mb: 1.5 }}>
+              The visible source no longer matches proposal v{proposal.version}. Recompile it, or load the exact proposal source before approval.
+            </Alert>
+          )}
+          <Alert severity={pending ? "warning" : "info"}>
+            {pending
+              ? "This proposal is inert. Approval replaces the active rule program and invalidates previous reconciliation results."
+              : proposal.safety_boundary}
+          </Alert>
+          {proposal.fallback_reason && <Alert severity="warning" sx={{ mt: 1.5 }}>{proposal.fallback_reason}</Alert>}
+          <Stack direction="row" gap={0.75} flexWrap="wrap" sx={{ mt: 1.5 }}>
+            <Chip size="small" color="success" variant="outlined" label="JSON schema valid" />
+            <Chip size="small" color="success" variant="outlined" label="Operations allowlisted" />
+            <Chip size="small" color="success" variant="outlined" label="Rule IDs unique" />
+            <Chip size="small" color="success" variant="outlined" label="Priorities unique" />
+          </Stack>
+          <Box className="contract-audit-grid">
+            <Box><small>Source hash</small><code>{proposal.source_hash}</code></Box>
+            <Box><small>Prompt hash</small><code>{proposal.prompt_hash}</code></Box>
+            <Box><small>Created</small><strong>{new Date(proposal.created_at).toLocaleString("en-US")}</strong></Box>
+            <Box><small>Compiler</small><strong>{proposal.provider} / {proposal.compiler_version}</strong></Box>
+          </Box>
+        </SectionCard>
       </Box>
 
       <SectionCard
-        title="Trust boundary"
-        eyebrow="LLM proposes · deterministic engine decides"
-        action={pending ? <Button variant="contained" disabled={working} onClick={approveRules}>Approve rule version</Button> : <Chip label={`Active ${contract.compilation.id}`} color="success" size="small" />}
+        title="Executable rule mapping"
+        eyebrow={pending ? "Proposed changes versus active version" : "Rules used by reconciliation"}
+        action={<Chip label={`${proposal.rules.length} validated rules`} variant="outlined" size="small" />}
       >
-        <Alert severity="info">{compilation.safety_boundary}</Alert>
-        <Box className="template-two-column" sx={{ mt: 2 }}>
-          <Box>
-            <Typography variant="overline" color="text.secondary">Source contract</Typography>
-            <Paper variant="outlined" sx={{ p: 2, mt: 0.5, whiteSpace: "pre-wrap" }}>{contract.contract_text}</Paper>
-          </Box>
-          <Box>
-            <Typography variant="overline" color="text.secondary">Audit record</Typography>
-            <Stack spacing={1} sx={{ mt: 0.5 }}>
-              <Typography variant="body2"><strong>Source hash:</strong> {compilation.source_hash}</Typography>
-              <Typography variant="body2"><strong>Prompt hash:</strong> {compilation.prompt_hash}</Typography>
-              <Typography variant="body2"><strong>Compiler:</strong> {compilation.compiler_version}</Typography>
-              <Typography variant="body2"><strong>Created:</strong> {new Date(compilation.created_at).toLocaleString()}</Typography>
-            </Stack>
-          </Box>
-        </Box>
+        <Stack spacing={1.25}>
+          {[...proposal.rules].sort((a, b) => a.priority - b.priority).map((rule) => {
+            const previous = activeRules.get(rule.id);
+            const change = !pending ? "active" : !previous ? "added" : ruleFingerprint(previous) !== ruleFingerprint(rule) ? "changed" : "unchanged";
+            return (
+              <Box className="contract-rule-row" key={rule.id}>
+                <Box className="contract-rule-identity">
+                  <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
+                    <Chip label={rule.id} size="small" color="primary" />
+                    <Chip
+                      label={change}
+                      size="small"
+                      color={change === "added" || change === "changed" ? "warning" : change === "active" ? "success" : "default"}
+                      variant={change === "unchanged" ? "outlined" : "filled"}
+                    />
+                    <Typography variant="h6">{rule.title}</Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>{rule.description}</Typography>
+                  <Typography variant="body2" sx={{ mt: 1 }}><strong>Clause:</strong> {rule.clause_text}</Typography>
+                </Box>
+                <Box className="contract-rule-program">
+                  <Typography variant="overline" color="text.secondary">Deterministic program</Typography>
+                  <code>{rule.operation}</code>
+                  <Typography variant="caption" color="text.secondary">Priority {rule.priority} · failure → {rule.consequence}</Typography>
+                  <Typography component="pre" variant="caption">{JSON.stringify(rule.parameters, null, 2)}</Typography>
+                </Box>
+                <Box className="contract-rule-evidence">
+                  <Typography variant="overline" color="text.secondary">Required evidence</Typography>
+                  <Stack direction="row" gap={0.5} flexWrap="wrap">
+                    {rule.evidence_required.map((evidence) => <Chip key={evidence} label={evidence} size="small" variant="outlined" />)}
+                  </Stack>
+                </Box>
+              </Box>
+            );
+          })}
+          {pending && active.rules.filter((rule) => !proposalRules.has(rule.id)).map((rule) => (
+            <Box className="contract-rule-row removed" key={rule.id}>
+              <Box className="contract-rule-identity">
+                <Stack direction="row" spacing={0.75} alignItems="center"><Chip label={rule.id} size="small" /><Chip label="removed" size="small" color="error" /><Typography variant="h6">{rule.title}</Typography></Stack>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>This active rule would not exist in the proposed version.</Typography>
+              </Box>
+            </Box>
+          ))}
+        </Stack>
       </SectionCard>
 
-      <Stack spacing={1.5} sx={{ mt: 2 }}>
-        {compilation.rules.sort((a, b) => a.priority - b.priority).map((rule) => (
-          <Card key={rule.id} className="template-rule-card">
-            <CardContent>
-              <Box className="template-rule-grid">
-                <Box><Typography variant="overline" color="text.secondary">Contract clause</Typography><Typography>{rule.clause_text}</Typography></Box>
-                <Box>
-                  <Stack direction="row" spacing={1} alignItems="center"><Chip label={rule.id} color="primary" size="small" /><Typography variant="h6">{rule.title}</Typography></Stack>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{rule.description}</Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>Deterministic operation: <code>{rule.operation}</code> · priority {rule.priority} · failure → {rule.consequence}</Typography>
-                </Box>
-                <Box><Typography variant="overline" color="text.secondary">Parameters and evidence</Typography><Typography component="pre" variant="caption" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(rule.parameters, null, 2)}</Typography><Stack direction="row" gap={0.75} flexWrap="wrap">{rule.evidence_required.map((evidence) => <Chip key={evidence} label={evidence} size="small" variant="outlined" />)}</Stack></Box>
-              </Box>
-            </CardContent>
-          </Card>
-        ))}
-      </Stack>
+      <SectionCard title="Compilation history" eyebrow="Versioned audit trail">
+        <TableContainer>
+          <Table size="small">
+            <TableHead><TableRow><TableCell>Version</TableCell><TableCell>Status</TableCell><TableCell>Compiler</TableCell><TableCell>Rules</TableCell><TableCell>Created</TableCell><TableCell>Source hash</TableCell></TableRow></TableHead>
+            <TableBody>
+              {history.map((item) => (
+                <TableRow key={item.id} selected={item.id === proposal.id}>
+                  <TableCell><strong>v{item.version}</strong><Typography variant="caption" display="block" color="text.secondary">{item.id}</Typography></TableCell>
+                  <TableCell><Chip size="small" label={item.status.replace("_", " ")} color={compilationStatusColor(item.status)} /></TableCell>
+                  <TableCell>{item.live_model_call ? "Live Gemini" : "Recorded Gemini"}</TableCell>
+                  <TableCell>{item.rules.length}</TableCell>
+                  <TableCell>{new Date(item.created_at).toLocaleString("en-US")}</TableCell>
+                  <TableCell><code>{item.source_hash.slice(0, 20)}…</code></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </SectionCard>
     </PageFrame>
   );
 }

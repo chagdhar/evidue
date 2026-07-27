@@ -1,10 +1,19 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class ContractCompileRequest(StrictModel):
+    contract_text: str = Field(min_length=50, max_length=50_000)
+    source_document: str = Field(
+        default="Acme-Nova-Outcome-Pricing-Order-Form.pdf",
+        min_length=3,
+        max_length=255,
+    )
 
 
 class HealthResponse(StrictModel):

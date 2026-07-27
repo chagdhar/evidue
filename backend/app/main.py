@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.schemas import (
+    ContractCompileRequest,
     DataReadinessResponse,
     DataSourceSamplesResponse,
     DemoScenarioResponse,
@@ -83,11 +84,23 @@ def current_contract() -> dict[str, object]:
 
 
 @app.post("/api/contracts/current/compile")
-def compile_contract(mode: str = Query("auto", pattern="^(auto|live|recorded)$")) -> dict[str, object]:
+def compile_contract(
+    request: ContractCompileRequest | None = None,
+    mode: str = Query("auto", pattern="^(auto|live|recorded)$"),
+) -> dict[str, object]:
     try:
-        return repository.compile_contract_rules(mode)
+        return repository.compile_contract_rules(
+            mode,
+            contract_text=request.contract_text if request else None,
+            source_document=request.source_document if request else None,
+        )
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/api/contracts/current/compilations")
+def contract_compilations() -> list[dict[str, object]]:
+    return repository.list_compilations()
 
 
 @app.post("/api/contracts/current/compilations/{compilation_id}/approve")

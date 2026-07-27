@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -10,7 +10,6 @@ from app.contracts.compiler import (
     DEFAULT_CONTRACT_PATH,
     compile_with_gemini,
     load_recorded_proposal,
-    to_rule_program,
 )
 from app.domain.engine import reconcile
 from app.domain.models import ExecutableRule, OperationalEvent, OutcomeClaim, RuleProgram
@@ -29,7 +28,6 @@ from .models import (
     ContractClauseRow,
     ContractRow,
     ContractRuleRow,
-    RuleCompilationRow,
     ConversationRow,
     DemoStateRow,
     EvidenceMatchRow,
@@ -41,6 +39,7 @@ from .models import (
     OutcomeDeterminationRow,
     RawRecordRow,
     ReconciliationRow,
+    RuleCompilationRow,
 )
 
 ROOT = Path(__file__).parents[3]
@@ -118,7 +117,7 @@ def _seed_compilation(session, *, approved: bool = True) -> RuleCompilationRow:
         created_at=datetime(2026, 7, 1, 8, 10),
         approved_at=datetime(2026, 7, 1, 8, 15) if approved else None,
         rules=_proposal_payload(result),
-        raw_response=result.raw_response,
+        raw_response={**result.raw_response, "source_text": DEFAULT_CONTRACT_PATH.read_text()},
     )
     session.add(compilation)
     for rule in result.proposal.rules:
@@ -174,11 +173,15 @@ def _active_rule_program(session) -> RuleProgram:
     )
 
 
-def _compilation_view(row: RuleCompilationRow) -> dict[str, object]:
+def _compilation_view(row: RuleCompilationRow | None) -> dict[str, object]:
+    if row is None:
+        raise LookupError("No contract rule compilation exists")
+    raw_response = row.raw_response or {}
     return {
         "id": row.id,
         "contract_id": row.contract_id,
         "source_document": row.source_document,
+        "source_text": raw_response.get("source_text", DEFAULT_CONTRACT_PATH.read_text()),
         "source_hash": row.source_hash,
         "prompt_hash": row.prompt_hash,
         "provider": row.provider,
@@ -189,8 +192,15 @@ def _compilation_view(row: RuleCompilationRow) -> dict[str, object]:
         "live_model_call": row.live_model_call,
         "created_at": row.created_at.isoformat(),
         "approved_at": row.approved_at.isoformat() if row.approved_at else None,
-        "rules": row.rules,
-        "fallback_reason": row.raw_response.get("fallback_reason") if row.raw_response else None,
+        "rules": sorted(row.rules, key=lambda item: item["priority"]),
+        "fallback_reason": raw_response.get("fallback_reason"),
+        "validation": {
+            "schema_valid": True,
+            "allowlisted_operations": True,
+            "unique_rule_ids": True,
+            "unique_priorities": True,
+            "rule_count": len(row.rules),
+        },
         "safety_boundary": (
             "The LLM proposes only schema-validated rules. Approval creates an immutable version; "
             "the deterministic interpreter alone evaluates invoice claims."
@@ -733,6 +743,14 @@ def summary() -> dict[str, object]:
     }
 
 
+def list_compilations() -> list[dict[str, object]]:
+    with SessionLocal() as session:
+        rows = session.scalars(
+            select(RuleCompilationRow).order_by(RuleCompilationRow.version.desc())
+        ).all()
+        return [_compilation_view(row) for row in rows]
+
+
 def contract() -> dict[str, object]:
     with SessionLocal() as session:
         row = session.scalar(
@@ -742,6 +760,15 @@ def contract() -> dict[str, object]:
         )
         if row is None:
             raise LookupError("Demo contract is not seeded")
+        state = session.get(DemoStateRow, 1)
+        if state is None or not state.active_compilation_id:
+            raise LookupError("No approved contract rule program is active")
+        active = session.get(RuleCompilationRow, state.active_compilation_id)
+        latest = session.scalar(
+            select(RuleCompilationRow).order_by(RuleCompilationRow.version.desc())
+        )
+        active_view = _compilation_view(active)
+        latest_view = _compilation_view(latest)
         return {
             "id": row.id,
             "customer": row.customer,
@@ -769,15 +796,13 @@ def contract() -> dict[str, object]:
                         "compilation_id": clause.rule.compilation_id,
                     },
                 }
-                for clause in sorted(row.clauses, key=lambda item: item.rule_id)
+                for clause in sorted(row.clauses, key=lambda item: item.rule.priority)
             ],
-            "compilation": _compilation_view(
-                session.get(RuleCompilationRow, session.get(DemoStateRow, 1).active_compilation_id)
-            ),
-            "latest_compilation": _compilation_view(
-                session.scalar(select(RuleCompilationRow).order_by(RuleCompilationRow.created_at.desc()))
-            ),
-            "contract_text": DEFAULT_CONTRACT_PATH.read_text(),
+            "compilation": active_view,
+            "latest_compilation": latest_view,
+            "contract_text": active_view["source_text"],
+            "demo_contract_text": DEFAULT_CONTRACT_PATH.read_text(),
+            "live_compilation_available": bool(os.getenv("GEMINI_API_KEY")),
             "evidence_sources": [
                 "Nova Support AI agent log",
                 "Acme support desk",
@@ -788,34 +813,61 @@ def contract() -> dict[str, object]:
         }
 
 
-def compile_contract_rules(mode: str = "auto") -> dict[str, object]:
-    contract_text = DEFAULT_CONTRACT_PATH.read_text()
+def compile_contract_rules(
+    mode: str = "auto",
+    *,
+    contract_text: str | None = None,
+    source_document: str | None = None,
+) -> dict[str, object]:
+    default_text = DEFAULT_CONTRACT_PATH.read_text()
+    selected_text = contract_text if contract_text is not None else default_text
+    selected_document = (source_document or "Acme-Nova-Outcome-Pricing-Order-Form.pdf").strip()
+    if len(selected_text.strip()) < 50:
+        raise ValueError("Contract text must contain at least 50 characters")
+    if len(selected_document) < 3:
+        raise ValueError("Source document must contain at least 3 characters")
+    custom_source = selected_text.strip() != default_text.strip()
     use_live = mode == "live" or (mode == "auto" and bool(os.getenv("GEMINI_API_KEY")))
+    if mode == "recorded" and custom_source:
+        raise ValueError(
+            "The recorded Gemini proposal is tied to the bundled demo contract. "
+            "Restore the demo contract or configure GEMINI_API_KEY for custom text."
+        )
+    if mode == "auto" and custom_source and not os.getenv("GEMINI_API_KEY"):
+        raise ValueError(
+            "Custom contract text requires a live Gemini compilation. Configure GEMINI_API_KEY, "
+            "or replay the recorded proposal using the bundled demo contract."
+        )
     fallback_reason = None
     if use_live:
         try:
             result = compile_with_gemini(
-                contract_text,
+                selected_text,
                 "CONTRACT-ACME-NOVA-2026",
-                "Acme-Nova-Outcome-Pricing-Order-Form.pdf",
+                selected_document,
             )
         except (RuntimeError, ValueError) as exc:
-            if mode == "live":
+            if mode == "live" or custom_source:
                 raise
             fallback_reason = (
                 "Live Gemini compilation failed; loaded the validated recorded proposal: "
                 f"{exc}"
             )
-            result = load_recorded_proposal(contract_text)
+            result = load_recorded_proposal(selected_text)
     else:
-        result = load_recorded_proposal(contract_text)
+        result = load_recorded_proposal(selected_text)
     with SessionLocal.begin() as session:
         latest_version = session.scalar(select(func.max(RuleCompilationRow.version))) or 0
-        compilation_id = f"COMP-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        session.execute(
+            RuleCompilationRow.__table__.update()
+            .where(RuleCompilationRow.status == "pending_approval")
+            .values(status="superseded")
+        )
+        compilation_id = f"COMP-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
         row = RuleCompilationRow(
             id=compilation_id,
             contract_id=result.proposal.contract_id,
-            source_document=result.proposal.source_document,
+            source_document=selected_document,
             source_hash=result.source_hash,
             prompt_hash=result.prompt_hash,
             provider=result.proposal.provider,
@@ -824,11 +876,12 @@ def compile_contract_rules(mode: str = "auto") -> dict[str, object]:
             status="pending_approval",
             version=int(latest_version) + 1,
             live_model_call=result.live_model_call,
-            created_at=datetime.now(),
+            created_at=datetime.now(UTC),
             approved_at=None,
             rules=_proposal_payload(result),
             raw_response={
                 **result.raw_response,
+                "source_text": selected_text,
                 **({"fallback_reason": fallback_reason} if fallback_reason else {}),
             },
         )
@@ -841,10 +894,23 @@ def approve_compilation(compilation_id: str) -> dict[str, object]:
         row = session.get(RuleCompilationRow, compilation_id)
         if row is None:
             raise LookupError("Compilation not found")
+        if row.status == "superseded":
+            raise ValueError(
+                f"Version {row.version} is superseded. Review and approve the latest proposal instead."
+            )
         if row.status != "pending_approval":
             raise ValueError("Only a pending compilation can be approved")
-        # An approved program invalidates any prior determinations. Clear them before
-        # replacing rule rows so the transition is safe even with FK enforcement on.
+        latest_pending = session.scalar(
+            select(RuleCompilationRow)
+            .where(RuleCompilationRow.status == "pending_approval")
+            .order_by(RuleCompilationRow.version.desc())
+        )
+        if latest_pending and latest_pending.id != row.id:
+            raise ValueError(
+                f"Version {row.version} is stale. Review the latest proposal, version {latest_pending.version}."
+            )
+        # An approved program invalidates prior determinations. The interpreter will
+        # recompute them from the newly approved immutable rule program.
         session.execute(delete(EvidenceReferenceRow))
         session.execute(delete(OutcomeDeterminationRow))
         session.execute(delete(ReconciliationRow))
@@ -879,13 +945,20 @@ def approve_compilation(compilation_id: str) -> dict[str, object]:
                 )
             )
         row.status = "approved"
-        row.approved_at = datetime.now()
+        row.approved_at = datetime.now(UTC)
+        session.execute(
+            RuleCompilationRow.__table__.update()
+            .where(
+                RuleCompilationRow.status.in_(["pending_approval", "approved"]),
+                RuleCompilationRow.id != row.id,
+            )
+            .values(status="superseded")
+        )
         state = session.get(DemoStateRow, 1)
         if state:
             state.active_compilation_id = row.id
             state.reconciled = False
     return _compilation_view(row)
-
 
 
 def invoice() -> dict[str, object]:
