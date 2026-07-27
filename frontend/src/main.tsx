@@ -16,12 +16,12 @@ import "./style.css";
 
 const theme = createTheme({
   palette: {
-    primary: { main: "#1d624c", contrastText: "#ffffff" },
-    success: { main: "#1d624c" },
-    warning: { main: "#986513" },
-    error: { main: "#8d2f2a" },
-    text: { primary: "#17201f", secondary: "#63706d" },
-    background: { default: "#f5f3ed", paper: "#fffefb" },
+    primary: { main: "#4f46e5", dark: "#3730a3", light: "#818cf8", contrastText: "#ffffff" },
+    success: { main: "#087f5b" },
+    warning: { main: "#b86b00" },
+    error: { main: "#c2414a" },
+    text: { primary: "#10213a", secondary: "#65758b" },
+    background: { default: "#f4f7fb", paper: "#ffffff" },
   },
   typography: {
     fontFamily: '"Inter", "IBM Plex Sans", system-ui, sans-serif',
