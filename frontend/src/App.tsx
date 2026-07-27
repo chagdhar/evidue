@@ -368,7 +368,7 @@ function ContractSummary({ contract }: { contract: Contract }) {
 
 function EvidenceReadiness({ readiness }: { readiness: DataReadiness }) {
   return (
-    <section className="major-section" aria-labelledby="evidence-readiness-title">
+    <section className="major-section" aria-labelledby="evidence-readiness-title" data-testid="evidence-readiness">
       <Box className="section-intro readiness-intro">
         <Box>
           <Typography className="eyebrow">Evidence readiness</Typography>
@@ -1140,8 +1140,6 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
             </Box>
           </Paper>
         )}
-
-        <EvidenceReadiness readiness={readiness} />
 
         {readiness && <EvidenceReadiness readiness={readiness} />}
 

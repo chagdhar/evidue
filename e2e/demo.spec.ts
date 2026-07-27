@@ -11,7 +11,7 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
     ),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "What requires attention" })).toBeVisible();
-  await expect(page.getByText("$15,000.00", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Submitted invoice: $15,000.00")).toBeVisible();
   await expect(page.getByText("One invoice, seven approved rules")).toBeVisible();
   await expect(page.getByLabel("Synthetic data set")).toHaveCount(0);
   await expect(page.getByText("$12,480.00")).not.toBeVisible();
@@ -21,7 +21,14 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
   await expect(page.getByText("10,000 claimed outcomes from the vendor")).toBeVisible();
   await expect(page.getByText("Ready to reconcile")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Executable billing terms" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Real records are collected and matched before reconciliation" }).first()).toBeVisible();
+  await expect(
+    page
+      .getByTestId("evidence-readiness")
+      .getByRole("heading", {
+        name: "Real records are collected and matched before reconciliation",
+        exact: true,
+      }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Run reconciliation" }).click();
   await expect(page.getByText("Evaluating persisted claims and evidence")).toBeVisible();
@@ -43,7 +50,7 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
   await page.getByRole("button", { name: "Review example dispute" }).click();
 
   await expect(page.getByRole("heading", { name: "OUT-004821", exact: true })).toBeVisible();
-  await expect(page.getByText("Vendor claim")).toBeVisible();
+  await expect(page.getByText("Vendor claim", { exact: true })).toBeVisible();
   await expect(page.getByText("Contract obligation")).toBeVisible();
   await expect(page.getByText("Evidue determination")).toBeVisible();
   await expect(page.getByText("Downstream action failed", { exact: true })).toBeVisible();
@@ -157,8 +164,8 @@ test("two-sided product story connects vendor preflight to independent verificat
   await expect(page).toHaveURL(/\/demo\/vendor-preflight$/);
   await expect(page.getByRole("heading", { name: "Send an invoice you can defend" })).toBeVisible();
   await page.getByRole("button", { name: "Run invoice preflight" }).click();
-  await expect(page.getByText("$12,480.00")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("$2,520.00")).toBeVisible();
+  await expect(page.getByLabel("Preflight-supported amount: $12,480.00")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByLabel("Revenue at risk: $2,520.00")).toBeVisible();
   await expect(page.getByText("Prove prepares. Verify decides.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Likely non-billable" })).toBeVisible();
 

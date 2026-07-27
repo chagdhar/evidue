@@ -447,6 +447,7 @@ describe("Evidue financial-decision demo", () => {
     expect(screen.getByText("10,000 claimed outcomes from the vendor")).toBeInTheDocument();
     expect(screen.getByText("Ready to reconcile")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run reconciliation" })).toBeInTheDocument();
+    expect(screen.getAllByTestId("evidence-readiness")).toHaveLength(1);
     expect(screen.queryByText("$12,480.00")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Claims review" })).not.toBeInTheDocument();
   });

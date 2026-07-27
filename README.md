@@ -85,3 +85,5 @@ The vendor workspace cannot modify customer-approved rules, customer-private evi
 ## UI template
 
 The interface uses a structural adaptation of Material UI's official open-source Dashboard template. See `docs/UI_TEMPLATE.md` for the source, adopted components, and Evidue-specific changes.
+
+See `docs/FINAL_REPAIR_STATUS.md` for the final ingestion-demo repair and validation record.

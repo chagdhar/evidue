@@ -86,7 +86,7 @@ function PageHeader({ eyebrow, title, body, action }: { eyebrow: string; title: 
 
 function MetricCard({ label, value, helper, tone = "neutral", icon }: { label: string; value: string; helper?: string; tone?: "neutral" | "success" | "error" | "warning"; icon?: ReactNode }) {
   return (
-    <Card className={`template-stat-card ${tone}`}>
+    <Card className={`template-stat-card ${tone}`} aria-label={`${label}: ${value}`}>
       <CardContent>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
           <Typography variant="body2" color="text.secondary">{label}</Typography>
