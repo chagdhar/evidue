@@ -74,3 +74,8 @@ The demo now presents Evidue as the financial control layer for outcome-priced A
 - **Evidue Verify** (`/demo/invoices/current`) independently calculates what the customer should pay.
 
 The vendor workspace cannot modify customer-approved rules, customer-private evidence, or the customer's final payment decision.
+
+
+## UI template
+
+The interface uses a structural adaptation of Material UI's official open-source Dashboard template. See `docs/UI_TEMPLATE.md` for the source, adopted components, and Evidue-specific changes.
