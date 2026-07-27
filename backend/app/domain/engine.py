@@ -102,7 +102,9 @@ def attribute_evidence(claim: OutcomeClaim, events: list[OperationalEvent]) -> E
     for event in events:
         source_key = (event.source_system, event.source_record_id)
         if event.id in seen_ids or source_key in seen_source_records:
-            review.append(AttributedEvidence(event, "requires_review", "Duplicated evidence record"))
+            review.append(
+                AttributedEvidence(event, "requires_review", "Duplicated evidence record")
+            )
             continue
         seen_ids.add(event.id)
         seen_source_records.add(source_key)
@@ -263,7 +265,9 @@ def _rule_failure(
 
 
 def _duplicate_rule(program: RuleProgram) -> ExecutableRule | None:
-    return next((rule for rule in program.rules if rule.operation == "unique_first_claim_within"), None)
+    return next(
+        (rule for rule in program.rules if rule.operation == "unique_first_claim_within"), None
+    )
 
 
 def _duplicate_decisions(
@@ -287,8 +291,7 @@ def _duplicate_decisions(
             continue
         claim = determination.claim
         key = tuple(
-            _normalize(_claim_value(claim, field), normalizers.get(field))
-            for field in group_fields
+            _normalize(_claim_value(claim, field), normalizers.get(field)) for field in group_fields
         )
         groups[key].append(claim)
 
@@ -478,9 +481,7 @@ def evaluate(
             comparisons = p["comparisons"]
 
             typed_comparisons = [
-                comparison
-                for comparison in comparisons
-                if isinstance(comparison, dict)
+                comparison for comparison in comparisons if isinstance(comparison, dict)
             ]
             found = next(
                 (

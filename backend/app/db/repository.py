@@ -716,7 +716,11 @@ def summary() -> dict[str, object]:
         if row.status == "disputed" and row.rule_id:
             category = categories.setdefault(
                 row.rule_id,
-                {"label": labels.get(row.rule_id, row.rule_id), "count": 0, "amount_decimal": Decimal()},
+                {
+                    "label": labels.get(row.rule_id, row.rule_id),
+                    "count": 0,
+                    "amount_decimal": Decimal(),
+                },
             )
             category["count"] = int(category["count"]) + 1
             category["amount_decimal"] = (
@@ -786,8 +790,11 @@ def contract() -> dict[str, object]:
                         "description": clause.rule.description,
                         "parameters": {
                             **clause.rule.parameters,
-                            **({"applies_after": ",".join(clause.rule.parameters["applies_after"])}
-                               if isinstance(clause.rule.parameters.get("applies_after"), list) else {}),
+                            **(
+                                {"applies_after": ",".join(clause.rule.parameters["applies_after"])}
+                                if isinstance(clause.rule.parameters.get("applies_after"), list)
+                                else {}
+                            ),
                         },
                         "evidence_required": clause.rule.evidence_required,
                         "consequence": clause.rule.consequence,
@@ -850,8 +857,7 @@ def compile_contract_rules(
             if mode == "live" or custom_source:
                 raise
             fallback_reason = (
-                "Live Gemini compilation failed; loaded the validated recorded proposal: "
-                f"{exc}"
+                f"Live Gemini compilation failed; loaded the validated recorded proposal: {exc}"
             )
             result = load_recorded_proposal(selected_text)
     else:
@@ -931,17 +937,25 @@ def approve_compilation(compilation_id: str) -> dict[str, object]:
             )
             session.add(
                 ContractRuleRow(
-                    id=rule.id, title=rule.title, description=rule.description,
-                    clause_text=rule.clause_text, operation=rule.operation,
-                    parameters=rule.parameters, evidence_required=list(rule.evidence_required),
-                    priority=rule.priority, consequence=rule.consequence,
-                    compilation_id=row.id, version=row.version,
+                    id=rule.id,
+                    title=rule.title,
+                    description=rule.description,
+                    clause_text=rule.clause_text,
+                    operation=rule.operation,
+                    parameters=rule.parameters,
+                    evidence_required=list(rule.evidence_required),
+                    priority=rule.priority,
+                    consequence=rule.consequence,
+                    compilation_id=row.id,
+                    version=row.version,
                 )
             )
             session.add(
                 ContractClauseRow(
-                    id=f"CLAUSE-{rule.id}", contract_id=row.contract_id,
-                    rule_id=rule.id, text=rule.clause_text,
+                    id=f"CLAUSE-{rule.id}",
+                    contract_id=row.contract_id,
+                    rule_id=rule.id,
+                    text=rule.clause_text,
                 )
             )
         row.status = "approved"
