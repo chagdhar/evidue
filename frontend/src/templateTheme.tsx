@@ -9,7 +9,7 @@ type ThemeModeValue = {
 };
 
 const ThemeModeContext = createContext<ThemeModeValue>({
-  mode: "dark",
+  mode: "light",
   toggleMode: () => undefined,
 });
 
@@ -20,7 +20,7 @@ export function useEvidueThemeMode() {
 export function EvidueThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<EvidueMode>(() => {
     const saved = window.localStorage.getItem("evidue-theme");
-    return saved === "light" || saved === "dark" ? saved : "dark";
+    return saved === "light" || saved === "dark" ? saved : "light";
   });
 
   useEffect(() => {
@@ -34,40 +34,41 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
       palette: {
         mode,
         primary: {
-          main: dark ? "#99C2FF" : "#0B6BCB",
-          dark: dark ? "#6EA6F4" : "#074A8A",
-          light: dark ? "#C7DCFF" : "#D9EAFD",
-          contrastText: dark ? "#07182D" : "#FFFFFF",
+          main: dark ? "#9DB6FF" : "#2B59F0",
+          dark: dark ? "#7F9FFF" : "#1E43C7",
+          light: dark ? "#C9D6FF" : "#DDE6FF",
+          contrastText: dark ? "#0F1728" : "#FFFFFF",
         },
-        success: { main: dark ? "#57C98B" : "#168453" },
-        warning: { main: dark ? "#F2B95D" : "#A15C00" },
-        error: { main: dark ? "#FF8A8A" : "#C23434" },
+        success: { main: dark ? "#61C39A" : "#1C7C54" },
+        warning: { main: dark ? "#E4BD67" : "#A87311" },
+        error: { main: dark ? "#E8897D" : "#C85246" },
         background: {
-          default: dark ? "#0B0F14" : "#F6F7F9",
-          paper: dark ? "#121821" : "#FFFFFF",
+          default: dark ? "#16181C" : "#F7F7F5",
+          paper: dark ? "#202328" : "#FFFFFF",
         },
         text: {
-          primary: dark ? "#F3F6FA" : "#1B2430",
-          secondary: dark ? "#A8B3C2" : "#5E6B7A",
+          primary: dark ? "#F4F3EF" : "#171717",
+          secondary: dark ? "#B7B4AE" : "#6B6B68",
         },
-        divider: dark ? "#263140" : "#E0E5EB",
+        divider: dark ? "#353942" : "#E3E1DC",
       },
       typography: {
         fontFamily: 'Inter, "IBM Plex Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        h2: { fontWeight: 700, letterSpacing: "-0.04em" },
-        h3: { fontWeight: 700, letterSpacing: "-0.035em" },
-        h4: { fontWeight: 700, letterSpacing: "-0.025em" },
-        h5: { fontWeight: 650, letterSpacing: "-0.015em" },
-        h6: { fontWeight: 650 },
-        button: { fontWeight: 650, textTransform: "none" },
+        h2: { fontWeight: 700, letterSpacing: "-0.045em" },
+        h3: { fontWeight: 700, letterSpacing: "-0.04em" },
+        h4: { fontWeight: 700, letterSpacing: "-0.03em" },
+        h5: { fontWeight: 640, letterSpacing: "-0.02em" },
+        h6: { fontWeight: 620 },
+        subtitle1: { fontWeight: 590 },
+        button: { fontWeight: 620, textTransform: "none", letterSpacing: "-0.01em" },
         overline: { fontWeight: 700, letterSpacing: "0.08em" },
       },
-      shape: { borderRadius: 10 },
+      shape: { borderRadius: 8 },
       components: {
         MuiCssBaseline: {
           styleOverrides: {
             body: {
-              scrollbarColor: dark ? "#384658 #0B0F14" : "#C5CDD8 #F6F7F9",
+              scrollbarColor: dark ? "#575C64 #16181C" : "#C7C3BB #F7F7F5",
             },
           },
         },
@@ -75,7 +76,8 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
           styleOverrides: {
             root: {
               backgroundImage: "none",
-              border: `1px solid ${dark ? "#263140" : "#E0E5EB"}`,
+              border: `1px solid ${dark ? "#353942" : "#E3E1DC"}`,
+              boxShadow: "none",
             },
           },
         },
@@ -83,33 +85,38 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
           styleOverrides: {
             root: {
               backgroundImage: "none",
-              border: `1px solid ${dark ? "#263140" : "#E0E5EB"}`,
-              boxShadow: dark ? "0 8px 28px rgba(0,0,0,.20)" : "0 2px 10px rgba(31,45,61,.06)",
+              border: `1px solid ${dark ? "#353942" : "#E3E1DC"}`,
+              boxShadow: dark ? "0 1px 0 rgba(255,255,255,.03)" : "0 1px 0 rgba(23,23,23,.03)",
             },
           },
         },
         MuiButton: {
           defaultProps: { disableElevation: true },
           styleOverrides: {
-            root: { borderRadius: 8, minHeight: 38 },
+            root: { borderRadius: 7, minHeight: 38, paddingInline: 14 },
             containedPrimary: {
-              boxShadow: dark ? "0 0 0 1px rgba(153,194,255,.18)" : "none",
+              background: dark ? "#F3F1EC" : "#171717",
+              color: dark ? "#171717" : "#FFFFFF",
+              '&:hover': { background: dark ? "#FFFFFF" : "#0F0F10" },
+            },
+            outlined: {
+              borderColor: dark ? "#4D545F" : "#D7D3CC",
             },
           },
         },
         MuiChip: {
           styleOverrides: {
-            root: { borderRadius: 7, fontWeight: 650 },
+            root: { borderRadius: 6, fontWeight: 620 },
           },
         },
         MuiTableCell: {
           styleOverrides: {
             head: {
-              color: dark ? "#C8D2DF" : "#445164",
-              backgroundColor: dark ? "#171F2A" : "#F3F5F7",
+              color: dark ? "#D7D2C9" : "#5B5B58",
+              backgroundColor: dark ? "#24282F" : "#F5F4F1",
               fontWeight: 700,
             },
-            root: { borderColor: dark ? "#263140" : "#E0E5EB" },
+            root: { borderColor: dark ? "#353942" : "#E9E6E0" },
           },
         },
         MuiDrawer: {
@@ -119,7 +126,14 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
         },
         MuiAlert: {
           styleOverrides: {
-            root: { borderRadius: 9 },
+            root: { borderRadius: 8 },
+          },
+        },
+        MuiAppBar: {
+          styleOverrides: {
+            root: {
+              boxShadow: "none",
+            },
           },
         },
       },

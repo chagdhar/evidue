@@ -2,8 +2,6 @@ import { TemplateIcon } from "./TemplateIcons";
 import {
   AppBar,
   Box,
-  Breadcrumbs,
-  Button,
   Chip,
   Divider,
   Drawer,
@@ -21,7 +19,7 @@ import { ReactNode, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEvidueThemeMode } from "./templateTheme";
 
-const DRAWER_WIDTH = 264;
+const DRAWER_WIDTH = 228;
 
 type NavEntry = {
   label: string;
@@ -77,7 +75,7 @@ function Brand() {
       </Box>
       <Box sx={{ minWidth: 0 }}>
         <Typography variant="h6" noWrap>Evidue</Typography>
-        <Typography variant="caption" color="text.secondary" noWrap>Outcome commerce control</Typography>
+        <Typography variant="caption" color="text.secondary" noWrap>Outcome invoice control</Typography>
       </Box>
     </Stack>
   );
@@ -113,10 +111,10 @@ function NavigationContent({ onNavigate }: { onNavigate?: () => void }) {
         <Box className="demo-environment-card">
           <Stack direction="row" alignItems="center" justifyContent="space-between">
             <Typography variant="subtitle2">Synthetic environment</Typography>
-            <Chip label="Demo" color="warning" size="small" />
+            <Chip label="Synthetic" size="small" variant="outlined" />
           </Stack>
           <Typography variant="caption" color="text.secondary">
-            Deterministic fixtures. No real customer or vendor data.
+            Demonstration data only. No real customer or vendor records.
           </Typography>
         </Box>
       </Box>
@@ -169,10 +167,9 @@ export function DashboardShell({ onOpenHowItWorks }: { onOpenHowItWorks: () => v
               <TemplateIcon name="menu" />
             </IconButton>
             <Box sx={{ minWidth: 0 }}>
-              <Breadcrumbs aria-label="Breadcrumbs" separator="/" sx={{ mb: 0.15 }}>
-                <Typography variant="caption" color="text.secondary">Evidue</Typography>
-                <Typography variant="caption" color="text.secondary">Demo</Typography>
-              </Breadcrumbs>
+              <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: ".06em", textTransform: "uppercase" }}>
+                Evidue demo workspace
+              </Typography>
               <Typography variant="h6" noWrap>{currentTitle}</Typography>
             </Box>
             <Box sx={{ flex: 1 }} />
@@ -187,9 +184,7 @@ export function DashboardShell({ onOpenHowItWorks }: { onOpenHowItWorks: () => v
                   {mode === "dark" ? <TemplateIcon name="sun" /> : <TemplateIcon name="moon" />}
                 </IconButton>
               </Tooltip>
-              <Button variant="outlined" size="small" sx={{ display: { xs: "none", sm: "inline-flex" } }}>
-                Synthetic demo
-              </Button>
+              <Chip label="Synthetic environment" size="small" sx={{ display: { xs: "none", sm: "inline-flex" } }} />
             </Stack>
           </Toolbar>
         </AppBar>

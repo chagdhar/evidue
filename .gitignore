@@ -2,16 +2,13 @@
 node_modules/
 frontend/node_modules/
 frontend/dist/
-frontend/tsconfig.tsbuildinfo
 frontend/*.tsbuildinfo
 .pytest_cache/
 .ruff_cache/
 __pycache__/
 *.pyc
-data/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
 playwright-report/
 test-results/
-docs/GIT_HISTORY.txt
