@@ -16,14 +16,14 @@ import "./style.css";
 
 const theme = createTheme({
   palette: {
-    mode: "dark",
-    primary: { main: "#8b8cff", dark: "#6667dc", light: "#b9baff", contrastText: "#090d1a" },
-    success: { main: "#42d7a1" },
-    warning: { main: "#f6bd62" },
-    error: { main: "#ff7b86" },
-    text: { primary: "#f2f5ff", secondary: "#9ca9bf" },
-    background: { default: "#070b14", paper: "#111827" },
-    divider: "#263247",
+    mode: "light",
+    primary: { main: "#315f73", dark: "#244956", light: "#6f96a6", contrastText: "#f7f2e8" },
+    success: { main: "#2f735f", dark: "#245948", light: "#6ca08f" },
+    warning: { main: "#9a6c2f", dark: "#755022", light: "#c59d67" },
+    error: { main: "#a24f56", dark: "#7d3b41", light: "#c77c82" },
+    text: { primary: "#20282d", secondary: "#687177" },
+    background: { default: "#cbc5ba", paper: "#e6e1d8" },
+    divider: "#b8b1a6",
   },
   typography: {
     fontFamily: '"Inter", "IBM Plex Sans", system-ui, sans-serif',
@@ -33,7 +33,12 @@ const theme = createTheme({
     h5: { fontWeight: 700 },
     button: { fontWeight: 750, textTransform: "none" },
   },
-  shape: { borderRadius: 8 },
+  shape: { borderRadius: 10 },
+  components: {
+    MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
+    MuiButton: { styleOverrides: { root: { boxShadow: "none", borderRadius: 8 } } },
+    MuiChip: { styleOverrides: { root: { borderRadius: 7 } } },
+  },
 });
 
 createRoot(document.getElementById("root")!).render(

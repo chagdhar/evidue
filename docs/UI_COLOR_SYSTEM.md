@@ -1,20 +1,13 @@
-# Evidue UI Color System
+# Evidue Mineral Theme
 
-## Theme
+The final interface uses an institutional mineral palette rather than default SaaS white or developer-tool black.
 
-The final demo uses a dark financial-control interface designed to reduce exposed white surfaces and create a more credible operations-console feel.
+- Warm stone canvas: reduces glare and avoids empty white space.
+- Parchment/slate surfaces: creates depth without making the product dark.
+- Petrol blue: brand actions and neutral product controls.
+- Forest green: confirmed payable only.
+- Muted brick: confirmed disputes only.
+- Ochre: needs-review states only.
+- Charcoal header: gives the product a stable financial-control frame.
 
-## Brand colors
-
-- Canvas: near-black navy `#070B14`
-- Primary surface: deep slate `#111827`
-- Raised surface: blue slate `#162033`
-- Brand accent: periwinkle indigo `#8B8CFF`
-
-## Financial semantics
-
-- Confirmed payable: emerald `#42D7A1`
-- Confirmed disputed: coral `#FF7B86`
-- Needs review: amber `#F6BD62`
-
-Brand colors never replace financial-state colors. Indigo identifies Evidue actions and vendor workflows; emerald, coral, and amber remain reserved for financial meaning.
+The objective is to feel like premium financial infrastructure: calm, credible, evidence-led, and distinct from AI-chat products.
