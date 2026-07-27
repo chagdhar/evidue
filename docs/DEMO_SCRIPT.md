@@ -8,7 +8,7 @@ Open `/demo`.
 
 > "Outcome-priced AI vendors calculate their own bills. Evidue gives finance an independent control over what the contract and the customer’s systems actually support paying. This is synthetic, deterministic demonstration data."
 
-Show the finance-control overview: Nova Support AI, June 2026, $15,000 submitted, seven approved rules, and the recurring invoice history. Click **Open June invoice**.
+Show the finance-control overview: Nova Support AI, June 2026, $15,000 submitted, 50,302 collected source records, 100% claim coverage, seven approved rules, and the four-stage decision path. Point to the OUT-004821 example charge path, then click **Open Customer Verify**.
 
 ### 15–38 seconds — Real-data collection and readiness
 
@@ -16,7 +16,7 @@ Open **Data Sources**.
 
 > "Real systems do not arrive already joined. Evidue collects vendor claims and customer-owned support, payment, product, billing, identity, and contract records; preserves the originals; normalizes them; and resolves identifiers before any payment rule runs."
 
-Show 10,000 claims, the aggregate source-record count, 9,975 direct matches, 25 secondary-key matches, and zero identity reviews. Open one payment-processor raw record, then return to Customer Verify.
+Show 10,000 claims, the aggregate source-record count, 9,975 direct matches, 25 secondary-key matches, and zero identity reviews. Click **Inspect** on Payment processor. The right-side inspector must open and show the rejected raw payload, canonical Evidue event, match method, confidence, schema version, and content hash. Close the inspector, then return to Customer Verify.
 
 > "These records are synthetic, but they use the same ingestion stages planned for customer data. We start with exports, then replace them with read-only APIs or warehouse views."
 

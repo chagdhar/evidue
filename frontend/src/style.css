@@ -711,3 +711,206 @@ button, a { text-underline-offset: 3px; }
   .payload-arrow { transform: rotate(90deg); }
   .payload-comparison pre { min-height: 220px; }
 }
+
+/* Overview command center */
+.overview-command-card {
+  margin-bottom: 24px;
+  overflow: hidden;
+  border-radius: 12px;
+}
+.overview-command-card .MuiCardContent-root { padding: 26px; }
+.overview-command-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, .72fr);
+  gap: 28px;
+  align-items: stretch;
+}
+.overview-invoice-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 24px;
+}
+.overview-invoice-meta > span,
+.source-inspector-context > span {
+  display: grid;
+  gap: 3px;
+  padding: 12px 13px;
+  background: var(--ev-surface-soft);
+  border: 1px solid var(--ev-border-soft);
+  border-radius: 8px;
+}
+.overview-invoice-meta small,
+.source-inspector-context small {
+  color: var(--ev-muted);
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.overview-decision-panel {
+  padding: 20px;
+  background: var(--ev-surface-soft);
+  border: 1px solid var(--ev-border);
+  border-radius: 10px;
+}
+.overview-submitted-amount {
+  margin-top: 3px !important;
+  font: 700 clamp(2rem, 4vw, 3rem)/1.05 "IBM Plex Mono", monospace !important;
+  letter-spacing: -.055em !important;
+}
+.overview-decision-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 8px 0;
+}
+.overview-decision-row strong { font-family: "IBM Plex Mono", monospace; }
+.overview-decision-row .payable { color: var(--ev-success); }
+.overview-decision-row .disputed { color: var(--ev-error); }
+.overview-decision-row .pending { color: var(--ev-muted); }
+.overview-decision-path { margin: 28px 0 24px; }
+.overview-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.overview-stage {
+  position: relative;
+  min-height: 172px;
+  padding: 18px;
+  background: var(--ev-surface);
+  border: 1px solid var(--ev-border);
+  border-radius: 9px;
+}
+.overview-stage.complete { border-top: 3px solid var(--ev-success); }
+.overview-stage.pending { border-top: 3px solid var(--ev-warning); }
+.overview-stage-marker {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-bottom: 16px;
+  color: var(--ev-text);
+  background: var(--ev-surface-soft);
+  border: 1px solid var(--ev-border);
+  border-radius: 50%;
+  font-size: .75rem;
+  font-weight: 750;
+}
+.overview-stage.complete .overview-stage-marker {
+  color: var(--ev-success);
+  background: var(--ev-success-soft);
+  border-color: color-mix(in srgb, var(--ev-success) 35%, var(--ev-border));
+}
+.overview-stage h6 { margin: 3px 0 7px; }
+.overview-detail-grid { align-items: start; }
+.overview-rule-grid { display: grid; gap: 2px; }
+.overview-rule-item {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ev-border-soft);
+}
+.overview-rule-item:last-child { border-bottom: 0; }
+.overview-rule-item strong,
+.overview-rule-item small { display: block; }
+.overview-rule-item small { margin-top: 2px; color: var(--ev-muted); }
+.example-evidence-flow { display: grid; gap: 0; }
+.example-evidence-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 12px;
+  padding: 10px 0 14px;
+}
+.example-evidence-step:not(:last-child)::after {
+  position: absolute;
+  top: 36px;
+  bottom: -2px;
+  left: 15px;
+  width: 1px;
+  background: var(--ev-border);
+  content: "";
+}
+.example-evidence-step > span {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--ev-primary);
+  background: var(--ev-primary-soft);
+  border: 1px solid color-mix(in srgb, var(--ev-primary) 30%, var(--ev-border));
+  border-radius: 50%;
+  font-size: .75rem;
+  font-weight: 750;
+}
+.example-evidence-step strong,
+.example-evidence-step small { display: block; }
+.example-evidence-step small { margin-top: 3px; color: var(--ev-muted); line-height: 1.45; }
+.overview-authority-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.overview-authority-grid > div {
+  padding: 16px;
+  background: var(--ev-surface-soft);
+  border: 1px solid var(--ev-border-soft);
+  border-radius: 8px;
+}
+
+/* Source inspector drawer */
+.source-inspector-drawer { padding: 28px; }
+.source-inspector-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--ev-border);
+}
+.source-inspector-context {
+  display: grid;
+  grid-template-columns: .7fr 1.5fr .7fr;
+  gap: 10px;
+  margin: 18px 0;
+}
+.source-inspector-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 220px;
+  color: var(--ev-muted);
+}
+.source-inspector-records {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+.source-inspector-transformation { background: transparent; }
+
+@media (max-width: 1120px) {
+  .overview-command-main { grid-template-columns: 1fr; }
+  .overview-stage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview-authority-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .overview-command-card .MuiCardContent-root { padding: 18px; }
+  .overview-invoice-meta,
+  .overview-stage-grid,
+  .source-inspector-context,
+  .source-inspector-records { grid-template-columns: 1fr; }
+  .source-inspector-drawer { padding: 20px 16px; }
+  .source-inspector-header { align-items: stretch; flex-direction: column; }
+}
+.overview-deduction-item { grid-template-columns: 44px 1fr auto; align-items: center; }
+.overview-deduction-item > .money { color: var(--ev-error); }
+@media (max-width: 520px) {
+  .overview-deduction-item { grid-template-columns: 44px 1fr; }
+  .overview-deduction-item > .money { grid-column: 2; }
+}

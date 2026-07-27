@@ -10,13 +10,19 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
       "Operationally realistic data generated deterministically. No real customer or vendor data is shown.",
     ),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "What requires attention" })).toBeVisible();
-  await expect(page.getByLabel("Submitted invoice: $15,000.00")).toBeVisible();
-  await expect(page.getByText("One invoice, seven approved rules")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Know what the AI vendor actually earned" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "How Evidue reaches a payable amount" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Example charge path" })).toBeVisible();
+  await expect(page.getByText("50,302 records", { exact: true })).toBeVisible();
+  const overviewDecision = page.getByLabel("Current invoice decision");
+  await expect(overviewDecision).toContainText("$15,000.00");
+  await expect(overviewDecision).toContainText("Supported payable");
+  await expect(page.getByRole("heading", { name: "What the contract will test" })).toBeVisible();
+  await expect(page.getByText("Seven executable controls", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Synthetic data set")).toHaveCount(0);
   await expect(page.getByText("$12,480.00")).not.toBeVisible();
 
-  await page.getByRole("button", { name: "Open June invoice" }).click();
+  await page.getByRole("button", { name: "Open Customer Verify" }).click();
   await expect(page).toHaveURL(/\/demo\/invoices\/current$/);
   await expect(page.getByText("10,000 claimed outcomes from the vendor")).toBeVisible();
   await expect(page.getByText("Ready to reconcile")).toBeVisible();
@@ -84,9 +90,26 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
 });
 
 
+test("overview runs the financial control and opens the completed decision", async ({ page }) => {
+  await page.request.post("/api/demo/reset?scenario_id=headline");
+  await page.goto("/demo");
+
+  const decision = page.getByLabel("Current invoice decision");
+  await expect(decision).toContainText("Pending");
+  await page.getByRole("button", { name: "Run June reconciliation" }).click();
+  await expect(decision).toContainText("$12,480.00", { timeout: 60_000 });
+  await expect(decision).toContainText("$2,520.00");
+  await expect(page.getByRole("button", { name: "Open full decision" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Open full decision" }).click();
+  await expect(page).toHaveURL(/\/demo\/invoices\/current$/);
+  await expect(page.locator(".payable-amount")).toHaveText("$12,480.00");
+});
+
+
 test("production-shaped data collection is inspectable before reconciliation", async ({ page }) => {
   await page.request.post("/api/demo/reset?scenario_id=headline");
-  await page.goto("/demo/data-sources");
+  await page.goto("/demo/data-sources?source=payment_processor&inspect=1");
 
   await expect(page.getByRole("heading", { name: "How real customer data enters Evidue" })).toBeVisible();
   await expect(page.getByText("50,302")).toBeVisible();
@@ -96,11 +119,24 @@ test("production-shaped data collection is inspectable before reconciliation", a
   await expect(page.getByRole("row").filter({ hasText: "Payment processor" })).toBeVisible();
   await expect(page.getByText("Contract documents", { exact: true })).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "Raw record → normalized evidence" })).toBeVisible();
-  await expect(page.getByText("As received from source")).toBeVisible();
-  await expect(page.getByText("Canonical Evidue record")).toBeVisible();
-  await expect(page.locator(".payload-comparison pre").first()).toContainText("rejected");
-  await expect(page.getByText(/Production retains every permitted raw record/)).toBeVisible();
+  const inspector = page.getByTestId("source-inspector");
+  await expect(inspector).toBeVisible();
+  await expect(inspector.getByRole("heading", { name: "Payment processor" })).toBeVisible();
+  await expect(inspector.getByText("As received from source")).toBeVisible();
+  await expect(inspector.getByText("Canonical Evidue record")).toBeVisible();
+  await expect(inspector.locator(".payload-comparison pre").first()).toContainText("rejected");
+  await expect(inspector).toContainText("processor-4821");
+  await page.getByRole("button", { name: "Close inspector" }).click();
+  await expect(inspector).not.toBeVisible();
+
+  await page.getByRole("button", { name: "Inspect Payment processor" }).click();
+  await expect(inspector).toBeVisible();
+  await page.getByRole("button", { name: "Close inspector" }).click();
+
+  await page.getByRole("button", { name: "Inspect Vendor claim manifest" }).click();
+  await expect(inspector.getByRole("heading", { name: "Vendor claim manifest" })).toBeVisible();
+  await expect(inspector).toContainText("vendor_claim");
+  await expect(inspector.getByText(/Production retains every permitted raw record/)).toBeVisible();
 });
 
 test("focused synthetic data sets demonstrate distinct contract decisions", async ({

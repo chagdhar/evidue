@@ -17,10 +17,10 @@ model. It is not yet an SDK, signed registry, or production permission system.
 
 ## Product demo recording path (85–95 seconds)
 
-1. **Overview — 0–10 seconds**
-   - Show `Prove before invoicing. Verify before payment.`
-   - Explain that vendors need to prove outcomes and customers need to verify
-     what they owe.
+1. **Overview — 0–15 seconds**
+   - Show the current $15,000 invoice, 50,302 collected source records, 100% evidence coverage, and the four-stage decision path.
+   - Point to the OUT-004821 example charge path.
+   - Explain that Evidue determines what the vendor earned from customer-owned evidence and approved contract rules—not a quality score.
 
 2. **Vendor Preflight — 10–25 seconds**
    - Open Vendor Preflight.
@@ -30,10 +30,11 @@ model. It is not yet an SDK, signed registry, or production permission system.
    - State: “This synthetic demo uses the same evidence on both sides so the
      mechanism is inspectable. Production evidence stores are separate.”
 
-3. **Data collection — 25–38 seconds**
+3. **Data collection — 25–42 seconds**
    - Open Data Sources.
    - Show eight source systems, 100% coverage, 9,975 direct matches, and 25 secondary-key matches.
-   - Open one raw payment record briefly.
+   - Click **Inspect Payment processor**. Confirm the right-side inspector opens.
+   - Show the original rejected payment payload, normalized event, match method, confidence, schema version, and hash.
    - State: “The records are synthetic, but they enter through the same preserve, normalize, match, and evaluate stages planned for customer data.”
 
 4. **Outcome Ledger — 38–46 seconds**
@@ -73,3 +74,12 @@ product screen recording as the founder video.
 - Illustrative historical invoices do not appear on the primary Overview path.
 - Every production route loads directly after browser refresh.
 - All three exports download and reconcile to 1,680 disputes and $2,520.
+
+
+## Interaction regression checks
+
+- Every source-table **Inspect** button opens the right-side source inspector, including the already-selected Payment processor row.
+- The inspector shows an explicit loading state and an explicit error state.
+- Closing and reopening the inspector works.
+- Selecting a second source replaces the record list and source metadata.
+- The Overview never exposes a payable or deduction before reconciliation runs.
