@@ -20,9 +20,31 @@ export type Rule = {
   id: string;
   title: string;
   description: string;
-  parameters: Record<string, string>;
+  parameters: Record<string, unknown>;
   evidence_required: string[];
   consequence: string;
+  operation: string;
+  priority: number;
+  compilation_id?: string;
+};
+
+export type RuleCompilation = {
+  id: string;
+  contract_id: string;
+  source_document: string;
+  source_hash: string;
+  prompt_hash: string;
+  provider: string;
+  model: string;
+  compiler_version: string;
+  status: "pending_approval" | "approved";
+  version: number;
+  live_model_call: boolean;
+  created_at: string;
+  approved_at: string | null;
+  rules: Array<Rule & { clause_text: string }>;
+  safety_boundary: string;
+  fallback_reason?: string | null;
 };
 
 export type Contract = {
@@ -34,6 +56,9 @@ export type Contract = {
   price_per_outcome: string;
   clauses: Array<{ id: string; text: string; rule: Rule }>;
   evidence_sources: string[];
+  contract_text: string;
+  compilation: RuleCompilation;
+  latest_compilation: RuleCompilation;
 };
 
 export type Invoice = {
@@ -217,6 +242,13 @@ export const api = {
   status: () => request<DemoStatus>("/demo/status"),
   scenarios: () => request<DemoScenario[]>("/demo/scenarios"),
   contract: () => request<Contract>("/contracts/current"),
+  compileContract: (mode: "auto" | "live" | "recorded" = "auto") =>
+    request<RuleCompilation>(`/contracts/current/compile?mode=${mode}`, { method: "POST" }),
+  approveCompilation: (compilationId: string) =>
+    request<RuleCompilation>(
+      `/contracts/current/compilations/${encodeURIComponent(compilationId)}/approve`,
+      { method: "POST" },
+    ),
   dataReadiness: () => request<DataReadiness>("/data-readiness"),
   sourceSamples: (sourceId: string, outcomeId?: string, limit = 8) => {
     const query = new URLSearchParams({ limit: String(limit) });

@@ -15,6 +15,32 @@ PRICE = Decimal("1.50")
 
 
 @dataclass(frozen=True)
+class ExecutableRule:
+    id: str
+    title: str
+    description: str
+    clause_text: str
+    operation: str
+    parameters: dict[str, object]
+    evidence_required: tuple[str, ...]
+    priority: int
+    consequence: DeterminationStatus
+    compilation_id: str
+
+
+@dataclass(frozen=True)
+class RuleProgram:
+    compilation_id: str
+    version: int
+    source_hash: str
+    rules: tuple[ExecutableRule, ...]
+
+    @property
+    def engine_version(self) -> str:
+        return f"rules/{self.version}:{self.compilation_id}"
+
+
+@dataclass(frozen=True)
 class Contract:
     id: str
     customer: str
@@ -138,57 +164,31 @@ class Reconciliation:
     engine_version: str
 
 
-RULES = (
-    ContractRule(
-        "R1",
-        "No same-intent recontact",
-        "No same-intent customer contact within seven calendar days.",
-        {"window_days": "7"},
-        ("ai_closed", "customer_recontact"),
-    ),
-    ContractRule(
-        "R2",
-        "No human completion",
-        "No human completion or material correction within 24 hours.",
-        {"window_hours": "24"},
-        ("ai_closed", "human_completion"),
-    ),
-    ContractRule(
-        "R3",
-        "Downstream action succeeds",
-        "The promised downstream action succeeds within two hours.",
-        {"window_hours": "2"},
-        ("ai_closed", "downstream_succeeded"),
-    ),
-    ContractRule(
-        "R4",
-        "Single attribution",
-        (
-            "Among otherwise-payable claims, only the earliest outcome for a customer "
-            "and normalized intent is billable in 24 hours."
-        ),
-        {"window_hours": "24", "applies_after": "R1,R2,R3,R5,R6,R7"},
-        ("claim_context", "ai_closed"),
-    ),
-    ContractRule(
-        "R5",
-        "Account and action match",
-        "Operational evidence matches the expected account and action.",
-        {},
-        ("ai_closed", "account_action_mismatch"),
-    ),
-    ContractRule(
-        "R6",
-        "Billing period",
-        "The outcome closes inside the invoice billing period.",
-        {"start": "2026-06-01", "end_exclusive": "2026-07-01"},
-        ("ai_closed",),
-    ),
-    ContractRule(
-        "R7",
-        "Sufficient identifiers",
-        "The claim can be associated with conversation and operational evidence.",
-        {},
-        ("ai_closed",),
-    ),
-)
+@dataclass(frozen=True)
+class ExecutableRule:
+    """Validated rule emitted by the contract compiler."""
+
+    id: str
+    title: str
+    description: str
+    clause_text: str
+    operation: str
+    parameters: dict[str, object]
+    evidence_required: tuple[str, ...]
+    priority: int
+    consequence: DeterminationStatus
+    compilation_id: str
+
+
+@dataclass(frozen=True)
+class RuleProgram:
+    """Immutable, human-approved input to the deterministic engine."""
+
+    compilation_id: str
+    version: int
+    source_hash: str
+    rules: tuple[ExecutableRule, ...]
+
+    @property
+    def engine_version(self) -> str:
+        return f"deterministic-v2/program-{self.version}"

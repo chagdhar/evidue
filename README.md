@@ -28,6 +28,35 @@ reconciliation** to invoke the backend engine. It evaluates all 10,000 claims,
 persists the determinations, and returns a $12,480 corrected payable amount with
 a $2,520 recommended deduction.
 
+## Contract-to-rules workflow
+
+The demo no longer treats Python constants as the source of truth for billing terms.
+It implements the complete control boundary Evidue needs in production:
+
+1. A Gemini compiler converts the natural-language contract into a constrained JSON rule proposal.
+2. Pydantic rejects unknown operations, malformed windows, duplicate priorities, and invalid output.
+3. The proposal remains `pending_approval` until a human approves an immutable version.
+4. Reconciliation loads that approved version from SQLite and runs a generic deterministic interpreter.
+5. The LLM is never called while deciding whether an invoice line is payable, disputed, or needs review.
+
+The repository includes a validated recorded proposal so the YC demo works offline. To make a live Gemini
+call, export `GEMINI_API_KEY` before starting the backend. `GEMINI_MODEL` is optional. No API key is checked
+into this repository.
+
+In the UI, open **Contract compiler**, click **Compile contract**, inspect the proposed operations, approve the
+new version, and then run reconciliation. See [docs/CONTRACT_COMPILER.md](docs/CONTRACT_COMPILER.md).
+
+## Contract-to-rules demo
+
+Open `/demo/contracts/current` before running the invoice. Click **Compile contract**:
+
+1. Gemini converts the natural-language order form into a constrained JSON rule proposal.
+2. Pydantic validates the proposal against six supported deterministic operators.
+3. The proposal remains inactive until **Approve rule version** is clicked.
+4. Reconciliation executes only the approved immutable version; the LLM never adjudicates a charge.
+
+Set `GEMINI_API_KEY` in a local `.env` file for a live call. With no key, the same screen replays a checked-in, schema-validated Gemini response so the YC demo is reliable offline. See [docs/LLM_RULE_COMPILER.md](docs/LLM_RULE_COMPILER.md).
+
 Before reconciliation, the demo now shows the production-shaped evidence path:
 eight vendor and customer sources, aggregate source-record volumes, 9,975 direct
 matches, 25 verified secondary-key matches, raw payload hashes, normalized

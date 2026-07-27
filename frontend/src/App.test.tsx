@@ -9,45 +9,85 @@ const ruleDefinitions = [
     id: "R1",
     title: "No same-intent recontact",
     description: "No same-intent contact within seven days.",
-    parameters: { window_days: "7" },
+    operation: "prohibit_event_within",
+    priority: 30,
+    parameters: { window_value: 7, window_unit: "days" },
   },
   {
     id: "R2",
     title: "No human completion",
     description: "No human completion within 24 hours.",
-    parameters: { window_hours: "24" },
+    operation: "prohibit_event_within",
+    priority: 40,
+    parameters: { window_value: 24, window_unit: "hours" },
   },
   {
     id: "R3",
     title: "Downstream action succeeds",
     description: "The promised downstream action succeeds within two hours.",
-    parameters: { window_hours: "2" },
+    operation: "require_success_event_within",
+    priority: 50,
+    parameters: { window_value: 2, window_unit: "hours" },
   },
   {
     id: "R4",
     title: "Single attribution",
     description: "Only one otherwise-payable outcome is billable.",
-    parameters: { window_hours: "24" },
+    operation: "unique_first_claim_within",
+    priority: 100,
+    parameters: { window_value: 24, window_unit: "hours" },
   },
   {
     id: "R5",
     title: "Account and action match",
     description: "Operational evidence matches the expected account and action.",
+    operation: "prohibit_field_mismatch_event",
+    priority: 60,
     parameters: {},
   },
   {
     id: "R6",
     title: "Billing period",
     description: "The outcome closes inside the billing period.",
+    operation: "claim_datetime_in_range",
+    priority: 20,
     parameters: { start: "2026-06-01", end_exclusive: "2026-07-01" },
   },
   {
     id: "R7",
     title: "Sufficient identifiers",
     description: "The claim has sufficient identifiers.",
+    operation: "validate_evidence_envelope",
+    priority: 10,
     parameters: {},
   },
 ];
+
+const compiledRules = ruleDefinitions.map((rule) => ({
+  ...rule,
+  clause_text: `Contract clause for ${rule.id}`,
+  evidence_required: ["ai_closed"],
+  consequence: rule.id === "R7" ? "needs_review" : "disputed",
+  compilation_id: "COMP-RECORDED-GEMINI-V1",
+}));
+
+const compilation = {
+  id: "COMP-RECORDED-GEMINI-V1",
+  contract_id: "CONTRACT-1",
+  source_document: "Acme-Nova-Outcome-Pricing-Order-Form.pdf",
+  source_hash: "sha256:contract",
+  prompt_hash: "sha256:prompt",
+  provider: "google-gemini",
+  model: "gemini-2.5-flash-lite",
+  compiler_version: "1.0",
+  status: "approved" as const,
+  version: 1,
+  live_model_call: false,
+  created_at: "2026-07-01T08:10:00",
+  approved_at: "2026-07-01T08:15:00",
+  rules: compiledRules,
+  safety_boundary: "The LLM proposes only schema-validated rules; the deterministic interpreter evaluates claims.",
+};
 
 const contract = {
   id: "CONTRACT-1",
@@ -56,16 +96,15 @@ const contract = {
   period_start: "2026-06-01T00:00:00",
   period_end: "2026-07-01T00:00:00",
   price_per_outcome: "1.50",
-  clauses: ruleDefinitions.map((rule) => ({
+  clauses: compiledRules.map((rule) => ({
     id: `CLAUSE-${rule.id}`,
-    text: `Contract clause for ${rule.id}`,
-    rule: {
-      ...rule,
-      evidence_required: ["ai_closed"],
-      consequence: "Charge is not payable.",
-    },
+    text: rule.clause_text,
+    rule,
   })),
   evidence_sources: ["Payment processor", "Acme support desk"],
+  contract_text: "Synthetic contract excerpt — demonstration only\nPrice: $1.50 per supported outcome",
+  compilation,
+  latest_compilation: compilation,
 };
 
 const invoice = {

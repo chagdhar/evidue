@@ -1,19 +1,23 @@
+from __future__ import annotations
+
 from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal
+from functools import lru_cache
+from typing import Any
 
 from .models import (
     AttributedEvidence,
     DuplicateDecision,
     EvidenceAttribution,
     EvidenceReference,
+    ExecutableRule,
     OperationalEvent,
     OutcomeClaim,
     OutcomeDetermination,
+    RuleProgram,
 )
 
-START = datetime(2026, 6, 1)
-END = datetime(2026, 7, 1)
 EVALUATED_AT = datetime(2026, 7, 1, 12)
 ZERO = Decimal("0.00")
 
@@ -33,12 +37,21 @@ ACTION_SENSITIVE_EVENTS = {
 }
 
 
+@lru_cache(maxsize=1)
+def _default_program() -> RuleProgram:
+    # Lazy import avoids a models/compiler import cycle and loads the immutable,
+    # validated, human-approved recorded proposal only once per process.
+    from app.contracts.compiler import recorded_rule_program
+
+    return recorded_rule_program()
+
+
 def normalize_intent(intent: str) -> str:
     return " ".join(intent.casefold().replace("_", " ").replace("-", " ").split())
 
 
 def attribute_evidence(claim: OutcomeClaim, events: list[OperationalEvent]) -> EvidenceAttribution:
-    """Classify evidence before any contract rule can inspect it."""
+    """Classify source evidence before any approved contract rule can inspect it."""
     direct: list[AttributedEvidence] = []
     review: list[AttributedEvidence] = []
     unrelated: list[AttributedEvidence] = []
@@ -49,24 +62,14 @@ def attribute_evidence(claim: OutcomeClaim, events: list[OperationalEvent]) -> E
     for event in events:
         source_key = (event.source_system, event.source_record_id)
         if event.id in seen_ids or source_key in seen_source_records:
-            review.append(
-                AttributedEvidence(
-                    event,
-                    "requires_review",
-                    "Duplicated evidence record",
-                )
-            )
+            review.append(AttributedEvidence(event, "requires_review", "Duplicated evidence record"))
             continue
         seen_ids.add(event.id)
         seen_source_records.add(source_key)
 
         if event.outcome_id is None:
             review.append(
-                AttributedEvidence(
-                    event,
-                    "requires_review",
-                    "Evidence has no outcome identifier",
-                )
+                AttributedEvidence(event, "requires_review", "Evidence has no outcome identifier")
             )
             continue
         if event.customer_id != claim.customer_id or event.outcome_id != claim.outcome_id:
@@ -158,6 +161,8 @@ def _result(
     reason: str,
     rule_id: str | None,
     evidence: list[OperationalEvent],
+    *,
+    program: RuleProgram,
     duplicate_decision: DuplicateDecision | None = None,
 ) -> OutcomeDetermination:
     payable = claim.billed_amount if status == "payable" else ZERO
@@ -174,24 +179,85 @@ def _result(
         needs_review_amount=review,
         evaluated_at=EVALUATED_AT,
         duplicate_decision=duplicate_decision,
+        engine_version=program.engine_version,
     )
 
 
+def _window(parameters: dict[str, object]) -> timedelta:
+    value = int(parameters["window_value"])
+    unit = str(parameters["window_unit"])
+    return timedelta(days=value) if unit == "days" else timedelta(hours=value)
+
+
+def _claim_value(claim: OutcomeClaim, field: str) -> Any:
+    if not hasattr(claim, field):
+        raise ValueError(f"Approved rule references unsupported claim field: {field}")
+    return getattr(claim, field)
+
+
+def _normalize(value: object, normalizer: object | None) -> object:
+    if normalizer == "intent":
+        return normalize_intent(str(value))
+    return value
+
+
+def _review_rule(program: RuleProgram) -> ExecutableRule:
+    return next(rule for rule in program.rules if rule.consequence == "needs_review")
+
+
+def _rule_failure(
+    claim: OutcomeClaim,
+    rule: ExecutableRule,
+    reason: str,
+    evidence: list[OperationalEvent],
+    program: RuleProgram,
+) -> OutcomeDetermination:
+    return _result(
+        claim,
+        rule.consequence,
+        reason,
+        rule.id,
+        evidence,
+        program=program,
+    )
+
+
+def _duplicate_rule(program: RuleProgram) -> ExecutableRule | None:
+    return next((rule for rule in program.rules if rule.operation == "unique_first_claim_within"), None)
+
+
 def _duplicate_decisions(
-    provisional: list[OutcomeDetermination],
+    provisional: list[OutcomeDetermination], program: RuleProgram
 ) -> dict[str, DuplicateDecision]:
-    """Find duplicates only among claims that passed every non-R4 rule."""
-    groups: dict[tuple[str, str], list[OutcomeClaim]] = defaultdict(list)
+    """Apply the approved uniqueness operation only after all per-claim rules pass."""
+    rule = _duplicate_rule(program)
+    if rule is None:
+        return {}
+    parameters = rule.parameters
+    group_fields = [str(item) for item in parameters["group_by"]]  # type: ignore[index]
+    normalizers = parameters.get("normalizers", {})
+    if not isinstance(normalizers, dict):
+        normalizers = {}
+    order_fields = [str(item) for item in parameters["order_by"]]  # type: ignore[index]
+    window = _window(parameters)
+
+    groups: dict[tuple[object, ...], list[OutcomeClaim]] = defaultdict(list)
     for determination in provisional:
         if determination.status != "payable":
             continue
         claim = determination.claim
-        groups[(claim.customer_id, normalize_intent(claim.intent))].append(claim)
+        key = tuple(
+            _normalize(_claim_value(claim, field), normalizers.get(field))
+            for field in group_fields
+        )
+        groups[key].append(claim)
 
     decisions: dict[str, DuplicateDecision] = {}
-    window = timedelta(hours=24)
     for grouped_claims in groups.values():
-        ordered = sorted(grouped_claims, key=lambda item: (item.closed_at, item.outcome_id))
+        ordered = sorted(
+            grouped_claims,
+            key=lambda item: tuple(_claim_value(item, field) for field in order_fields),
+        )
         winner = ordered[0]
         for candidate in ordered[1:]:
             if candidate.closed_at <= winner.closed_at + window:
@@ -211,155 +277,183 @@ def evaluate(
     events: list[OperationalEvent],
     duplicate_decision: DuplicateDecision | None = None,
     winner_events: list[OperationalEvent] | None = None,
+    *,
+    program: RuleProgram | None = None,
 ) -> OutcomeDetermination:
-    """Evaluate one attributed claim with deterministic, ordered contract rules."""
+    """Interpret one immutable approved rule program; no LLM runs here."""
+    approved = program or _default_program()
     attribution = attribute_evidence(claim, events)
     direct = [item.event for item in attribution.directly_matched]
+    closure: OperationalEvent | None = None
+    success: OperationalEvent | None = None
 
-    if not claim.outcome_id or not claim.customer_id or not claim.account_id:
-        return _result(
-            claim,
-            "needs_review",
-            "Missing required claim identifiers",
-            "R7",
-            [],
-        )
-    if attribution.contradictory:
-        return _result(
-            claim,
-            "needs_review",
-            "; ".join(item.reason for item in attribution.contradictory),
-            "R7",
-            [item.event for item in attribution.contradictory],
-        )
-    if attribution.requires_review:
-        return _result(
-            claim,
-            "needs_review",
-            "; ".join(item.reason for item in attribution.requires_review),
-            "R7",
-            [item.event for item in attribution.requires_review],
-        )
+    for rule in sorted(approved.rules, key=lambda item: item.priority):
+        p = rule.parameters
+        operation = rule.operation
 
-    closure = next((event for event in direct if event.event_type == "ai_closed"), None)
-    if closure is None:
-        return _result(
-            claim,
-            "needs_review",
-            "Missing directly attributed AI closure evidence",
-            "R7",
-            [],
-        )
-    if not START <= claim.closed_at < END:
-        return _result(
-            claim,
-            "disputed",
-            "Outcome falls outside the invoice billing period",
-            "R6",
-            [closure],
-        )
+        if operation == "unique_first_claim_within":
+            continue
 
-    recontact_limit = claim.closed_at + timedelta(days=7)
-    recontact = next(
-        (
-            event
-            for event in direct
-            if event.event_type == "customer_recontact"
-            and normalize_intent(event.values.get("intent", "")) == normalize_intent(claim.intent)
-            and claim.closed_at < event.timestamp <= recontact_limit
-        ),
-        None,
-    )
-    if recontact:
-        return _result(
-            claim,
-            "disputed",
-            "Same-intent recontact within seven calendar days",
-            "R1",
-            [closure, recontact],
-        )
+        if operation == "validate_evidence_envelope":
+            missing = [
+                str(field)
+                for field in p["required_claim_fields"]  # type: ignore[index]
+                if not _claim_value(claim, str(field))
+            ]
+            if missing:
+                return _rule_failure(
+                    claim,
+                    rule,
+                    "Missing required claim identifiers",
+                    [],
+                    approved,
+                )
+            if attribution.contradictory:
+                return _rule_failure(
+                    claim,
+                    rule,
+                    "; ".join(item.reason for item in attribution.contradictory),
+                    [item.event for item in attribution.contradictory],
+                    approved,
+                )
+            if attribution.requires_review:
+                return _rule_failure(
+                    claim,
+                    rule,
+                    "; ".join(item.reason for item in attribution.requires_review),
+                    [item.event for item in attribution.requires_review],
+                    approved,
+                )
+            closure_type = str(p["closure_event_type"])
+            closure = next((event for event in direct if event.event_type == closure_type), None)
+            if closure is None:
+                return _rule_failure(
+                    claim,
+                    rule,
+                    "Missing directly attributed AI closure evidence",
+                    [],
+                    approved,
+                )
+            continue
 
-    human_limit = claim.closed_at + timedelta(hours=24)
-    human = next(
-        (
-            event
-            for event in direct
-            if event.event_type in {"human_completion", "human_material_correction"}
-            and claim.closed_at < event.timestamp <= human_limit
-        ),
-        None,
-    )
-    if human:
-        return _result(
-            claim,
-            "disputed",
-            "Human completed or materially corrected the work within 24 hours",
-            "R2",
-            [closure, human],
-        )
+        if operation == "claim_datetime_in_range":
+            value = _claim_value(claim, str(p["claim_field"]))
+            start = datetime.fromisoformat(str(p["start"]))
+            end = datetime.fromisoformat(str(p["end_exclusive"]))
+            if not start <= value < end:
+                return _rule_failure(
+                    claim,
+                    rule,
+                    "Outcome falls outside the invoice billing period",
+                    [closure] if closure else [],
+                    approved,
+                )
+            continue
 
-    action_events = [
-        event
-        for event in direct
-        if event.event_type in {"downstream_succeeded", "downstream_failed"}
-    ]
-    if not action_events:
-        return _result(
-            claim,
-            "needs_review",
-            "Missing directly attributed evidence for the promised downstream action",
-            "R7",
-            [closure],
-        )
-    action_limit = claim.closed_at + timedelta(hours=2)
-    failed = next(
-        (event for event in action_events if event.event_type == "downstream_failed"),
-        None,
-    )
-    succeeded = next(
-        (
-            event
-            for event in action_events
-            if event.event_type == "downstream_succeeded"
-            and claim.closed_at <= event.timestamp <= action_limit
-        ),
-        None,
-    )
-    if failed or not succeeded:
-        decisive = [closure]
-        if failed:
-            decisive.append(failed)
-        decisive.extend(event for event in direct if event.event_type == "human_refund_completed")
-        return _result(
-            claim,
-            "disputed",
-            "Promised downstream action failed within the required two-hour window",
-            "R3",
-            decisive,
-        )
+        if operation == "prohibit_event_within":
+            anchor = _claim_value(claim, str(p["anchor_claim_field"]))
+            limit = anchor + _window(p)
+            event_types = {str(item) for item in p["event_types"]}  # type: ignore[index]
+            compare_event = p.get("compare_event_value")
+            compare_claim = p.get("compare_claim_field")
+            normalizer = p.get("normalization")
 
-    mismatch = next(
-        (
-            event
-            for event in direct
-            if event.event_type == "account_action_mismatch"
-            and (
-                event.values.get("observed_account_id") != claim.account_id
-                or event.values.get("observed_action") != claim.expected_action
+            def prohibited(event: OperationalEvent) -> bool:
+                if event.event_type not in event_types or not (anchor < event.timestamp <= limit):
+                    return False
+                if compare_event and compare_claim:
+                    return _normalize(event.values.get(str(compare_event), ""), normalizer) == _normalize(
+                        _claim_value(claim, str(compare_claim)), normalizer
+                    )
+                return True
+
+            found = next((event for event in direct if prohibited(event)), None)
+            if found:
+                reason = (
+                    "Same-intent recontact within seven calendar days"
+                    if rule.id == "R1"
+                    else "Human completed or materially corrected the work within 24 hours"
+                )
+                return _rule_failure(
+                    claim,
+                    rule,
+                    reason,
+                    [item for item in [closure, found] if item],
+                    approved,
+                )
+            continue
+
+        if operation == "require_success_event_within":
+            success_type = str(p["success_event_type"])
+            failure_type = str(p["failure_event_type"])
+            action_events = [
+                event for event in direct if event.event_type in {success_type, failure_type}
+            ]
+            if not action_events:
+                review_rule = _review_rule(approved)
+                return _rule_failure(
+                    claim,
+                    review_rule,
+                    "Missing directly attributed evidence for the promised downstream action",
+                    [closure] if closure else [],
+                    approved,
+                )
+            anchor = _claim_value(claim, str(p["anchor_claim_field"]))
+            limit = anchor + _window(p)
+            failed = next(
+                (event for event in action_events if event.event_type == failure_type), None
             )
-        ),
-        None,
-    )
-    if mismatch:
-        return _result(
-            claim,
-            "disputed",
-            "Customer account or expected action did not match operational evidence",
-            "R5",
-            [mismatch],
-        )
+            success = next(
+                (
+                    event
+                    for event in action_events
+                    if event.event_type == success_type and anchor <= event.timestamp <= limit
+                ),
+                None,
+            )
+            if failed or not success:
+                decisive = [closure] if closure else []
+                if failed:
+                    decisive.append(failed)
+                support_types = {str(item) for item in p.get("supporting_event_types", [])}
+                decisive.extend(event for event in direct if event.event_type in support_types)
+                return _rule_failure(
+                    claim,
+                    rule,
+                    "Promised downstream action failed within the required two-hour window",
+                    decisive,
+                    approved,
+                )
+            continue
 
-    if duplicate_decision:
+        if operation == "prohibit_field_mismatch_event":
+            event_type = str(p["event_type"])
+            comparisons = p["comparisons"]
+
+            def mismatch(event: OperationalEvent) -> bool:
+                if event.event_type != event_type:
+                    return False
+                return any(
+                    event.values.get(str(comparison["event_field"]))
+                    != str(_claim_value(claim, str(comparison["claim_field"])))
+                    for comparison in comparisons  # type: ignore[union-attr]
+                )
+
+            found = next((event for event in direct if mismatch(event)), None)
+            if found:
+                return _rule_failure(
+                    claim,
+                    rule,
+                    "Customer account or expected action did not match operational evidence",
+                    [found],
+                    approved,
+                )
+            continue
+
+        raise ValueError(f"Unsupported approved operation: {operation}")
+
+    duplicate_rule = _duplicate_rule(approved)
+    if duplicate_decision and duplicate_rule:
         winner_closure = next(
             (
                 event
@@ -375,14 +469,15 @@ def evaluate(
         )
         return _result(
             claim,
-            "disputed",
+            duplicate_rule.consequence,
             (
                 f"{claim.outcome_id} duplicates winning outcome "
                 f"{duplicate_decision.winner_outcome_id} in the 24-hour attribution window"
             ),
-            "R4",
+            duplicate_rule.id,
             duplicate_evidence,
-            duplicate_decision,
+            program=approved,
+            duplicate_decision=duplicate_decision,
         )
 
     return _result(
@@ -390,15 +485,19 @@ def evaluate(
         "payable",
         "All applicable contractual rules passed",
         None,
-        [closure, succeeded],
+        [event for event in [closure, success] if event],
+        program=approved,
     )
 
 
 def reconcile(
     claim_evidence: list[tuple[OutcomeClaim, list[OperationalEvent]]],
+    *,
+    program: RuleProgram | None = None,
 ) -> list[OutcomeDetermination]:
-    provisional = [evaluate(claim, events) for claim, events in claim_evidence]
-    decisions = _duplicate_decisions(provisional)
+    approved = program or _default_program()
+    provisional = [evaluate(claim, events, program=approved) for claim, events in claim_evidence]
+    decisions = _duplicate_decisions(provisional, approved)
     events_by_outcome = {claim.outcome_id: events for claim, events in claim_evidence}
     final: list[OutcomeDetermination] = []
     for determination, (claim, events) in zip(provisional, claim_evidence, strict=True):
@@ -412,6 +511,7 @@ def reconcile(
                 events,
                 decision,
                 events_by_outcome[decision.winner_outcome_id],
+                program=approved,
             )
         )
     return final

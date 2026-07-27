@@ -77,3 +77,11 @@ Narration boundary: “Prove helps the vendor prepare a defensible claim. Reconc
 
 Use `docs/FINAL_DEMO_GUIDE.md` for the final 75–85 second product recording.
 The one-minute founder video is a separate founder-only asset.
+
+## Contract compiler insert (45 seconds)
+
+Before the reconciliation, open **Contracts**.
+
+> "The contract is not hardcoded into the adjudicator. Gemini reads the natural-language terms and proposes this constrained rule program. It can only select reviewed operators such as a time window, required success evidence, or uniqueness. It cannot emit code and it never sees an invoice outcome. I approve this version, then the deterministic engine applies it to all 10,000 charges."
+
+Click **Compile contract**, inspect one generated operation and its source clause, then click **Approve rule version**. Continue to the invoice and run reconciliation.

@@ -12,6 +12,13 @@ From the repository root:
 ./scripts/dev.sh
 ```
 
+Optional live contract compilation:
+
+```fish
+cp .env.example .env
+# Add GEMINI_API_KEY only in your local .env file.
+```
+
 Open:
 
 ```text
@@ -68,3 +75,18 @@ http://localhost:8000/demo
 ```
 
 A reset returns the June invoice to the unreconciled state.
+
+
+## Optional live Gemini compilation
+
+The demo is fully repeatable without network access because it includes a validated recorded rule proposal.
+For the live contract-compilation path, set environment variables before `./scripts/dev.sh`:
+
+```bash
+export GEMINI_API_KEY="your-key"
+export GEMINI_MODEL="gemini-2.5-flash-lite"  # optional override
+```
+
+Then use **Compile contract** in the contract compiler section. `auto` mode calls Gemini when a key exists and
+falls back to the recorded proposal if the live call fails. Explicit `live` API mode returns an error instead of
+falling back. Never commit a real key.

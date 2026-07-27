@@ -82,6 +82,24 @@ def current_contract() -> dict[str, object]:
         raise HTTPException(404, str(exc)) from exc
 
 
+@app.post("/api/contracts/current/compile")
+def compile_contract(mode: str = Query("auto", pattern="^(auto|live|recorded)$")) -> dict[str, object]:
+    try:
+        return repository.compile_contract_rules(mode)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post("/api/contracts/current/compilations/{compilation_id}/approve")
+def approve_contract_compilation(compilation_id: str) -> dict[str, object]:
+    try:
+        return repository.approve_compilation(compilation_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 @app.get("/api/invoices/current")
 def current_invoice() -> dict[str, object]:
     try:

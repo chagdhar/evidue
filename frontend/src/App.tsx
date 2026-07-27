@@ -44,6 +44,7 @@ import {
   Outcome,
   OutcomeDetail,
   Rule,
+  RuleCompilation,
   Summary,
 } from "./api";
 import { disclosure, formatPercent, formatUsd } from "./presentation";
@@ -67,12 +68,21 @@ function readable(value: string): string {
 }
 
 function ruleRequirement(rule: Rule): string {
-  if (rule.parameters.window_days) return `${rule.parameters.window_days}-day window`;
-  if (rule.parameters.window_hours) return `${rule.parameters.window_hours}-hour window`;
+  const value = rule.parameters.window_value;
+  const unit = rule.parameters.window_unit;
+  if (typeof value === "number" && typeof unit === "string") {
+    return `${value}-${unit === "days" ? "day" : "hour"} window`;
+  }
   if (rule.parameters.start && rule.parameters.end_exclusive) {
-    return `${rule.parameters.start} through ${rule.parameters.end_exclusive} (exclusive)`;
+    return `${String(rule.parameters.start).slice(0, 10)} through ${String(
+      rule.parameters.end_exclusive,
+    ).slice(0, 10)} (exclusive)`;
   }
   return rule.description;
+}
+
+function compilerMode(compilation: RuleCompilation): string {
+  return compilation.live_model_call ? "Live Gemini call" : "Recorded Gemini fixture";
 }
 
 function statusTone(status: string): "success" | "warning" | "error" {
@@ -294,9 +304,12 @@ function ContractRulesDialog({
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle component="div">
         <Typography className="eyebrow">Clause-to-rule mapping</Typography>
-        <Typography variant="h4" component="h2">All contract rules</Typography>
+        <Typography variant="h4" component="h2">Approved deterministic program</Typography>
       </DialogTitle>
       <DialogContent>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {contract.compilation.safety_boundary}
+        </Alert>
         <Stack divider={<Divider flexItem />} spacing={0}>
           {contract.clauses.map((clause) => (
             <Box className="rule-detail" key={clause.id}>
@@ -306,9 +319,13 @@ function ContractRulesDialog({
                 <Typography color="text.secondary">{clause.text}</Typography>
               </Box>
               <Box>
-                <Typography className="eyebrow">Executable rule</Typography>
+                <Typography className="eyebrow">Validated operation</Typography>
+                <Typography className="operation-code">{clause.rule.operation}</Typography>
                 <Typography>{clause.rule.description}</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Priority {clause.rule.priority} · Failure → {readable(clause.rule.consequence)}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                   Evidence required: {clause.rule.evidence_required.join(", ")}
                 </Typography>
               </Box>
@@ -325,6 +342,12 @@ function ContractRulesDialog({
 
 function ContractSummary({ contract }: { contract: Contract }) {
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [activeCompilation, setActiveCompilation] = useState(contract.compilation);
+  const [latestCompilation, setLatestCompilation] = useState(contract.latest_compilation);
+  const [compiling, setCompiling] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [compilerMessage, setCompilerMessage] = useState("");
+  const [compilerError, setCompilerError] = useState("");
   const rules = Object.fromEntries(
     contract.clauses.map((clause) => [clause.rule.id, clause.rule]),
   );
@@ -336,19 +359,115 @@ function ContractSummary({ contract }: { contract: Contract }) {
     ["Duplicate attribution window", ruleRequirement(rules.R4)],
     ["Account and action matching", rules.R5.description],
   ];
+
+  async function compileRules() {
+    setCompiling(true);
+    setCompilerError("");
+    setCompilerMessage("");
+    try {
+      const proposal = await api.compileContract("auto");
+      setLatestCompilation(proposal);
+      setCompilerMessage(
+        proposal.live_model_call
+          ? "Gemini returned a schema-validated proposal. Review and approve it before use."
+          : proposal.fallback_reason ??
+            "No Gemini key was configured, so the validated recorded proposal was loaded for the offline demo.",
+      );
+    } catch (requestError) {
+      setCompilerError(
+        requestError instanceof Error ? requestError.message : "Contract compilation failed",
+      );
+    } finally {
+      setCompiling(false);
+    }
+  }
+
+  async function approveRules() {
+    setApproving(true);
+    setCompilerError("");
+    try {
+      const approved = await api.approveCompilation(latestCompilation.id);
+      setActiveCompilation(approved);
+      setLatestCompilation(approved);
+      setCompilerMessage(
+        `Version ${approved.version} is approved. Reconciliation will now use this immutable rule program.`,
+      );
+    } catch (requestError) {
+      setCompilerError(
+        requestError instanceof Error ? requestError.message : "Approval failed",
+      );
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  const pending = latestCompilation.status === "pending_approval";
   return (
     <section className="major-section" aria-labelledby="contract-title">
       <Box className="section-intro horizontal">
         <Box>
-          <Typography className="eyebrow">Contract controls</Typography>
+          <Typography className="eyebrow">Contract compiler</Typography>
           <Typography variant="h4" id="contract-title">
-            Executable billing terms
+            Natural language in. Deterministic disputes out.
+          </Typography>
+          <Typography color="text.secondary">
+            The LLM proposes a constrained program; a person approves it; the model never adjudicates an invoice line.
           </Typography>
         </Box>
-        <Button variant="outlined" onClick={() => setRulesOpen(true)}>
-          View all contract rules
-        </Button>
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+          <Button variant="outlined" onClick={() => setRulesOpen(true)}>
+            Inspect approved rules
+          </Button>
+          <Button variant="contained" onClick={() => void compileRules()} disabled={compiling}>
+            {compiling ? "Compiling…" : "Compile contract"}
+          </Button>
+          {pending && (
+            <Button variant="contained" color="success" onClick={() => void approveRules()} disabled={approving}>
+              {approving ? "Approving…" : `Approve v${latestCompilation.version}`}
+            </Button>
+          )}
+        </Stack>
       </Box>
+
+      <Paper className="compiler-panel">
+        <Box className="compiler-source">
+          <Typography className="eyebrow">Source contract</Typography>
+          <Typography variant="h6">{activeCompilation.source_document}</Typography>
+          <Typography className="contract-excerpt">{contract.contract_text}</Typography>
+        </Box>
+        <Box className="compiler-flow" aria-label="Contract compilation safety flow">
+          <Box className="compiler-step">
+            <span>1</span>
+            <div><strong>LLM proposes</strong><small>{compilerMode(latestCompilation)}</small></div>
+          </Box>
+          <Box className="compiler-arrow">→</Box>
+          <Box className="compiler-step">
+            <span>2</span>
+            <div><strong>Schema validates</strong><small>{latestCompilation.rules.length} rules · allowlisted operations</small></div>
+          </Box>
+          <Box className="compiler-arrow">→</Box>
+          <Box className={`compiler-step ${pending ? "pending" : "approved"}`}>
+            <span>3</span>
+            <div><strong>Human {pending ? "approval required" : "approved"}</strong><small>Immutable version {latestCompilation.version}</small></div>
+          </Box>
+          <Box className="compiler-arrow">→</Box>
+          <Box className="compiler-step approved">
+            <span>4</span>
+            <div><strong>Engine executes</strong><small>No LLM in payable/dispute decision</small></div>
+          </Box>
+        </Box>
+        <Box className="compiler-meta">
+          <Chip label={`Active v${activeCompilation.version}`} color="success" size="small" />
+          <Chip label={activeCompilation.model} variant="outlined" size="small" />
+          <Typography variant="body2" color="text.secondary">
+            Program {activeCompilation.id} · source {activeCompilation.source_hash.slice(0, 20)}…
+          </Typography>
+        </Box>
+      </Paper>
+
+      {compilerMessage && <Alert severity={pending ? "warning" : "success"} sx={{ mt: 2 }}>{compilerMessage}</Alert>}
+      {compilerError && <Alert severity="error" sx={{ mt: 2 }}>{compilerError}</Alert>}
+
       <Paper className="contract-summary">
         {items.map(([label, value]) => (
           <Box className="contract-item" key={label}>

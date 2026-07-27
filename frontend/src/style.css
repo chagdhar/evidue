@@ -914,3 +914,108 @@ button, a { text-underline-offset: 3px; }
   .overview-deduction-item { grid-template-columns: 44px 1fr; }
   .overview-deduction-item > .money { grid-column: 2; }
 }
+
+.compiler-panel {
+  padding: 24px;
+  display: grid;
+  gap: 22px;
+}
+
+.compiler-source {
+  display: grid;
+  gap: 6px;
+}
+
+.contract-excerpt {
+  max-width: 90ch;
+  white-space: pre-line;
+  color: var(--mui-palette-text-secondary);
+  font-size: 0.92rem;
+}
+
+.compiler-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.compiler-step {
+  min-width: 0;
+  border: 1px solid var(--mui-palette-divider);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--mui-palette-background-paper) 92%, var(--mui-palette-primary-main));
+}
+
+.compiler-step > span {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: var(--mui-palette-primary-main);
+  color: var(--mui-palette-primary-contrastText);
+  font-weight: 700;
+}
+
+.compiler-step div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.compiler-step strong,
+.compiler-step small {
+  display: block;
+}
+
+.compiler-step small {
+  color: var(--mui-palette-text-secondary);
+}
+
+.compiler-step.pending {
+  border-color: var(--mui-palette-warning-main);
+}
+
+.compiler-step.approved {
+  border-color: var(--mui-palette-success-main);
+}
+
+.compiler-arrow {
+  display: grid;
+  place-items: center;
+  color: var(--mui-palette-text-secondary);
+  font-size: 1.35rem;
+}
+
+.compiler-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.operation-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--mui-palette-primary-main);
+  overflow-wrap: anywhere;
+  margin-bottom: 6px;
+}
+
+@media (max-width: 900px) {
+  .compiler-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .compiler-arrow {
+    transform: rotate(90deg);
+    min-height: 16px;
+  }
+}

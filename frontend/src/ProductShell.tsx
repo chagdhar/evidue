@@ -382,25 +382,115 @@ export function InvoicesPage() {
 }
 
 export function ContractsPage() {
-  const { contract, loading, error } = useProductData();
-  if (loading) return <LoadingPage />;
-  if (error || !contract) return <ErrorPage message={error} />;
+  const { contract: loadedContract, loading, error } = useProductData();
+  const [contract, setContract] = useState<Contract | null>(null);
+  const [working, setWorking] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (loadedContract) setContract(loadedContract);
+  }, [loadedContract]);
+
+  async function compileRules(mode: "auto" | "live" | "recorded" = "auto") {
+    setWorking(true);
+    setActionError("");
+    setNotice("");
+    try {
+      const proposal = await api.compileContract(mode);
+      setContract(await api.contract());
+      setNotice(
+        proposal.live_model_call
+          ? `Gemini produced rule proposal v${proposal.version}. Review and approve it before reconciliation.`
+          : `Validated recorded Gemini proposal v${proposal.version} loaded for the offline demo. Review and approve it before reconciliation.`,
+      );
+    } catch (requestError) {
+      setActionError(requestError instanceof Error ? requestError.message : "Rule compilation failed");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function approveRules() {
+    if (!contract) return;
+    setWorking(true);
+    setActionError("");
+    setNotice("");
+    try {
+      await api.approveCompilation(contract.latest_compilation.id);
+      setContract(await api.contract());
+      setNotice("Approved rule version is now the only program used by the deterministic reconciliation engine.");
+    } catch (requestError) {
+      setActionError(requestError instanceof Error ? requestError.message : "Approval failed");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  if (loading || !contract) return <LoadingPage />;
+  if (error) return <ErrorPage message={error} />;
+  const pending = contract.latest_compilation.status === "pending_approval";
+  const compilation = pending ? contract.latest_compilation : contract.compilation;
+
   return (
-    <PageFrame>
-      <PageHeader eyebrow="Contract control center" title="Commercial terms made executable" body="Every payable decision is tied to an approved clause, explicit parameters, and required evidence." />
+    <PageFrame testId="contracts-page">
+      <PageHeader
+        eyebrow="Contract rule compiler"
+        title="Natural-language terms become deterministic controls"
+        body="Gemini proposes a constrained rule program from the contract. A human approves the version. The LLM never sees invoice outcomes and never decides whether a charge is payable."
+        action={
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <Button variant="outlined" disabled={working} onClick={() => compileRules("recorded")}>Replay recorded Gemini output</Button>
+            <Button variant="contained" disabled={working} onClick={() => compileRules("auto")}>
+              {working ? <CircularProgress size={20} /> : "Compile contract"}
+            </Button>
+          </Stack>
+        }
+      />
+      {actionError && <Alert severity="error" sx={{ mb: 2 }}>{actionError}</Alert>}
+      {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
+
       <Box className="template-stats-grid template-stats-grid-3">
-        <MetricCard label="Vendor" value={contract.vendor} helper={contract.customer} />
-        <MetricCard label="Price per outcome" value={formatUsd(contract.price_per_outcome)} helper="Monthly outcome pricing" />
-        <MetricCard label="Approved rules" value={`${contract.clauses.length}`} helper={`${contract.evidence_sources.length} evidence source categories`} />
+        <MetricCard label="Compiler" value={compilation.model} helper={`${compilation.provider} · schema constrained`} />
+        <MetricCard label="Rule version" value={`v${compilation.version}`} helper={`${compilation.rules.length} validated operations`} />
+        <MetricCard label="Approval state" value={pending ? "Pending human approval" : "Approved"} helper={compilation.live_model_call ? "Live model call" : "Recorded model response"} tone={pending ? "warning" : "success"} />
       </Box>
-      <Stack spacing={1.5}>
-        {contract.clauses.map((clause) => (
-          <Card key={clause.id} className="template-rule-card">
+
+      <SectionCard
+        title="Trust boundary"
+        eyebrow="LLM proposes · deterministic engine decides"
+        action={pending ? <Button variant="contained" disabled={working} onClick={approveRules}>Approve rule version</Button> : <Chip label={`Active ${contract.compilation.id}`} color="success" size="small" />}
+      >
+        <Alert severity="info">{compilation.safety_boundary}</Alert>
+        <Box className="template-two-column" sx={{ mt: 2 }}>
+          <Box>
+            <Typography variant="overline" color="text.secondary">Source contract</Typography>
+            <Paper variant="outlined" sx={{ p: 2, mt: 0.5, whiteSpace: "pre-wrap" }}>{contract.contract_text}</Paper>
+          </Box>
+          <Box>
+            <Typography variant="overline" color="text.secondary">Audit record</Typography>
+            <Stack spacing={1} sx={{ mt: 0.5 }}>
+              <Typography variant="body2"><strong>Source hash:</strong> {compilation.source_hash}</Typography>
+              <Typography variant="body2"><strong>Prompt hash:</strong> {compilation.prompt_hash}</Typography>
+              <Typography variant="body2"><strong>Compiler:</strong> {compilation.compiler_version}</Typography>
+              <Typography variant="body2"><strong>Created:</strong> {new Date(compilation.created_at).toLocaleString()}</Typography>
+            </Stack>
+          </Box>
+        </Box>
+      </SectionCard>
+
+      <Stack spacing={1.5} sx={{ mt: 2 }}>
+        {compilation.rules.sort((a, b) => a.priority - b.priority).map((rule) => (
+          <Card key={rule.id} className="template-rule-card">
             <CardContent>
               <Box className="template-rule-grid">
-                <Box><Typography variant="overline" color="text.secondary">Contract clause</Typography><Typography>{clause.text}</Typography></Box>
-                <Box><Stack direction="row" spacing={1} alignItems="center"><Chip label={clause.rule.id} color="primary" size="small" /><Typography variant="h6">{clause.rule.title}</Typography></Stack><Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{clause.rule.description}</Typography></Box>
-                <Box><Typography variant="overline" color="text.secondary">Evidence required</Typography><Stack direction="row" gap={0.75} flexWrap="wrap">{clause.rule.evidence_required.map((evidence) => <Chip key={evidence} label={evidence} size="small" variant="outlined" />)}</Stack></Box>
+                <Box><Typography variant="overline" color="text.secondary">Contract clause</Typography><Typography>{rule.clause_text}</Typography></Box>
+                <Box>
+                  <Stack direction="row" spacing={1} alignItems="center"><Chip label={rule.id} color="primary" size="small" /><Typography variant="h6">{rule.title}</Typography></Stack>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{rule.description}</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>Deterministic operation: <code>{rule.operation}</code> · priority {rule.priority} · failure → {rule.consequence}</Typography>
+                </Box>
+                <Box><Typography variant="overline" color="text.secondary">Parameters and evidence</Typography><Typography component="pre" variant="caption" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(rule.parameters, null, 2)}</Typography><Stack direction="row" gap={0.75} flexWrap="wrap">{rule.evidence_required.map((evidence) => <Chip key={evidence} label={evidence} size="small" variant="outlined" />)}</Stack></Box>
               </Box>
             </CardContent>
           </Card>

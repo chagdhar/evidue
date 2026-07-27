@@ -6,8 +6,14 @@ from pathlib import Path
 from sqlalchemy import create_engine, delete, func, inspect, or_, select
 from sqlalchemy.orm import joinedload, sessionmaker
 
+from app.contracts.compiler import (
+    DEFAULT_CONTRACT_PATH,
+    compile_with_gemini,
+    load_recorded_proposal,
+    to_rule_program,
+)
 from app.domain.engine import reconcile
-from app.domain.models import RULES, OperationalEvent, OutcomeClaim
+from app.domain.models import ExecutableRule, OperationalEvent, OutcomeClaim, RuleProgram
 from app.fixtures.demo import (
     INVOICE_ID,
     SCENARIOS,
@@ -23,6 +29,7 @@ from .models import (
     ContractClauseRow,
     ContractRow,
     ContractRuleRow,
+    RuleCompilationRow,
     ConversationRow,
     DemoStateRow,
     EvidenceMatchRow,
@@ -54,8 +61,9 @@ def initialize() -> None:
         "operational_events": {"connector_id", "match_method", "payload_hash"},
         "connectors": {"category", "records_received", "trust_boundary"},
         "raw_records": {"normalized_payload", "payload_hash", "schema_version"},
-        "demo_state": {"scenario_id"},
+        "demo_state": {"scenario_id", "active_compilation_id"},
         "outcome_determinations": {"confirmed_disputed_amount"},
+        "contract_rules": {"operation", "priority", "consequence", "compilation_id"},
     }
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
@@ -87,6 +95,107 @@ def _scenario_metadata(scenario: DemoScenario) -> dict[str, str]:
 
 def scenario_catalog() -> list[dict[str, str]]:
     return [_scenario_metadata(scenario) for scenario in SCENARIOS]
+
+
+def _proposal_payload(result) -> list[dict[str, object]]:
+    return [rule.model_dump(mode="json") for rule in result.proposal.rules]
+
+
+def _seed_compilation(session, *, approved: bool = True) -> RuleCompilationRow:
+    result = load_recorded_proposal(DEFAULT_CONTRACT_PATH.read_text())
+    compilation = RuleCompilationRow(
+        id="COMP-RECORDED-GEMINI-V1",
+        contract_id=result.proposal.contract_id,
+        source_document=result.proposal.source_document,
+        source_hash=result.source_hash,
+        prompt_hash=result.prompt_hash,
+        provider=result.proposal.provider,
+        model=result.proposal.model,
+        compiler_version=result.proposal.compiler_version,
+        status="approved" if approved else "pending_approval",
+        version=1,
+        live_model_call=result.live_model_call,
+        created_at=datetime(2026, 7, 1, 8, 10),
+        approved_at=datetime(2026, 7, 1, 8, 15) if approved else None,
+        rules=_proposal_payload(result),
+        raw_response=result.raw_response,
+    )
+    session.add(compilation)
+    for rule in result.proposal.rules:
+        session.add(
+            ContractRuleRow(
+                id=rule.id,
+                title=rule.title,
+                description=rule.description,
+                clause_text=rule.clause_text,
+                operation=rule.operation,
+                parameters=rule.parameters,
+                evidence_required=list(rule.evidence_required),
+                priority=rule.priority,
+                consequence=rule.consequence,
+                compilation_id=compilation.id,
+                version=compilation.version,
+            )
+        )
+    return compilation
+
+
+def _active_rule_program(session) -> RuleProgram:
+    state = session.get(DemoStateRow, 1)
+    if not state or not state.active_compilation_id:
+        raise LookupError("No approved rule compilation is active")
+    compilation = session.get(RuleCompilationRow, state.active_compilation_id)
+    if compilation is None or compilation.status != "approved":
+        raise LookupError("The active contract rules are not approved")
+    rules = tuple(
+        ExecutableRule(
+            id=row.id,
+            title=row.title,
+            description=row.description,
+            clause_text=row.clause_text,
+            operation=row.operation,
+            parameters=row.parameters,
+            evidence_required=tuple(row.evidence_required),
+            priority=row.priority,
+            consequence=row.consequence,
+            compilation_id=row.compilation_id,
+        )
+        for row in session.scalars(
+            select(ContractRuleRow)
+            .where(ContractRuleRow.compilation_id == compilation.id)
+            .order_by(ContractRuleRow.priority)
+        ).all()
+    )
+    return RuleProgram(
+        compilation_id=compilation.id,
+        version=compilation.version,
+        source_hash=compilation.source_hash,
+        rules=rules,
+    )
+
+
+def _compilation_view(row: RuleCompilationRow) -> dict[str, object]:
+    return {
+        "id": row.id,
+        "contract_id": row.contract_id,
+        "source_document": row.source_document,
+        "source_hash": row.source_hash,
+        "prompt_hash": row.prompt_hash,
+        "provider": row.provider,
+        "model": row.model,
+        "compiler_version": row.compiler_version,
+        "status": row.status,
+        "version": row.version,
+        "live_model_call": row.live_model_call,
+        "created_at": row.created_at.isoformat(),
+        "approved_at": row.approved_at.isoformat() if row.approved_at else None,
+        "rules": row.rules,
+        "fallback_reason": row.raw_response.get("fallback_reason") if row.raw_response else None,
+        "safety_boundary": (
+            "The LLM proposes only schema-validated rules. Approval creates an immutable version; "
+            "the deterministic interpreter alone evaluates invoice claims."
+        ),
+    }
 
 
 def reset(scenario_id: str = "headline") -> dict[str, object]:
@@ -159,7 +268,7 @@ def reset(scenario_id: str = "headline") -> dict[str, object]:
                 source_records_received=ingestion.stats.source_records_received,
                 source_records_normalized=ingestion.stats.source_records_normalized,
                 source_records_rejected=ingestion.stats.source_records_rejected,
-                contract_rules_approved=len(RULES),
+                contract_rules_approved=7,
             )
         )
         contract = ContractRow(
@@ -171,37 +280,17 @@ def reset(scenario_id: str = "headline") -> dict[str, object]:
             price_per_outcome=Decimal("1.50"),
         )
         session.add(contract)
-        for rule in RULES:
-            session.add(
-                ContractRuleRow(
-                    id=rule.id,
-                    title=rule.title,
-                    description=rule.description,
-                    parameters=rule.parameters,
-                    evidence_required=list(rule.evidence_required),
-                )
-            )
+        compilation = _seed_compilation(session, approved=True)
         session.flush()
-        clause_text = {
-            "R1": "A resolution is not billable when the customer recontacts support for the same intent within seven calendar days.",
-            "R2": "A resolution is not billable when a human completes or materially corrects the promised work within 24 hours.",
-            "R3": "A promised downstream action must complete successfully within two hours.",
-            "R4": (
-                "Among claims that pass R1, R2, R3, R5, R6, and R7, only the earliest "
-                "outcome is billable for the same customer and normalized intent in a "
-                "24-hour attribution window."
-            ),
-            "R5": "Evidence must match the expected customer account and promised action.",
-            "R6": "The outcome must occur during the invoice billing period.",
-            "R7": "The claim must include sufficient identifiers to associate supporting evidence.",
-        }
-        for rule in RULES:
+        for rule in session.scalars(
+            select(ContractRuleRow).where(ContractRuleRow.compilation_id == compilation.id)
+        ).all():
             session.add(
                 ContractClauseRow(
                     id=f"CLAUSE-{rule.id}",
                     contract_id=contract.id,
                     rule_id=rule.id,
-                    text=clause_text[rule.id],
+                    text=rule.clause_text,
                 )
             )
         session.add(
@@ -275,6 +364,7 @@ def reset(scenario_id: str = "headline") -> dict[str, object]:
                 seeded=True,
                 reconciled=False,
                 scenario_id=scenario.id,
+                active_compilation_id=compilation.id,
             )
         )
     return demo_status()
@@ -518,11 +608,12 @@ def run_reconciliation() -> dict[str, object]:
             if scenario_id == "headline"
             else f"REC-2026-06-{scenario_id.upper().replace('_', '-')}"
         )
+        program = _active_rule_program(session)
         reconciliation = ReconciliationRow(
             id=reconciliation_id,
             invoice_id=INVOICE_ID,
             evaluated_at=datetime(2026, 7, 1, 12),
-            engine_version="2026.06.1",
+            engine_version=program.engine_version,
         )
         session.add(reconciliation)
         claims = session.scalars(select(OutcomeClaimRow).order_by(OutcomeClaimRow.outcome_id)).all()
@@ -542,7 +633,7 @@ def run_reconciliation() -> dict[str, object]:
             )
             for claim_row in claims
         ]
-        results = reconcile(domain_inputs)
+        results = reconcile(domain_inputs, program=program)
         for claim_row, result in zip(claims, results, strict=True):
             determination = OutcomeDeterminationRow(
                 reconciliation_id=reconciliation.id,
@@ -615,7 +706,7 @@ def summary() -> dict[str, object]:
         if row.status == "disputed" and row.rule_id:
             category = categories.setdefault(
                 row.rule_id,
-                {"label": labels[row.rule_id], "count": 0, "amount_decimal": Decimal()},
+                {"label": labels.get(row.rule_id, row.rule_id), "count": 0, "amount_decimal": Decimal()},
             )
             category["count"] = int(category["count"]) + 1
             category["amount_decimal"] = (
@@ -666,13 +757,27 @@ def contract() -> dict[str, object]:
                         "id": clause.rule.id,
                         "title": clause.rule.title,
                         "description": clause.rule.description,
-                        "parameters": clause.rule.parameters,
+                        "parameters": {
+                            **clause.rule.parameters,
+                            **({"applies_after": ",".join(clause.rule.parameters["applies_after"])}
+                               if isinstance(clause.rule.parameters.get("applies_after"), list) else {}),
+                        },
                         "evidence_required": clause.rule.evidence_required,
-                        "consequence": "Charge is not payable when this rule fails.",
+                        "consequence": clause.rule.consequence,
+                        "operation": clause.rule.operation,
+                        "priority": clause.rule.priority,
+                        "compilation_id": clause.rule.compilation_id,
                     },
                 }
                 for clause in sorted(row.clauses, key=lambda item: item.rule_id)
             ],
+            "compilation": _compilation_view(
+                session.get(RuleCompilationRow, session.get(DemoStateRow, 1).active_compilation_id)
+            ),
+            "latest_compilation": _compilation_view(
+                session.scalar(select(RuleCompilationRow).order_by(RuleCompilationRow.created_at.desc()))
+            ),
+            "contract_text": DEFAULT_CONTRACT_PATH.read_text(),
             "evidence_sources": [
                 "Nova Support AI agent log",
                 "Acme support desk",
@@ -681,6 +786,106 @@ def contract() -> dict[str, object]:
                 "Product account system",
             ],
         }
+
+
+def compile_contract_rules(mode: str = "auto") -> dict[str, object]:
+    contract_text = DEFAULT_CONTRACT_PATH.read_text()
+    use_live = mode == "live" or (mode == "auto" and bool(os.getenv("GEMINI_API_KEY")))
+    fallback_reason = None
+    if use_live:
+        try:
+            result = compile_with_gemini(
+                contract_text,
+                "CONTRACT-ACME-NOVA-2026",
+                "Acme-Nova-Outcome-Pricing-Order-Form.pdf",
+            )
+        except (RuntimeError, ValueError) as exc:
+            if mode == "live":
+                raise
+            fallback_reason = (
+                "Live Gemini compilation failed; loaded the validated recorded proposal: "
+                f"{exc}"
+            )
+            result = load_recorded_proposal(contract_text)
+    else:
+        result = load_recorded_proposal(contract_text)
+    with SessionLocal.begin() as session:
+        latest_version = session.scalar(select(func.max(RuleCompilationRow.version))) or 0
+        compilation_id = f"COMP-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        row = RuleCompilationRow(
+            id=compilation_id,
+            contract_id=result.proposal.contract_id,
+            source_document=result.proposal.source_document,
+            source_hash=result.source_hash,
+            prompt_hash=result.prompt_hash,
+            provider=result.proposal.provider,
+            model=result.proposal.model,
+            compiler_version=result.proposal.compiler_version,
+            status="pending_approval",
+            version=int(latest_version) + 1,
+            live_model_call=result.live_model_call,
+            created_at=datetime.now(),
+            approved_at=None,
+            rules=_proposal_payload(result),
+            raw_response={
+                **result.raw_response,
+                **({"fallback_reason": fallback_reason} if fallback_reason else {}),
+            },
+        )
+        session.add(row)
+    return _compilation_view(row)
+
+
+def approve_compilation(compilation_id: str) -> dict[str, object]:
+    with SessionLocal.begin() as session:
+        row = session.get(RuleCompilationRow, compilation_id)
+        if row is None:
+            raise LookupError("Compilation not found")
+        if row.status != "pending_approval":
+            raise ValueError("Only a pending compilation can be approved")
+        # An approved program invalidates any prior determinations. Clear them before
+        # replacing rule rows so the transition is safe even with FK enforcement on.
+        session.execute(delete(EvidenceReferenceRow))
+        session.execute(delete(OutcomeDeterminationRow))
+        session.execute(delete(ReconciliationRow))
+        session.execute(delete(ContractClauseRow))
+        session.execute(delete(ContractRuleRow))
+        for payload in sorted(row.rules, key=lambda item: item["priority"]):
+            rule = ExecutableRule(
+                id=payload["id"],
+                title=payload["title"],
+                description=payload["description"],
+                clause_text=payload["clause_text"],
+                operation=payload["operation"],
+                parameters=payload["parameters"],
+                evidence_required=tuple(payload["evidence_required"]),
+                priority=payload["priority"],
+                consequence=payload["consequence"],
+                compilation_id=row.id,
+            )
+            session.add(
+                ContractRuleRow(
+                    id=rule.id, title=rule.title, description=rule.description,
+                    clause_text=rule.clause_text, operation=rule.operation,
+                    parameters=rule.parameters, evidence_required=list(rule.evidence_required),
+                    priority=rule.priority, consequence=rule.consequence,
+                    compilation_id=row.id, version=row.version,
+                )
+            )
+            session.add(
+                ContractClauseRow(
+                    id=f"CLAUSE-{rule.id}", contract_id=row.contract_id,
+                    rule_id=rule.id, text=rule.clause_text,
+                )
+            )
+        row.status = "approved"
+        row.approved_at = datetime.now()
+        state = session.get(DemoStateRow, 1)
+        if state:
+            state.active_compilation_id = row.id
+            state.reconciled = False
+    return _compilation_view(row)
+
 
 
 def invoice() -> dict[str, object]:

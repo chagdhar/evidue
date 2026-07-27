@@ -1,0 +1,16 @@
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+frontend/node_modules/
+frontend/dist/
+playwright-report/
+test-results/
+*.log

@@ -15,6 +15,7 @@ class DemoStateRow(Base):
     seeded: Mapped[bool] = mapped_column(Boolean, default=False)
     reconciled: Mapped[bool] = mapped_column(Boolean, default=False)
     scenario_id: Mapped[str] = mapped_column(String, default="headline")
+    active_compilation_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class ConnectorRow(Base):
@@ -99,8 +100,33 @@ class ContractRuleRow(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     title: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(Text)
+    clause_text: Mapped[str] = mapped_column(Text)
+    operation: Mapped[str] = mapped_column(String)
     parameters: Mapped[dict] = mapped_column(JSON)
     evidence_required: Mapped[list] = mapped_column(JSON)
+    priority: Mapped[int] = mapped_column(Integer)
+    consequence: Mapped[str] = mapped_column(String)
+    compilation_id: Mapped[str] = mapped_column(String, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class RuleCompilationRow(Base):
+    __tablename__ = "rule_compilations"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    contract_id: Mapped[str] = mapped_column(String, index=True)
+    source_document: Mapped[str] = mapped_column(String)
+    source_hash: Mapped[str] = mapped_column(String)
+    prompt_hash: Mapped[str] = mapped_column(String)
+    provider: Mapped[str] = mapped_column(String)
+    model: Mapped[str] = mapped_column(String)
+    compiler_version: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    live_model_call: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rules: Mapped[list] = mapped_column(JSON)
+    raw_response: Mapped[dict] = mapped_column(JSON)
 
 
 class ContractClauseRow(Base):
