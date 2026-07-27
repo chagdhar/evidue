@@ -47,3 +47,15 @@ Open <http://localhost:8000/demo>.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) for fresh-checkout instructions and
 [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the YC narration.
+
+## Product surfaces
+
+- `/demo` — finance control overview
+- `/demo/invoices` — recurring invoice operations
+- `/demo/invoices/current` — complete working June reconciliation
+- `/demo/contracts/current` — contract clause-to-rule control center
+- `/demo/disputes/current` — dispute package and financial handoff
+- `/demo/data-sources` — synthetic fixture provenance
+- `/demo/lab` — technical edge-case scenarios
+
+Only the June 2026 invoice is a fully interactive reconciliation. Historical invoice rows are explicitly labelled illustrative synthetic history; connector statuses are explicitly labelled local fixtures rather than live integrations.

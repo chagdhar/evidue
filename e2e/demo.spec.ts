@@ -10,11 +10,16 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
       "Operationally realistic data generated deterministically. No real customer or vendor data is shown.",
     ),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What requires attention" })).toBeVisible();
   await expect(page.getByText("$15,000.00")).toBeVisible();
-  await expect(page.getByText("10,000 claimed outcomes from the vendor")).toBeVisible();
-  await expect(page.getByText("Ready to reconcile")).toBeVisible();
+  await expect(page.getByText("One invoice, seven approved rules")).toBeVisible();
   await expect(page.getByLabel("Synthetic data set")).toHaveCount(0);
   await expect(page.getByText("$12,480.00")).not.toBeVisible();
+
+  await page.getByRole("button", { name: "Open June invoice" }).click();
+  await expect(page).toHaveURL(/\/demo\/invoices\/current$/);
+  await expect(page.getByText("10,000 claimed outcomes from the vendor")).toBeVisible();
+  await expect(page.getByText("Ready to reconcile")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Executable billing terms" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Available source systems" })).toBeVisible();
 
@@ -35,10 +40,7 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
   await page.getByRole("button", { name: /Failed downstream actions/ }).click();
   await expect(page.getByText("300 matching outcomes · R3 selected")).toBeVisible();
 
-  await page.getByRole("button", { name: "Advanced filters" }).click();
-  await page.getByLabel("Outcome ID").fill("OUT-004821");
-  await expect(page.getByText("Demo example")).toBeVisible();
-  await page.getByRole("button", { name: "Review OUT-004821 evidence" }).click();
+  await page.getByRole("button", { name: "Review example dispute" }).click();
 
   await expect(page.getByRole("heading", { name: "OUT-004821", exact: true })).toBeVisible();
   await expect(page.getByText("Vendor claim")).toBeVisible();

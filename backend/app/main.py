@@ -153,6 +153,11 @@ dist = Path(__file__).parents[2] / "frontend_dist"
 if dist.exists():
 
     @app.get("/demo/lab", include_in_schema=False)
+    @app.get("/demo/data-sources", include_in_schema=False)
+    @app.get("/demo/disputes/current", include_in_schema=False)
+    @app.get("/demo/contracts/current", include_in_schema=False)
+    @app.get("/demo/invoices/current", include_in_schema=False)
+    @app.get("/demo/invoices", include_in_schema=False)
     @app.get("/demo", include_in_schema=False)
     def demo_page() -> FileResponse:
         return FileResponse(dist / "index.html")

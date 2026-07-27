@@ -635,6 +635,9 @@ function ClaimsReview({
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap">
+          <Button variant="contained" onClick={() => void openOutcome(demoOutcomeId)}>
+            Review example dispute
+          </Button>
           <Button onClick={showAllClaims}>Show all claims</Button>
           <Button
             variant="outlined"
@@ -913,7 +916,7 @@ function Exports({ summary }: { summary: Summary }) {
   );
 }
 
-export default function App({ scenarioLab = false }: { scenarioLab?: boolean }) {
+export default function App({ scenarioLab = false, embedded = false }: { scenarioLab?: boolean; embedded?: boolean }) {
   const [demoStatus, setDemoStatus] = useState<DemoStatus | null>(null);
   const [scenarios, setScenarios] = useState<DemoScenario[]>([]);
   const [contract, setContract] = useState<Contract | null>(null);
@@ -1020,14 +1023,14 @@ export default function App({ scenarioLab = false }: { scenarioLab?: boolean }) 
 
   return (
     <>
-      <AppBar position="sticky" color="transparent" elevation={0} className="app-header">
+      {!embedded && <AppBar position="sticky" color="transparent" elevation={0} className="app-header">
         <Toolbar className="header-inner">
           <Typography className="wordmark">Evidue</Typography>
           <Box sx={{ flexGrow: 1 }} />
           <Chip label="Synthetic demonstration data" className="synthetic-badge" />
         </Toolbar>
-      </AppBar>
-      <Container maxWidth="lg" className="page-shell">
+      </AppBar>}
+      <Container maxWidth="lg" className={`page-shell${embedded ? " embedded-page" : ""}`}>
         <Alert icon={false} className="disclosure">
           <strong>Synthetic demonstration data.</strong> {disclosure}
         </Alert>
