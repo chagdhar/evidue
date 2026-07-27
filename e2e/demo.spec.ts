@@ -22,7 +22,7 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
   await expect(page.getByLabel("Synthetic data set")).toHaveCount(0);
   await expect(page.getByText("$12,480.00")).not.toBeVisible();
 
-  await page.getByRole("button", { name: "Open Customer Verify" }).click();
+  await page.getByRole("button", { name: "Open Evidue reconciliation" }).click();
   await expect(page).toHaveURL(/\/demo\/invoices\/current$/);
   await expect(page.getByText("10,000 claimed outcomes from the vendor")).toBeVisible();
   await expect(page.getByText("Ready to reconcile")).toBeVisible();
@@ -225,7 +225,7 @@ test("two-sided product story connects vendor preflight to independent verificat
   const productStory = overviewPage.getByTestId("product-story");
   await expect(productStory.getByText("Evidue Prove", { exact: true })).toBeVisible();
   await expect(productStory.getByText("Outcome Ledger", { exact: true })).toBeVisible();
-  await expect(productStory.getByText("Evidue Verify", { exact: true })).toBeVisible();
+  await expect(productStory.getByText("Evidue", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "Vendor Preflight" }).click();
   await expect(page).toHaveURL(/\/demo\/vendor-preflight$/);
@@ -233,7 +233,7 @@ test("two-sided product story connects vendor preflight to independent verificat
   await page.getByRole("button", { name: "Run invoice preflight" }).click();
   await expect(page.getByLabel("Preflight-supported amount: $12,480.00")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByLabel("Revenue at risk: $2,520.00")).toBeVisible();
-  await expect(page.getByText("Prove prepares. Verify decides.")).toBeVisible();
+  await expect(page.getByText("Prove prepares. Evidue decides.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Likely non-billable" })).toBeVisible();
 
   await page.getByRole("link", { name: "Outcome Ledger" }).click();
@@ -242,7 +242,7 @@ test("two-sided product story connects vendor preflight to independent verificat
   await expect(page.getByRole("heading", { name: "OUT-004821" })).toBeVisible();
   await expect(page.getByText("A receipt supports a claim; it never self-declares the charge payable.")).toBeVisible();
 
-  await page.getByRole("link", { name: "Customer Verify" }).click();
+  await page.getByRole("link", { name: "Evidue reconciliation" }).click();
   await expect(page).toHaveURL(/\/demo\/invoices\/current$/);
   await expect(page.locator(".payable-amount")).toHaveText("$12,480.00");
 });

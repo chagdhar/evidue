@@ -53,7 +53,7 @@ Completion commit: `feat: add reconciliation API and exports`.
 Objective: implement direct `/demo` golden path. Files: `frontend/src`, tests.
 Work: backend-driven UI, filter/detail/download states. Acceptance: disclosure,
 run flow, values and failed-refund timeline visible. Tests: Vitest. Validation:
-ESLint, Vitest, build. Risk: stale frontend state. Completion commit: `feat: build YC demo interface`.
+ESLint, Vitest, build. Risk: stale frontend state. Completion commit: `feat: build demo interface`.
 
 ## 5. Exports, Playwright, scripts, and Docker
 

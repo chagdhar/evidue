@@ -1,4 +1,4 @@
-# Evidue YC Demo Script
+# Evidue Demo Script
 
 ## Recording path: 105–120 seconds
 
@@ -8,7 +8,7 @@ Open `/demo`.
 
 > "Outcome-priced AI vendors calculate their own bills. Evidue gives finance an independent control over what the contract and the customer’s systems actually support paying. This is synthetic, deterministic demonstration data."
 
-Show the finance-control overview: Nova Support AI, June 2026, $15,000 submitted, 50,302 collected source records, 100% claim coverage, seven approved rules, and the four-stage decision path. Point to the OUT-004821 example charge path, then click **Open Customer Verify**.
+Show the finance-control overview: Nova Support AI, June 2026, $15,000 submitted, 50,302 collected source records, 100% claim coverage, seven approved rules, and the four-stage decision path. Point to the OUT-004821 example charge path, then click **Open Evidue reconciliation**.
 
 ### 15–38 seconds — Real-data collection and readiness
 
@@ -16,7 +16,7 @@ Open **Data Sources**.
 
 > "Real systems do not arrive already joined. Evidue collects vendor claims and customer-owned support, payment, product, billing, identity, and contract records; preserves the originals; normalizes them; and resolves identifiers before any payment rule runs."
 
-Show 10,000 claims, the aggregate source-record count, 9,975 direct matches, 25 secondary-key matches, and zero identity reviews. Click **Inspect** on Payment processor. The right-side inspector must open and show the rejected raw payload, canonical Evidue event, match method, confidence, schema version, and content hash. Close the inspector, then return to Customer Verify.
+Show 10,000 claims, the aggregate source-record count, 9,975 direct matches, 25 secondary-key matches, and zero identity reviews. Click **Inspect** on Payment processor. The right-side inspector must open and show the rejected raw payload, canonical Evidue event, match method, confidence, schema version, and content hash. Close the inspector, then return to Evidue reconciliation.
 
 > "These records are synthetic, but they use the same ingestion stages planned for customer data. We start with exports, then replace them with read-only APIs or warehouse views."
 
@@ -62,18 +62,18 @@ Do not show the lab in the submitted recording unless asked about edge cases.
 
 ## Extended product demo path
 
-The primary YC recording should remain focused while showing the larger company:
+The primary demo recording should remain focused while showing the larger company:
 
-1. **Overview:** show the Prove → Outcome Ledger → Verify architecture.
+1. **Overview:** show the Prove → Outcome Ledger → Evidue architecture.
 2. **Vendor Preflight:** show $15,000 proposed, $12,480 defensible, and $2,520 at risk before invoicing.
 3. **Outcome Ledger:** open OUT-004821 and explain the versioned proof envelope.
-4. **Customer Verify:** run the independent reconciliation and show the same $12,480 supported payable amount.
+4. **Evidue reconciliation:** run the independent reconciliation and show the same $12,480 supported payable amount.
 5. **Evidence:** open OUT-004821 and show the processor rejection, computed deadline, and later human completion.
 6. **Dispute package:** download the evidence-backed package.
 
-Narration boundary: “Prove helps the vendor prepare a defensible claim. Verify independently determines what the customer should pay. The vendor cannot change customer rules or private evidence.”
+Narration boundary: “Prove helps the vendor prepare a defensible claim. Reconcile independently determines what the customer should pay. The vendor cannot change customer rules or private evidence.”
 
 ## Final recording note
 
 Use `docs/FINAL_DEMO_GUIDE.md` for the final 75–85 second product recording.
-The YC one-minute founder video is a separate founder-only asset.
+The one-minute founder video is a separate founder-only asset.

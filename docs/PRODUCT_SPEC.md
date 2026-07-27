@@ -1,4 +1,4 @@
-# Evidue YC demonstration specification
+# Evidue demonstration specification
 
 Evidue reconciles the June 1–30, 2026 outcome-priced invoice from Nova
 Support AI for Acme Commerce. It deterministically evaluates each claimed
@@ -16,7 +16,7 @@ is a failed refund and is disputed.
 
 ## Deterministic scenario catalog
 
-The full invoice is the fixed YC recording demonstration at `/demo`. A separate
+The full invoice is the fixed recorded demonstration at `/demo`. A separate
 technical route at `/demo/lab` offers focused synthetic data sets that run
 through the same persistence, domain engine, API, evidence inspector, and
 exports:
@@ -72,7 +72,7 @@ arithmetic uses `Decimal` and decimal-string JSON fields; totals are derived
 from persisted determinations, never route or UI constants. The final
 validation uses uv-managed CPython 3.13.14.
 
-## Two-sided expansion: Evidue Prove and Evidue Verify
+## Two-sided expansion: Evidue Prove and Evidue
 
 Evidue now presents two strictly separated product surfaces built on a shared outcome ledger.
 
@@ -91,7 +91,7 @@ This surface answers: **Can the vendor defend this charge?**
 
 It may help a vendor improve evidence or remove unsupported claims, but it cannot access customer-private evidence, change customer-approved contract rules, or control the customer's payment recommendation.
 
-### Evidue Verify — customer reconciliation
+### Evidue — customer reconciliation
 
 The customer workspace remains the authoritative financial control. It independently joins vendor claims to the customer's contract and systems of record, then classifies each charge as payable, disputed, or needs review.
 

@@ -689,6 +689,43 @@ describe("Evidue financial-decision demo", () => {
     ).toBeInTheDocument();
   });
 
+  it("applies and clears advanced filters only when requested", async () => {
+    const fetchSpy = mockApi(true);
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Disputed outcome evidence" });
+    await userEvent.click(screen.getByRole("button", { name: "Advanced filters" }));
+    fetchSpy.mockClear();
+
+    await userEvent.type(screen.getByLabelText("Outcome ID"), "OUT-004821");
+    await userEvent.type(screen.getByLabelText("Customer ID"), "CUST-004821");
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/outcome_id=OUT-004821.*customer_id=CUST-004821/),
+        undefined,
+      ),
+    );
+    expect(screen.getByText(/filters applied/)).toBeInTheDocument();
+
+    fetchSpy.mockClear();
+    await userEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await waitFor(() => {
+      const calls = fetchSpy.mock.calls.map(([input]) => String(input));
+      expect(calls.some((url) =>
+        url.includes("/api/reconciliations/current/outcomes?") &&
+        !url.includes("status=") &&
+        !url.includes("reason=") &&
+        !url.includes("outcome_id=") &&
+        !url.includes("customer_id=") &&
+        !url.includes("intent=")
+      )).toBe(true);
+    });
+    expect(screen.getByText("No filters applied.")).toBeInTheDocument();
+  });
+
   it("renders backend failures honestly", async () => {
     mockApi(false).mockImplementationOnce(() => response({}, false));
     render(<App />);

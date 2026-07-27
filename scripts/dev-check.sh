@@ -7,6 +7,7 @@ if [[ "$mode" != "fast" && "$mode" != "full" ]]; then
 fi
 UV_CACHE_DIR=/tmp/evidue-uv-cache uv run ruff format --check backend
 UV_CACHE_DIR=/tmp/evidue-uv-cache uv run ruff check backend
+python scripts/check-demo-branding.py
 PYTHONPATH=backend UV_CACHE_DIR=/tmp/evidue-uv-cache uv run pytest
 npm --prefix frontend run lint
 npm --prefix frontend run test

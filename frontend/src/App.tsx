@@ -33,7 +33,7 @@ import {
   Toolbar,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   Contract,
@@ -592,19 +592,34 @@ function ClaimsReview({
   const [outcomeId, setOutcomeId] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [intent, setIntent] = useState("");
+  const [draftStatus, setDraftStatus] = useState(defaultStatus);
+  const [draftReason, setDraftReason] = useState(selectedRule);
+  const [draftOutcomeId, setDraftOutcomeId] = useState("");
+  const [draftCustomerId, setDraftCustomerId] = useState("");
+  const [draftIntent, setDraftIntent] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [detail, setDetail] = useState<OutcomeDetail | null>(null);
+  const requestSequence = useRef(0);
   const limit = 25;
 
   useEffect(() => {
+    if (!selectedRule) {
+      setReason("");
+      setDraftReason("");
+      setPage(0);
+      return;
+    }
     setReason(selectedRule);
-    setStatus(selectedRule ? "disputed" : defaultStatus);
+    setStatus("disputed");
+    setDraftReason(selectedRule);
+    setDraftStatus("disputed");
     setPage(0);
-  }, [defaultStatus, selectedRule]);
+  }, [selectedRule]);
 
   const load = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setLoading(true);
     setError("");
     const query = new URLSearchParams({
@@ -618,12 +633,14 @@ function ClaimsReview({
     if (intent) query.set("intent", intent);
     try {
       const result = await api.outcomes(query);
+      if (requestId !== requestSequence.current) return;
       setRows(result.items);
       setTotal(result.total);
     } catch (requestError) {
+      if (requestId !== requestSequence.current) return;
       setError(requestError instanceof Error ? requestError.message : "Could not load outcomes");
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
   }, [customerId, intent, outcomeId, page, reason, status]);
 
@@ -640,19 +657,36 @@ function ClaimsReview({
     }
   }
 
-  function clearAdvanced() {
+  function applyFilters() {
+    setStatus(draftStatus);
+    setReason(draftReason);
+    setOutcomeId(draftOutcomeId.trim());
+    setCustomerId(draftCustomerId.trim());
+    setIntent(draftIntent);
+    onRuleChange(draftReason);
+    setPage(0);
+  }
+
+  function clearAllFilters() {
+    setDraftStatus("");
+    setDraftReason("");
+    setDraftOutcomeId("");
+    setDraftCustomerId("");
+    setDraftIntent("");
+    setStatus("");
+    setReason("");
     setOutcomeId("");
     setCustomerId("");
     setIntent("");
+    onRuleChange("");
     setPage(0);
   }
 
   function showAllClaims() {
-    setStatus("");
-    setReason("");
-    onRuleChange("");
-    clearAdvanced();
+    clearAllFilters();
   }
+
+  const activeFilterCount = [status, reason, outcomeId, customerId, intent].filter(Boolean).length;
 
   return (
     <section className="major-section" aria-labelledby="claims-title">
@@ -695,11 +729,8 @@ function ClaimsReview({
                 <Select
                   labelId="status-label"
                   label="Status"
-                  value={status}
-                  onChange={(event) => {
-                    setStatus(event.target.value);
-                    setPage(0);
-                  }}
+                  value={draftStatus}
+                  onChange={(event) => setDraftStatus(event.target.value)}
                 >
                   <MenuItem value="">All statuses</MenuItem>
                   <MenuItem value="payable">Payable</MenuItem>
@@ -714,12 +745,8 @@ function ClaimsReview({
                 <Select
                   labelId="reason-label"
                   label="Failed rule"
-                  value={reason}
-                  onChange={(event) => {
-                    setReason(event.target.value);
-                    onRuleChange(event.target.value);
-                    setPage(0);
-                  }}
+                  value={draftReason}
+                  onChange={(event) => setDraftReason(event.target.value)}
                 >
                   <MenuItem value="">All rules</MenuItem>
                   {categoryOrder.map((ruleId) => (
@@ -735,11 +762,8 @@ function ClaimsReview({
                 fullWidth
                 size="small"
                 label="Outcome ID"
-                value={outcomeId}
-                onChange={(event) => {
-                  setOutcomeId(event.target.value);
-                  setPage(0);
-                }}
+                value={draftOutcomeId}
+                onChange={(event) => setDraftOutcomeId(event.target.value)}
               />
             </Grid>
             <Grid item xs={12} md={2}>
@@ -747,11 +771,8 @@ function ClaimsReview({
                 fullWidth
                 size="small"
                 label="Customer ID"
-                value={customerId}
-                onChange={(event) => {
-                  setCustomerId(event.target.value);
-                  setPage(0);
-                }}
+                value={draftCustomerId}
+                onChange={(event) => setDraftCustomerId(event.target.value)}
               />
             </Grid>
             <Grid item xs={12} md={2}>
@@ -760,11 +781,8 @@ function ClaimsReview({
                 <Select
                   labelId="intent-label"
                   label="Intent"
-                  value={intent}
-                  onChange={(event) => {
-                    setIntent(event.target.value);
-                    setPage(0);
-                  }}
+                  value={draftIntent}
+                  onChange={(event) => setDraftIntent(event.target.value)}
                 >
                   <MenuItem value="">All intents</MenuItem>
                   <MenuItem value="order_support">Order support</MenuItem>
@@ -774,9 +792,21 @@ function ClaimsReview({
               </FormControl>
             </Grid>
             <Grid item xs={12} md={2}>
-              <Button fullWidth variant="outlined" onClick={clearAdvanced}>
-                Clear advanced
-              </Button>
+              <Stack direction={{ xs: "column", sm: "row", md: "column" }} spacing={1}>
+                <Button fullWidth variant="contained" onClick={applyFilters}>
+                  Apply filters
+                </Button>
+                <Button fullWidth variant="outlined" onClick={clearAllFilters}>
+                  Clear all
+                </Button>
+              </Stack>
+            </Grid>
+            <Grid item xs={12}>
+              <Typography variant="caption" color="text.secondary" aria-live="polite">
+                {activeFilterCount === 0
+                  ? "No filters applied."
+                  : `${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"} applied.`}
+              </Typography>
             </Grid>
           </Grid>
         </Paper>

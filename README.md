@@ -3,7 +3,7 @@
 Evidue independently reconciles outcome-priced AI-agent vendor invoices against
 contractual billing rules and customer-owned operational evidence.
 
-This repository contains a deterministic YC demonstration for fictional parties
+This repository contains a deterministic product demonstration for fictional parties
 Acme Commerce and Nova Support AI. It generates operationally realistic
 synthetic data; no real customer or vendor data is included.
 
@@ -55,7 +55,7 @@ docker run --rm -p 8000:8000 evidue-demo
 Open <http://localhost:8000/demo>.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) for fresh-checkout instructions and
-[docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the YC narration.
+[docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the demo narration.
 
 ## Product surfaces
 
@@ -77,7 +77,7 @@ The demo presents Evidue as the financial control layer for outcome-priced AI ag
 
 - **Evidue Prove** (`/demo/vendor-preflight`) helps agent vendors preflight proposed invoice claims and find revenue at risk before billing.
 - **Outcome Ledger** (`/demo/outcome-ledger`) shows the versioned proof envelope connecting agent execution, contract rules, and operational evidence.
-- **Evidue Verify** (`/demo/invoices/current`) independently calculates what the customer should pay.
+- **Evidue** (`/demo/invoices/current`) independently calculates what the customer should pay.
 
 The vendor workspace cannot modify customer-approved rules, customer-private evidence, or the customer's final payment decision.
 

@@ -2,7 +2,7 @@
 
 ## Product truth
 
-The working wedge is **Evidue Verify**: deterministic reconciliation of an
+The working wedge is **Evidue**: deterministic reconciliation of an
 outcome-priced AI-agent invoice against approved contract rules and persisted
 customer operational evidence.
 
@@ -41,8 +41,8 @@ model. It is not yet an SDK, signed registry, or production permission system.
    - Show the outcome receipt and neutrality rule.
    - State: “A receipt supports a claim; it never declares itself payable.”
 
-5. **Customer Verify — 46–67 seconds**
-   - Open Customer Verify.
+5. **Evidue reconciliation — 46–67 seconds**
+   - Open Evidue reconciliation.
    - Run reconciliation when the demo is reset.
    - Show $15,000 submitted, $12,480 supported, and $2,520 deducted.
    - State that explicit rules, not a model, decide the financial result.
@@ -58,7 +58,7 @@ model. It is not yet an SDK, signed registry, or production permission system.
 
 ## Founder video
 
-The YC founder video is a separate one-minute founder-only video. Do not use the
+The founder video is a separate one-minute founder-only video. Do not use the
 product screen recording as the founder video.
 
 ## Acceptance checks
@@ -67,9 +67,9 @@ product screen recording as the founder video.
 - Vendor Preflight visibly discloses the shared synthetic fixture.
 - Vendor labels are provisional: `Preflight-supported amount` and
   `Likely non-billable`.
-- Customer Verify uses definitive `payable`, `disputed`, and `needs review`
+- Evidue reconciliation uses definitive `payable`, `disputed`, and `needs review`
   determinations.
-- Customer Verify shows evidence coverage and identifier matching before the Run button.
+- Evidue reconciliation shows evidence coverage and identifier matching before the Run button.
 - Data Sources exposes original and normalized payloads without claiming live integrations.
 - Illustrative historical invoices do not appear on the primary Overview path.
 - Every production route loads directly after browser refresh.

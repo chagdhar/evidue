@@ -4,7 +4,7 @@ This build repairs the uploaded real-data ingestion demo after the local full-va
 
 ## Product fixes
 
-- Removed a duplicate `EvidenceReadiness` render on Customer Verify. The panel now appears exactly once.
+- Removed a duplicate `EvidenceReadiness` render on Evidue reconciliation. The panel now appears exactly once.
 - Added a stable `data-testid="evidence-readiness"` hook and a regression assertion that enforces one rendered panel.
 - Added accessible labels to metric cards in the form `<label>: <value>`, enabling robust browser checks without ambiguous text matching.
 - Kept repeated provenance identifiers in the raw record, normalized evidence, and timeline because the repetition is intentional and useful.

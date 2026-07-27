@@ -19,7 +19,7 @@ Delivered:
 - production collection plan covering exports, read-only warehouse views/APIs, SFTP/object storage, webhooks, and incremental sync;
 - vendor/customer neutrality and access-control boundaries;
 - server-side filtering and pagination, evidence detail, and record-derived CSV/JSON exports;
-- Evidue Prove, Outcome Ledger, Evidue Verify, contract controls, dispute operations, data-source inspection, and technical scenario lab;
+- Evidue Prove, Outcome Ledger, Evidue, contract controls, dispute operations, data-source inspection, and technical scenario lab;
 - deterministic edge-case scenarios for contradictory evidence, failed-action recovery, and duplicate attribution;
 - fish-compatible setup, development, reset, and validation scripts;
 - production Docker image serving React through FastAPI.

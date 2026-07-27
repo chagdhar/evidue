@@ -33,7 +33,7 @@ const navigation: Array<{ label: string; items: NavEntry[] }> = [
     label: "Workspace",
     items: [
       { label: "Overview", to: "/demo", icon: <TemplateIcon name="dashboard" />, end: true },
-      { label: "Customer Verify", to: "/demo/invoices/current", icon: <TemplateIcon name="verify" /> },
+      { label: "Evidue reconciliation", to: "/demo/invoices/current", icon: <TemplateIcon name="verify" /> },
       { label: "Vendor Preflight", to: "/demo/vendor-preflight", icon: <TemplateIcon name="preflight" /> },
     ],
   },
@@ -58,7 +58,7 @@ const navigation: Array<{ label: string; items: NavEntry[] }> = [
 const routeTitles: Record<string, string> = {
   "/demo": "Overview",
   "/demo/invoices": "Invoices",
-  "/demo/invoices/current": "Customer Verify",
+  "/demo/invoices/current": "Evidue reconciliation",
   "/demo/disputes/current": "Dispute package",
   "/demo/contracts/current": "Contract controls",
   "/demo/outcome-ledger": "Outcome Ledger",

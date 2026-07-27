@@ -130,6 +130,6 @@ The demo exposes three conceptual layers:
 
 1. **Evidue Prove** — vendor-side preflight over proposed invoice claims.
 2. **Outcome Ledger** — versioned proof envelopes and canonical identifiers.
-3. **Evidue Verify** — independent customer-side reconciliation and payment recommendation.
+3. **Evidue** — independent customer-side reconciliation and payment recommendation.
 
 The current demonstration reuses the same deterministic fixture and reconciliation engine to make the two perspectives comparable. This does not imply shared permissions in production. A production deployment must enforce tenant isolation, source ownership, rule ownership, and explicit evidence-sharing grants. Vendor-side evidence is source-labelled and cannot mutate customer-private evidence or customer-approved payable logic.

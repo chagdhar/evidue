@@ -157,7 +157,7 @@ button, a { text-underline-offset: 3px; }
 .template-receipt-grid span { color: var(--ev-muted); }
 .template-loading { min-height: 60vh; display: flex; align-items: center; justify-content: center; gap: 14px; }
 
-/* Customer Verify template conversion */
+/* Evidue reconciliation template conversion */
 .page-shell { width: 100%; max-width: 1480px; margin: 0 auto; padding: 28px 28px 70px; }
 .app-header { display: none !important; }
 .disclosure { margin-bottom: 20px; }

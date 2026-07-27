@@ -11,13 +11,13 @@ The Overview is now the finance control center for the June invoice. It shows:
 - the four-stage path from invoice receipt to payable determination;
 - the seven controls or confirmed deduction categories;
 - a traceable OUT-004821 example;
-- the separation between Evidue Prove, the Outcome Ledger, and Evidue Verify.
+- the separation between Evidue Prove, the Outcome Ledger, and Evidue.
 
 The primary actions are functional:
 
 - **Inspect example evidence** opens the Payment processor raw-record inspector.
 - **Run June reconciliation** runs the deterministic customer-side evaluation.
-- **Open full decision** opens Customer Verify after the result is available.
+- **Open full decision** opens Evidue reconciliation after the result is available.
 
 ## Source inspector
 
@@ -42,6 +42,6 @@ The browser suite now verifies:
 - switching from Payment processor to Vendor claim manifest without stale data;
 - the full customer financial-decision path;
 - focused edge-case scenarios;
-- the two-sided Prove → Outcome Ledger → Verify product story.
+- the two-sided Prove → Outcome Ledger → Evidue product story.
 
 Stable test IDs and accessible metric labels are used for key surfaces to avoid strict-mode collisions caused by legitimate repeated copy.

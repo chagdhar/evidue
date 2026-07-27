@@ -26,7 +26,7 @@ The template structure was adapted to Evidue's product hierarchy:
 
 1. Workspace
    - Overview
-   - Customer Verify
+   - Evidue reconciliation
    - Vendor Preflight
 2. Operations
    - Invoices

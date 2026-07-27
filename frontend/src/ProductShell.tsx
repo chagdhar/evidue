@@ -48,7 +48,7 @@ export function ProductShell() {
             {[
               ["01", "Instrument the outcome", "The vendor emits a stable outcome ID, claimed action, agent version, and evidence references."],
               ["02", "Preflight before invoicing", "Evidue Prove identifies unsupported claims, duplicates, and missing operational proof."],
-              ["03", "Verify independently", "Evidue Verify joins customer-owned evidence to customer-approved contract rules."],
+              ["03", "Reconcile independently", "Evidue joins customer-owned evidence to customer-approved contract rules."],
               ["04", "Determine each charge", "Every claim becomes payable, disputed, or needs review with decisive evidence."],
               ["05", "Settle with proof", "Finance receives a corrected payable amount and an exportable dispute package."],
             ].map(([number, title, body]) => (
@@ -323,7 +323,7 @@ export function OverviewPage() {
           </Box>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2 }}>
             <Button variant="outlined" onClick={() => navigate("/demo/data-sources?source=payment_processor&inspect=1")}>Inspect original records</Button>
-            <Button onClick={() => navigate("/demo/invoices/current")}>Open Customer Verify</Button>
+            <Button onClick={() => navigate("/demo/invoices/current")}>Open Evidue reconciliation</Button>
           </Stack>
         </SectionCard>
       </Box>
@@ -348,7 +348,7 @@ export function OverviewPage() {
           </Box>
           <button onClick={() => navigate("/demo/invoices/current")}>
             <Box className="template-flow-icon"><TemplateIcon name="verify" /></Box>
-            <Box><strong>Evidue Verify</strong><small>Customer control · Should we pay this charge?</small></Box>
+            <Box><strong>Evidue</strong><small>Customer control · Should we pay this charge?</small></Box>
             <TemplateIcon name="arrow" />
           </button>
         </Box>
@@ -415,7 +415,7 @@ export function DisputesPage() {
   const { summary, loading, error } = useProductData();
   if (loading) return <LoadingPage />;
   if (error) return <ErrorPage message={error} />;
-  if (!summary) return <PageFrame><Alert severity="info">Run the June reconciliation before preparing the dispute package.</Alert><Button sx={{ mt: 2 }} variant="contained" onClick={() => navigate("/demo/invoices/current")}>Open Customer Verify</Button></PageFrame>;
+  if (!summary) return <PageFrame><Alert severity="info">Run the June reconciliation before preparing the dispute package.</Alert><Button sx={{ mt: 2 }} variant="contained" onClick={() => navigate("/demo/invoices/current")}>Open Evidue reconciliation</Button></PageFrame>;
   return (
     <PageFrame>
       <PageHeader eyebrow="Dispute operations" title="Prepare vendor dispute" body="Package confirmed deductions, contract controls, and decisive evidence for finance or procurement." />
@@ -743,10 +743,10 @@ export function VendorPreflightPage() {
             ].map(([number, title, body]) => <Box className="template-action-row" key={number}><span>{number}</span><Box><strong>{title}</strong><small>{body}</small></Box></Box>)}
           </Stack>
         </SectionCard>
-        <SectionCard title="Prove prepares. Verify decides." eyebrow="Neutrality boundary">
+        <SectionCard title="Prove prepares. Evidue decides." eyebrow="Neutrality boundary">
           <Typography color="text.secondary">The vendor may improve evidence and remove unsupported claims. It cannot edit customer rules, customer evidence, internal notes, or the final payment recommendation.</Typography>
           <Box className="template-boundary-flow">
-            <div><strong>Prove</strong><span>Vendor claim</span></div><TemplateIcon name="arrow" /><div><strong>Ledger</strong><span>Proof envelope</span></div><TemplateIcon name="arrow" /><div><strong>Verify</strong><span>Customer decision</span></div>
+            <div><strong>Prove</strong><span>Vendor claim</span></div><TemplateIcon name="arrow" /><div><strong>Ledger</strong><span>Proof envelope</span></div><TemplateIcon name="arrow" /><div><strong>Evidue</strong><span>Customer decision</span></div>
           </Box>
         </SectionCard>
       </Box>
@@ -790,7 +790,7 @@ export function OutcomeLedgerPage() {
         <Card><CardContent><Typography variant="overline" color="text.secondary">Independent verification</Typography><Typography variant="h5">Acme verifies what it owes</Typography><Typography variant="body2" color="text.secondary">Customer-owned evidence and approved rules determine the payable amount.</Typography></CardContent></Card>
       </Box>
       <Box className="template-two-column">
-        <SectionCard title="OUT-004821" eyebrow="Outcome receipt" action={<Chip label="Disputed by Verify" color="error" size="small" />}>
+        <SectionCard title="OUT-004821" eyebrow="Outcome receipt" action={<Chip label="Disputed by Evidue" color="error" size="small" />}>
           <Box className="template-receipt-grid">
             {[ ["Claimed outcome", "Refund completed"], ["Agent status", "Resolved"], ["Downstream status", "Processor rejected"], ["Contract window", "2 hours"], ["Customer result", "$0.00 payable"], ["Evidence state", "Complete"] ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
           </Box>
