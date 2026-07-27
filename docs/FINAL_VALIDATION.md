@@ -112,6 +112,8 @@ Frontend and Playwright tests verify:
 - needs-review money remains visually separate from the confirmed deduction;
 - the selector is populated by the scenario API and switching performs a real
   reset before displaying any new financial result;
+- `/demo` contains no selector and restores `headline` if a lab scenario was
+  previously active; `/demo/lab` is the only selector-bearing route;
 - a review-only scenario defaults claims to `needs_review`, displays no
   confirmed deductions, and includes review money in the bridge;
 - the live browser exercises all four scenarios and their highlighted outcomes;
@@ -200,3 +202,27 @@ its transitive `react-router`) for one React Router RSC-mode advisory. This
 application uses only client-side declarative `BrowserRouter`, serves static
 assets, and implements no React Server Components, actions, or server-side
 rendering, so the affected RSC action path is not used in this architecture.
+
+## Recording-surface cleanup validation
+
+On 2026-07-27, after separating `/demo` from `/demo/lab`, removing generated
+TypeScript metadata, and refining the dispute handoff, the sandbox-safe command
+`./scripts/dev-check.sh fast` passed:
+
+- Ruff format and lint passed;
+- 41 Pytest tests passed;
+- ESLint passed;
+- 20 Vitest tests passed;
+- TypeScript and the Vite production build passed.
+
+The new regressions verify that the primary demo resets a previously active lab
+scenario to `headline`, hides the selector, returns to an unreconciled state,
+and presents the vendor-dispute readiness copy. The Playwright source now
+starts the golden path from `evidence_review` and requires `/demo` to restore
+the 10,000-line headline fixture; focused scenarios run at `/demo/lab`.
+
+A repeat of the live Playwright, Docker, and isolated-checkout commands was
+requested but not executed in this environment because its execution-approval
+quota was exhausted. The last successfully reproduced full, Docker, and
+isolated-checkout results remain documented above; this section does not claim
+that those commands were rerun after the recording-surface cleanup.

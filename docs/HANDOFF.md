@@ -17,6 +17,10 @@ cd evidue
 Open <http://localhost:5173/demo>. Stop both development processes with
 `Ctrl+C`; `dev.sh` terminates its child processes.
 
+`/demo` is fixed to the full 10,000-line headline invoice and is the recording
+route. Open <http://localhost:5173/demo/lab> only for the focused contradictory
+evidence, recovery, and duplicate-attribution cases.
+
 ## Demo reset
 
 With development servers stopped:

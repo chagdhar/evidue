@@ -41,6 +41,19 @@ Changing the scenario regenerates inputs and clears the current
 reconciliation. A user must run reconciliation again before any determination
 or corrected amount is shown.
 
+The presentation has two deliberate routes over the same backend:
+
+- `/demo` is the recording-safe product flow. It does not request or render the
+  scenario catalog and automatically resets a previously selected lab fixture
+  to `headline`.
+- `/demo/lab` is the technical inspection flow. It exposes the scenario
+  selector and focused edge cases.
+
+This is presentation isolation, not a second financial engine. Both routes use
+the same persisted inputs, reconciliation endpoint, determinations, and
+exports. FastAPI explicitly serves the production React entry document at both
+paths; the lab route does not depend on a development-server history fallback.
+
 `POST /api/reconciliations` loads persisted claims and events, converts them to
 domain objects, attributes evidence, provisionally evaluates every claim
 without R4, builds duplicate context from only the provisional payable results,

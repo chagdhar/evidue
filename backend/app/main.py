@@ -152,6 +152,7 @@ def summary_json() -> dict[str, object]:
 dist = Path(__file__).parents[2] / "frontend_dist"
 if dist.exists():
 
+    @app.get("/demo/lab", include_in_schema=False)
     @app.get("/demo", include_in_schema=False)
     def demo_page() -> FileResponse:
         return FileResponse(dist / "index.html")

@@ -301,6 +301,9 @@ function mockApi(
       if (scenarioId === "evidence_review") {
         activeStatus = { ...reviewStatus, reconciled: false };
         activeInvoice = reviewInvoice;
+      } else if (scenarioId === "headline") {
+        activeStatus = { ...headlineStatus, reconciled: false };
+        activeInvoice = invoice;
       }
       return response(activeStatus);
     }
@@ -352,7 +355,7 @@ describe("Evidue financial-decision demo", () => {
 
   it("offers each deterministic product case without embedding financial results", async () => {
     mockApi(false);
-    render(<App />);
+    render(<App scenarioLab />);
 
     await userEvent.click(await screen.findByLabelText("Synthetic data set"));
     expect(screen.getByRole("option", { name: "Full invoice reconciliation" })).toBeInTheDocument();
@@ -364,7 +367,7 @@ describe("Evidue financial-decision demo", () => {
 
   it("switches data sets through reset and returns to an honest ready state", async () => {
     mockApi(true);
-    render(<App />);
+    render(<App scenarioLab />);
 
     await screen.findByText("$12,480.00");
     await userEvent.click(screen.getByLabelText("Synthetic data set"));
@@ -381,6 +384,22 @@ describe("Evidue financial-decision demo", () => {
     expect(screen.getByText(scenarios[1].description)).toBeInTheDocument();
     expect(screen.queryByText("$12,480.00")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run reconciliation" })).toBeInTheDocument();
+  });
+
+  it("keeps the primary demo fixed to the headline scenario", async () => {
+    mockApi(true, reviewSummary, reviewStatus, reviewInvoice);
+    render(<App />);
+
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "/api/demo/reset?scenario_id=headline",
+        { method: "POST" },
+      ),
+    );
+    expect(await screen.findByText("$15,000.00")).toBeInTheDocument();
+    expect(screen.getByText("10,000 claimed outcomes from the vendor")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Synthetic data set")).not.toBeInTheDocument();
+    expect(screen.queryByText("$12,480.00")).not.toBeInTheDocument();
   });
 
   it("keeps both synthetic-data disclosures visible", async () => {
@@ -513,6 +532,18 @@ describe("Evidue financial-decision demo", () => {
     ).toBeInTheDocument();
   });
 
+  it("frames the export as a vendor dispute readiness action", async () => {
+    mockApi(true);
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Prepare vendor dispute" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Detected ✓")).toBeInTheDocument();
+    expect(screen.getByText("Evidenced ✓")).toBeInTheDocument();
+    expect(screen.getByText("Ready to dispute ✓")).toBeInTheDocument();
+  });
+
   it("keeps needs-review money separate from the deduction", async () => {
     mockApi(true, {
       ...summary,
@@ -540,7 +571,7 @@ describe("Evidue financial-decision demo", () => {
       reviewOutcome,
       reviewDetail,
     );
-    render(<App />);
+    render(<App scenarioLab />);
 
     expect(
       await screen.findByRole("heading", { name: "Needs-review outcome evidence" }),

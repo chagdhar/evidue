@@ -8,8 +8,9 @@
    API responses.
 3. Make reset, reconciliation, invoice totals, outcomes, evidence, and exports
    operate on the selected scenario without special-case financial logic.
-4. Add an API-backed scenario selector that returns to an honest
-   pre-reconciliation state on change.
+4. Keep `/demo` fixed to the headline invoice and add the API-backed scenario
+   selector to `/demo/lab`; selection returns to an honest pre-reconciliation
+   state.
 5. Adapt the decision flow for dispute-free review scenarios and highlight each
    scenario's example outcome.
 6. Add domain/API/frontend/Playwright regressions, then run full, Docker, and

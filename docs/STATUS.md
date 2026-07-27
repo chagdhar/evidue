@@ -37,7 +37,7 @@ Delivered:
 - four selectable deterministic synthetic data sets covering the complete
   invoice, contradictory evidence, failed-action recovery, and contextual
   duplicate attribution, with scenario-aware reset scripts and API state;
-- 41 backend tests, 18 frontend tests, and two live Playwright paths;
+- 41 backend tests, 20 frontend tests, and two live Playwright paths;
 - fish-invokable bootstrap, development, seed, reset, and validation scripts;
 - a non-root, health-checked production Docker image serving React through
   FastAPI;
@@ -48,3 +48,9 @@ The financial-correctness defects identified in the follow-up audit are fixed.
 
 The scenario expansion is complete. `docs/FINAL_VALIDATION.md` records the exact
 financial results and validation commands for every data set.
+
+The recording surface is now isolated from the technical scenario lab:
+`/demo` always restores the full headline invoice and contains no scenario
+selector, while `/demo/lab` retains the focused test cases. Generated
+TypeScript build metadata and the stale untracked `docs/GIT_HISTORY.txt`
+snapshot were removed from the working archive.

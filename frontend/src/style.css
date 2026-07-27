@@ -652,6 +652,16 @@ a {
   margin-top: 0;
 }
 
+.dispute-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  color: var(--green);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .export-actions {
   display: flex;
   align-items: center;
@@ -740,6 +750,16 @@ a {
 
   .recommendation {
     padding: 24px 20px;
+  }
+
+  .dispute-state {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .dispute-state > span[aria-hidden="true"] {
+    display: none;
   }
 
   .submitted-amount,

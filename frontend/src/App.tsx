@@ -872,11 +872,19 @@ function Exports({ summary }: { summary: Summary }) {
       <Box className="section-intro">
         <Typography className="eyebrow">Defensible handoff</Typography>
         <Typography variant="h4" id="exports-title">
-          Export the payment decision
+          Prepare vendor dispute
         </Typography>
         <Typography color="text.secondary">
-          Download the disputed claims, decisive evidence, and reconciliation totals.
+          Package the disputed invoice lines, contract rules, and decisive
+          evidence for finance or procurement.
         </Typography>
+      </Box>
+      <Box className="dispute-state" aria-label="Dispute preparation status">
+        <span>Detected ✓</span>
+        <span aria-hidden="true">→</span>
+        <span>Evidenced ✓</span>
+        <span aria-hidden="true">→</span>
+        <span>Ready to dispute ✓</span>
       </Box>
       <Paper className="export-actions">
         <Button
@@ -905,7 +913,7 @@ function Exports({ summary }: { summary: Summary }) {
   );
 }
 
-export default function App() {
+export default function App({ scenarioLab = false }: { scenarioLab?: boolean }) {
   const [demoStatus, setDemoStatus] = useState<DemoStatus | null>(null);
   const [scenarios, setScenarios] = useState<DemoScenario[]>([]);
   const [contract, setContract] = useState<Contract | null>(null);
@@ -920,12 +928,19 @@ export default function App() {
   useEffect(() => {
     async function initialize() {
       try {
-        const [status, scenarioResults, contractResult, invoiceResult] = await Promise.all([
-          api.status(),
-          api.scenarios(),
-          api.contract(),
-          api.invoice(),
-        ]);
+        const [initialStatus, scenarioResults, contractResult, initialInvoice] =
+          await Promise.all([
+            api.status(),
+            scenarioLab ? api.scenarios() : Promise.resolve([]),
+            api.contract(),
+            api.invoice(),
+          ]);
+        let status = initialStatus;
+        let invoiceResult = initialInvoice;
+        if (!scenarioLab && status.scenario_id !== "headline") {
+          status = await api.reset("headline");
+          invoiceResult = await api.invoice();
+        }
         setDemoStatus(status);
         setScenarios(scenarioResults);
         setContract(contractResult);
@@ -938,7 +953,7 @@ export default function App() {
       }
     }
     void initialize();
-  }, []);
+  }, [scenarioLab]);
 
   const month = useMemo(() => {
     if (!invoice) return "";
@@ -1024,7 +1039,7 @@ export default function App() {
             <Typography className="vendor-line">
               Vendor: <strong>{contract.vendor}</strong> · {month}
             </Typography>
-            {demoStatus && (
+            {scenarioLab && demoStatus && (
               <Box className="scenario-control">
                 <FormControl size="small">
                   <InputLabel id="scenario-label">Synthetic data set</InputLabel>

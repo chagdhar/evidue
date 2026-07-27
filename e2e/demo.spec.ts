@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("complete Evidue financial-decision demo path", async ({ page }) => {
-  await page.request.post("/api/demo/reset");
+  await page.request.post("/api/demo/reset?scenario_id=evidence_review");
   await page.goto("/demo");
 
   await expect(page.getByText("Synthetic demonstration data.")).toBeVisible();
@@ -13,6 +13,7 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
   await expect(page.getByText("$15,000.00")).toBeVisible();
   await expect(page.getByText("10,000 claimed outcomes from the vendor")).toBeVisible();
   await expect(page.getByText("Ready to reconcile")).toBeVisible();
+  await expect(page.getByLabel("Synthetic data set")).toHaveCount(0);
   await expect(page.getByText("$12,480.00")).not.toBeVisible();
   await expect(page.getByRole("heading", { name: "Executable billing terms" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Available source systems" })).toBeVisible();
@@ -65,6 +66,8 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
   await expect(
     page.getByText("Dispute package ready: 1,680 disputed outcomes · $2,520.00."),
   ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Prepare vendor dispute" })).toBeVisible();
+  await expect(page.getByText("Ready to dispute ✓")).toBeVisible();
 
   const csvDownload = page.waitForEvent("download");
   await page.getByRole("link", { name: "Disputed-lines CSV" }).click();
@@ -75,7 +78,7 @@ test("focused synthetic data sets demonstrate distinct contract decisions", asyn
   page,
 }) => {
   await page.request.post("/api/demo/reset?scenario_id=headline");
-  await page.goto("/demo");
+  await page.goto("/demo/lab");
 
   const selector = page.getByLabel("Synthetic data set");
 

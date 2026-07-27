@@ -30,6 +30,7 @@ createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/demo" element={<App />} />
+        <Route path="/demo/lab" element={<App scenarioLab />} />
         <Route path="*" element={<Navigate to="/demo" replace />} />
       </Routes>
     </BrowserRouter>

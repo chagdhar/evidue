@@ -2,7 +2,7 @@
 
 Target narration: approximately 100 seconds.
 
-1. Open `/demo`.
+1. Run `./scripts/demo-reset.sh` and open `/demo`.
 
    “Outcome-priced AI vendors send an invoice, but the customer still has to
    prove which outcomes deserve payment. This is Evidue, using synthetic,
@@ -39,7 +39,8 @@ Target narration: approximately 100 seconds.
    vendor claim, contract obligation, determination, source records, timestamps,
    and engine version shown together.”
 
-6. Close the inspector and click **Download dispute package**.
+6. Close the inspector and point to **Prepare vendor dispute**, then click
+   **Download dispute package**.
 
    “Finance receives a complete evidence package and can separately download
    disputed-line CSV or JSON summaries. One invoice enters; one defensible
@@ -47,8 +48,9 @@ Target narration: approximately 100 seconds.
 
 ## Focused follow-up cases
 
-Use **Synthetic data set** to switch cases. Each switch returns the product to
-the unreconciled state so the audience sees the decision being recomputed.
+Open `/demo/lab` and use **Synthetic data set** to switch cases. Each switch
+returns the product to the unreconciled state so the audience sees the decision
+being recomputed. Do not use this route in the submitted YC recording.
 
 - **Contradictory evidence**: run the two-line fixture and point out that
   success and failure records for the same claim produce `needs_review`.
@@ -61,6 +63,6 @@ the unreconciled state so the audience sees the decision being recomputed.
   the earliest otherwise-payable claim wins; the later two claims inside 24
   hours are disputed under R4.
 
-Return to **Full invoice reconciliation** for the headline close. The scenario
-descriptions identify the case but never preview a financial result; all money
-appears only after the backend reconciliation runs.
+Return to `/demo` for the headline close. The lab descriptions identify the
+case but never preview a financial result; all money appears only after the
+backend reconciliation runs.
