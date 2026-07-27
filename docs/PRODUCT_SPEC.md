@@ -71,3 +71,32 @@ Material UI, pytest, Ruff, ESLint, Vitest, Playwright, and Docker. Monetary
 arithmetic uses `Decimal` and decimal-string JSON fields; totals are derived
 from persisted determinations, never route or UI constants. The final
 validation uses uv-managed CPython 3.13.14.
+
+## Two-sided expansion: Evidue Prove and Evidue Verify
+
+Evidue now presents two strictly separated product surfaces built on a shared outcome ledger.
+
+### Evidue Prove — vendor preflight
+
+Before invoicing, an AI-agent vendor can run the same deterministic rules against its proposed outcome claims to identify:
+
+- unsupported claims that should not be invoiced;
+- missing downstream evidence;
+- premature agent closure;
+- duplicate attribution;
+- account and action mismatches; and
+- revenue at risk by rule, workflow, and outcome.
+
+This surface answers: **Can the vendor defend this charge?**
+
+It may help a vendor improve evidence or remove unsupported claims, but it cannot access customer-private evidence, change customer-approved contract rules, or control the customer's payment recommendation.
+
+### Evidue Verify — customer reconciliation
+
+The customer workspace remains the authoritative financial control. It independently joins vendor claims to the customer's contract and systems of record, then classifies each charge as payable, disputed, or needs review.
+
+This surface answers: **Should the customer pay this charge?**
+
+### Shared outcome ledger
+
+Each claimed outcome is represented by a versioned proof envelope containing stable identifiers, agent/workflow version, claimed action, timestamps, evidence references, contract-rule version, and source provenance. An outcome receipt supports a claim; it never self-declares the charge payable.

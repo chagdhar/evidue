@@ -54,3 +54,12 @@ The recording surface is now isolated from the technical scenario lab:
 selector, while `/demo/lab` retains the focused test cases. Generated
 TypeScript build metadata and the stale untracked `docs/GIT_HISTORY.txt`
 snapshot were removed from the working archive.
+
+## Two-sided product surfaces
+
+- Added Evidue Prove vendor invoice preflight.
+- Added shared Outcome Ledger product surface.
+- Added explicit neutrality and permission boundary between vendor preparation and customer verification.
+- Added revenue-at-risk diagnosis using the existing deterministic reconciliation summary.
+- Added direct product narrative on the Overview screen.
+- Preserved the existing customer reconciliation engine, totals, dispute package, and technical lab.

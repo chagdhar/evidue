@@ -8,7 +8,9 @@ import {
   DisputesPage,
   InvoicesPage,
   OverviewPage,
+  OutcomeLedgerPage,
   ProductShell,
+  VendorPreflightPage,
 } from "./ProductShell";
 import "./style.css";
 
@@ -45,6 +47,8 @@ createRoot(document.getElementById("root")!).render(
           <Route path="contracts/current" element={<ContractsPage />} />
           <Route path="disputes/current" element={<DisputesPage />} />
           <Route path="data-sources" element={<DataSourcesPage />} />
+          <Route path="vendor-preflight" element={<VendorPreflightPage />} />
+          <Route path="outcome-ledger" element={<OutcomeLedgerPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/demo" replace />} />
       </Routes>

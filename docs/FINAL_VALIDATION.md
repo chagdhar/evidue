@@ -226,3 +226,23 @@ requested but not executed in this environment because its execution-approval
 quota was exhausted. The last successfully reproduced full, Docker, and
 isolated-checkout results remain documented above; this section does not claim
 that those commands were rerun after the recording-surface cleanup.
+
+## Two-sided product extension validation
+
+Validation performed on the archive in this environment:
+
+- `python -m pytest -q` — **41 passed**.
+- TypeScript parser validation using the installed TypeScript compiler for `ProductShell.tsx`, `main.tsx`, and the extended Playwright specification — **syntax passed**.
+- Production React search for hardcoded headline currency strings — none found outside tests.
+- Backend SPA route handlers updated for `/demo/vendor-preflight` and `/demo/outcome-ledger`.
+
+Not independently rerun in this environment because frontend dependencies could not be installed from the package registry:
+
+- ESLint
+- Vitest
+- dependency-aware TypeScript build
+- Vite production build
+- Playwright browser execution
+- Docker build
+
+Run `./scripts/dev-check.sh full` and the Docker verification locally before recording or submission.

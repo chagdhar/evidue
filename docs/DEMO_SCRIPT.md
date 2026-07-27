@@ -55,3 +55,21 @@ End on the $12,480 recommended payment or the dispute package summary.
 - `/demo/lab` — contradictory evidence, recovery, and duplicate-window cases
 
 Do not show the lab in the submitted recording unless asked about edge cases.
+
+## Extended product demo path
+
+The primary YC recording should remain focused while showing the larger company:
+
+1. **Overview:** show the Prove → Outcome Ledger → Verify architecture.
+2. **Vendor Preflight:** show $15,000 proposed, $12,480 defensible, and $2,520 at risk before invoicing.
+3. **Outcome Ledger:** open OUT-004821 and explain the versioned proof envelope.
+4. **Customer Verify:** run the independent reconciliation and show the same $12,480 supported payable amount.
+5. **Evidence:** open OUT-004821 and show the processor rejection, computed deadline, and later human completion.
+6. **Dispute package:** download the evidence-backed package.
+
+Narration boundary: “Prove helps the vendor prepare a defensible claim. Verify independently determines what the customer should pay. The vendor cannot change customer rules or private evidence.”
+
+## Final recording note
+
+Use `docs/FINAL_DEMO_GUIDE.md` for the final 75–85 second product recording.
+The YC one-minute founder video is a separate founder-only asset.

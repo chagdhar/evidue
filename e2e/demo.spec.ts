@@ -123,3 +123,32 @@ test("focused synthetic data sets demonstrate distinct contract decisions", asyn
     page.getByRole("button", { name: /Duplicate charges.*2.*\$3.00/ }),
   ).toBeVisible();
 });
+
+test("two-sided product story connects vendor preflight to independent verification", async ({ page }) => {
+  await page.request.post("/api/demo/reset?scenario_id=headline");
+  await page.goto("/demo");
+
+  await expect(page.getByRole("heading", { name: "Prove before invoicing. Verify before payment." })).toBeVisible();
+  await expect(page.getByText("Evidue Prove")).toBeVisible();
+  await expect(page.getByText("Outcome ledger")).toBeVisible();
+  await expect(page.getByText("Evidue Verify")).toBeVisible();
+
+  await page.getByRole("link", { name: "Vendor Preflight" }).click();
+  await expect(page).toHaveURL(/\/demo\/vendor-preflight$/);
+  await expect(page.getByRole("heading", { name: "Send an invoice you can defend" })).toBeVisible();
+  await page.getByRole("button", { name: "Run invoice preflight" }).click();
+  await expect(page.getByText("$12,480.00")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("$2,520.00")).toBeVisible();
+  await expect(page.getByText("Prove prepares. Verify decides.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Likely non-billable" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Outcome Ledger" }).click();
+  await expect(page).toHaveURL(/\/demo\/outcome-ledger$/);
+  await expect(page.getByRole("heading", { name: "A financial record for every agent outcome" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "OUT-004821" })).toBeVisible();
+  await expect(page.getByText("A receipt supports a claim; it never self-declares the charge payable.")).toBeVisible();
+
+  await page.getByRole("link", { name: "Customer Verify" }).click();
+  await expect(page).toHaveURL(/\/demo\/invoices\/current$/);
+  await expect(page.locator(".payable-amount")).toHaveText("$12,480.00");
+});

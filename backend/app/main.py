@@ -153,6 +153,8 @@ dist = Path(__file__).parents[2] / "frontend_dist"
 if dist.exists():
 
     @app.get("/demo/lab", include_in_schema=False)
+    @app.get("/demo/outcome-ledger", include_in_schema=False)
+    @app.get("/demo/vendor-preflight", include_in_schema=False)
     @app.get("/demo/data-sources", include_in_schema=False)
     @app.get("/demo/disputes/current", include_in_schema=False)
     @app.get("/demo/contracts/current", include_in_schema=False)
