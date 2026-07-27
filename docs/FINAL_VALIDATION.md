@@ -246,3 +246,101 @@ Not independently rerun in this environment because frontend dependencies could 
 - Docker build
 
 Run `./scripts/dev-check.sh full` and the Docker verification locally before recording or submission.
+
+## Production-shaped ingestion expansion — 2026-07-27
+
+Validated against a clean disposable SQLite database:
+
+```text
+42 backend tests passed
+Python compilation passed
+Shell-script syntax passed
+TypeScript/TSX syntax transpilation passed
+Source-only TypeScript check passed with no unused locals or parameters
+Playwright specification syntax passed
+Source-fixture manifest validated
+API golden path validated
+```
+
+Verified ingestion totals:
+
+```text
+Source records represented       50,302
+Representative raw payloads         238
+Normalized operational events    20,301
+Vendor claims                    10,000
+Direct outcome-ID matches         9,975
+Secondary-key matches                25
+Identity reviews                       0
+Approved contract rules               7
+```
+
+Verified financial result:
+
+```text
+Submitted invoice               $15,000.00
+Confirmed payable               $12,480.00
+Recommended deduction            $2,520.00
+Needs review                         $0.00
+```
+
+Verified `OUT-004821` through the API:
+
+- vendor claim provenance is present;
+- the payment-processor raw payload records `result = rejected`;
+- the raw record is normalized to a failed downstream action;
+- the record is attributed by direct outcome ID;
+- the determination is disputed under R3;
+- the confirmed payable amount is $0.00.
+
+The sandbox package registry returned HTTP 503/timeouts during dependency installation, so the actual ESLint, Vitest, Vite build, and live Playwright execution must be run with `./scripts/dev-check.sh full` on the target machine. Their source files and specifications passed syntax and source-level TypeScript checks.
+
+## Production-shaped ingestion extension validation
+
+Validation performed after adding raw source records, collection metadata,
+identity matching, evidence readiness, and provenance inspection:
+
+- Python compilation passed for the backend and fixture generator.
+- Shell syntax passed for every script.
+- Pytest: **42 passed**.
+- Source-fixture generation completed and produced all eight representative
+  source files plus `demo-data/manifest.json`.
+- A strict TypeScript semantic check with external UI libraries stubbed passed
+  with `noUnusedLocals` and `noUnusedParameters` enabled for application and
+  test source.
+- TypeScript transpilation reported zero syntax diagnostics.
+- FastAPI HTTP validation passed for reset, readiness, raw-source samples,
+  reconciliation, and OUT-004821 provenance.
+
+Validated readiness result:
+
+- 10,000 vendor claims
+- 50,302 aggregate source records
+- 238 representative raw payloads retained in the compact demo database
+- 20,301 normalized operational events
+- 9,975 direct outcome-ID matches
+- 25 verified secondary-key matches
+- zero unresolved identity reviews
+- 100.00% claim evidence coverage
+- seven approved contract rules
+
+The payment-processor sample for `OUT-004821` retained the original rejected
+refund payload, its normalized record, source ID, schema version, payload hash,
+and direct-match provenance. The subsequent reconciliation still returned
+$15,000.00 submitted, $12,480.00 confirmed payable, and $2,520.00 recommended
+deduction. OUT-004821 remained disputed under R3 with three decisive evidence
+events.
+
+The sandbox npm registry returned HTTP 503 for a missing package tarball, so the
+following dependency-aware commands could not be rerun here after this
+extension:
+
+- ESLint
+- Vitest
+- Vite/TypeScript production build using installed React and MUI types
+- Playwright browser execution
+- Docker build
+
+The application and test source passed the independent strict semantic check,
+but `./scripts/dev-check.sh full` remains required locally before recording.
+Do not run `npm audit fix` automatically; review dependency changes separately.

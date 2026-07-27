@@ -17,6 +17,70 @@ class DemoStateRow(Base):
     scenario_id: Mapped[str] = mapped_column(String, default="headline")
 
 
+class ConnectorRow(Base):
+    __tablename__ = "connectors"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    category: Mapped[str] = mapped_column(String)
+    owner: Mapped[str] = mapped_column(String)
+    authority: Mapped[str] = mapped_column(String)
+    collection_method: Mapped[str] = mapped_column(String)
+    production_method: Mapped[str] = mapped_column(String)
+    source_format: Mapped[str] = mapped_column(String)
+    schedule: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(Text)
+    fields: Mapped[list] = mapped_column(JSON)
+    records_received: Mapped[int] = mapped_column(Integer)
+    records_normalized: Mapped[int] = mapped_column(Integer)
+    records_rejected: Mapped[int] = mapped_column(Integer)
+    last_synced_at: Mapped[datetime] = mapped_column(DateTime)
+    trust_boundary: Mapped[str] = mapped_column(Text)
+
+
+class RawRecordRow(Base):
+    __tablename__ = "raw_records"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    connector_id: Mapped[str] = mapped_column(ForeignKey("connectors.id"), index=True)
+    source_record_id: Mapped[str] = mapped_column(String, index=True)
+    record_type: Mapped[str] = mapped_column(String, index=True)
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime)
+    payload: Mapped[dict] = mapped_column(JSON)
+    normalized_payload: Mapped[dict] = mapped_column(JSON)
+    payload_hash: Mapped[str] = mapped_column(String)
+    schema_version: Mapped[str] = mapped_column(String)
+    sampled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class EvidenceMatchRow(Base):
+    __tablename__ = "evidence_matches"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    raw_record_id: Mapped[str] = mapped_column(ForeignKey("raw_records.id"), index=True)
+    outcome_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String, index=True)
+    match_method: Mapped[str] = mapped_column(String)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(6, 4))
+    reason: Mapped[str] = mapped_column(Text)
+    matched_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class IngestionBatchRow(Base):
+    __tablename__ = "ingestion_batches"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    scenario_id: Mapped[str] = mapped_column(String, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime)
+    completed_at: Mapped[datetime] = mapped_column(DateTime)
+    claims_received: Mapped[int] = mapped_column(Integer)
+    direct_matches: Mapped[int] = mapped_column(Integer)
+    secondary_matches: Mapped[int] = mapped_column(Integer)
+    unresolved_matches: Mapped[int] = mapped_column(Integer)
+    source_records_received: Mapped[int] = mapped_column(Integer)
+    source_records_normalized: Mapped[int] = mapped_column(Integer)
+    source_records_rejected: Mapped[int] = mapped_column(Integer)
+    contract_rules_approved: Mapped[int] = mapped_column(Integer)
+
+
 class ContractRow(Base):
     __tablename__ = "contracts"
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -61,6 +125,12 @@ class InvoiceRow(Base):
 class OutcomeClaimRow(Base):
     __tablename__ = "outcome_claims"
     outcome_id: Mapped[str] = mapped_column(String, primary_key=True)
+    vendor_claim_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    external_conversation_id: Mapped[str] = mapped_column(String, index=True)
+    agent_version: Mapped[str] = mapped_column(String)
+    raw_record_id: Mapped[str | None] = mapped_column(
+        ForeignKey("raw_records.id"), nullable=True, index=True
+    )
     invoice_id: Mapped[str] = mapped_column(ForeignKey("invoices.id"), index=True)
     customer_id: Mapped[str] = mapped_column(String, index=True)
     intent: Mapped[str] = mapped_column(String, index=True)
@@ -93,6 +163,18 @@ class OperationalEventRow(Base):
     )
     values: Mapped[dict] = mapped_column(JSON)
     ingested_at: Mapped[datetime] = mapped_column(DateTime)
+    connector_id: Mapped[str | None] = mapped_column(
+        ForeignKey("connectors.id"), nullable=True, index=True
+    )
+    raw_record_id: Mapped[str | None] = mapped_column(
+        ForeignKey("raw_records.id"), nullable=True, index=True
+    )
+    match_method: Mapped[str] = mapped_column(String, default="direct_outcome_id")
+    match_confidence: Mapped[Decimal] = mapped_column(Numeric(6, 4), default=Decimal("1.0000"))
+    payload_hash: Mapped[str] = mapped_column(String, default="")
+    schema_version: Mapped[str] = mapped_column(String, default="1.0")
+    source_locator: Mapped[str] = mapped_column(String, default="")
+    external_keys: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class ReconciliationRow(Base):

@@ -8,6 +8,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.schemas import (
+    DataReadinessResponse,
+    DataSourceSamplesResponse,
     DemoScenarioResponse,
     DemoStatusResponse,
     HealthResponse,
@@ -50,6 +52,26 @@ def reset(scenario_id: str = "headline") -> dict[str, object]:
 @app.get("/api/demo/status", response_model=DemoStatusResponse)
 def demo_status() -> dict[str, object]:
     return repository.demo_status()
+
+
+@app.get("/api/data-readiness", response_model=DataReadinessResponse)
+def data_readiness() -> dict[str, object]:
+    return repository.data_readiness()
+
+
+@app.get(
+    "/api/data-sources/{source_id}/samples",
+    response_model=DataSourceSamplesResponse,
+)
+def data_source_samples(
+    source_id: str,
+    limit: int = Query(5, ge=1, le=25),
+    outcome_id: str | None = None,
+) -> dict[str, object]:
+    try:
+        return repository.source_samples(source_id, limit, outcome_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @app.get("/api/contracts/current")

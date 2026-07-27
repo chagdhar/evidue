@@ -58,7 +58,7 @@ http://localhost:8000/demo
 - `/demo/invoices/current` — Evidue Verify working reconciliation
 - `/demo/contracts/current` — clause-to-rule mappings
 - `/demo/disputes/current` — dispute package
-- `/demo/data-sources` — synthetic fixture provenance
+- `/demo/data-sources` — production-shaped collection, matching, and raw-record provenance
 - `/demo/lab` — technical edge cases
 
 ## Reset the demo

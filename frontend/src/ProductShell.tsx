@@ -8,7 +8,6 @@ import {
   CircularProgress,
   Divider,
   Drawer,
-  LinearProgress,
   Paper,
   Stack,
   Table,
@@ -22,7 +21,17 @@ import {
 import { TemplateIcon } from "./TemplateIcons";
 import { ReactNode, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, Category, Contract, DemoStatus, Invoice, Summary } from "./api";
+import {
+  api,
+  Category,
+  Contract,
+  DataReadiness,
+  DataSourceSamples,
+  DemoStatus,
+  Invoice,
+  RawRecordSample,
+  Summary,
+} from "./api";
 import { DashboardShell } from "./DashboardShell";
 import { disclosure, formatUsd } from "./presentation";
 
@@ -111,6 +120,7 @@ function useProductData() {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [contract, setContract] = useState<Contract | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [readiness, setReadiness] = useState<DataReadiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -118,22 +128,29 @@ function useProductData() {
       try {
         let currentStatus = await api.status();
         if (currentStatus.scenario_id !== "headline") currentStatus = await api.reset("headline");
-        const [invoiceResult, contractResult] = await Promise.all([api.invoice(), api.contract()]);
-        setStatus(currentStatus); setInvoice(invoiceResult); setContract(contractResult);
+        const [invoiceResult, contractResult, readinessResult] = await Promise.all([
+          api.invoice(),
+          api.contract(),
+          api.dataReadiness(),
+        ]);
+        setStatus(currentStatus);
+        setInvoice(invoiceResult);
+        setContract(contractResult);
+        setReadiness(readinessResult);
         if (currentStatus.reconciled) setSummary(await api.current());
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "Could not load product data");
       } finally { setLoading(false); }
     })();
   }, []);
-  return { status, invoice, contract, summary, loading, error, setSummary };
+  return { status, invoice, contract, summary, readiness, loading, error, setSummary };
 }
 
 export function OverviewPage() {
   const navigate = useNavigate();
-  const { invoice, contract, summary, loading, error } = useProductData();
+  const { invoice, contract, summary, readiness, loading, error } = useProductData();
   if (loading) return <LoadingPage />;
-  if (error || !invoice || !contract) return <ErrorPage message={error} />;
+  if (error || !invoice || !contract || !readiness) return <ErrorPage message={error} />;
   return (
     <PageFrame>
       <Alert severity="warning" className="template-disclosure"><strong>Synthetic demonstration data.</strong> {disclosure}</Alert>
@@ -145,10 +162,10 @@ export function OverviewPage() {
       />
 
       <Box className="template-stats-grid">
-        <MetricCard label="Submitted invoice" value={formatUsd(invoice.submitted_amount)} helper="10,000 claimed outcomes" icon={<TemplateIcon name="receipt" />} />
-        <MetricCard label="Recommended payment" value={summary ? formatUsd(summary.confirmed_payable_amount) : "Pending"} helper={summary ? "8,320 outcomes supported" : "Run reconciliation"} tone="success" icon={<TemplateIcon name="check" />} />
-        <MetricCard label="Confirmed deductions" value={summary ? formatUsd(summary.recommended_deduction) : "Pending"} helper={summary ? "1,680 disputed outcomes" : "Awaiting evidence review"} tone="error" icon={<TemplateIcon name="warning" />} />
-        <MetricCard label="Contract controls" value={`${contract.clauses.length}`} helper={`${contract.evidence_sources.length} evidence source categories`} icon={<TemplateIcon name="shield" />} />
+        <MetricCard label="Submitted invoice" value={formatUsd(invoice.submitted_amount)} helper={`${invoice.claimed_outcomes.toLocaleString()} vendor claims`} icon={<TemplateIcon name="receipt" />} />
+        <MetricCard label="Evidence coverage" value={`${readiness.totals.claim_coverage_percent.toFixed(2)}%`} helper={`${readiness.totals.raw_records.toLocaleString()} source records collected`} tone="success" icon={<TemplateIcon name="data" />} />
+        <MetricCard label="Secondary-key matches" value={readiness.totals.secondary_matches.toLocaleString()} helper="Resolved without a shared outcome ID" tone="warning" icon={<TemplateIcon name="ledger" />} />
+        <MetricCard label="Approved contract rules" value={`${readiness.totals.contract_rules_approved}`} helper="Customer-approved and versioned" icon={<TemplateIcon name="shield" />} />
       </Box>
 
       <Box className="template-overview-grid">
@@ -180,11 +197,11 @@ export function OverviewPage() {
 
         <SectionCard title="One invoice, seven approved rules" eyebrow="Control coverage">
           <Stack divider={<Divider flexItem />}>
-            <Box className="template-detail-row"><span>Invoice lines attributable</span><strong>{invoice.claimed_outcomes.toLocaleString()}</strong></Box>
-            <Box className="template-detail-row"><span>Evidence sources available</span><strong>{contract.evidence_sources.length} source categories</strong></Box>
-            <Box className="template-detail-row"><span>Executable billing rules</span><strong>{contract.clauses.length}</strong></Box>
+            <Box className="template-detail-row"><span>Direct outcome-ID matches</span><strong>{readiness.totals.direct_matches.toLocaleString()}</strong></Box>
+            <Box className="template-detail-row"><span>Verified secondary-key matches</span><strong>{readiness.totals.secondary_matches.toLocaleString()}</strong></Box>
+            <Box className="template-detail-row"><span>Records awaiting identity review</span><strong>{readiness.totals.review_records.toLocaleString()}</strong></Box>
           </Stack>
-          <Button sx={{ mt: 2 }} onClick={() => navigate("/demo/contracts/current")}>Review contract controls</Button>
+          <Button sx={{ mt: 2 }} onClick={() => navigate("/demo/data-sources")}>Inspect data collection</Button>
         </SectionCard>
       </Box>
 
@@ -296,35 +313,213 @@ export function DisputesPage() {
 }
 
 export function DataSourcesPage() {
-  const { contract, loading, error } = useProductData();
+  const [readiness, setReadiness] = useState<DataReadiness | null>(null);
+  const [samples, setSamples] = useState<DataSourceSamples | null>(null);
+  const [selectedSource, setSelectedSource] = useState("payment_processor");
+  const [selectedRecord, setSelectedRecord] = useState<RawRecordSample | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setReadiness(await api.dataReadiness());
+      } catch (requestError) {
+        setError(requestError instanceof Error ? requestError.message : "Could not load ingestion readiness");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!readiness) return;
+    (async () => {
+      setSampleLoading(true);
+      try {
+        const result = await api.sourceSamples(selectedSource, selectedSource === "payment_processor" ? "OUT-004821" : undefined, 8);
+        setSamples(result);
+        setSelectedRecord(result.records[0] ?? null);
+      } catch (requestError) {
+        setError(requestError instanceof Error ? requestError.message : "Could not load source records");
+      } finally {
+        setSampleLoading(false);
+      }
+    })();
+  }, [readiness, selectedSource]);
+
   if (loading) return <LoadingPage />;
-  if (error || !contract) return <ErrorPage message={error} />;
-  const sources = [
-    ["Support conversations", "Zendesk-format fixture", "Ticket and recontact evidence"],
-    ["Payment events", "Stripe-format fixture", "Refund and credit completion state"],
-    ["Billing records", "Subscription ledger fixture", "Invoice and attribution records"],
-    ["Product events", "Account event fixture", "Downstream account changes"],
-    ["Vendor invoice", "Outcome-level CSV fixture", "10,000 claimed outcomes"],
-  ];
+  if (error || !readiness) return <ErrorPage message={error} />;
+  const totals = readiness.totals;
+
   return (
     <PageFrame>
-      <PageHeader eyebrow="Evidence infrastructure" title="Customer-owned systems of record" body="Synthetic connector fixtures model the provenance Evidue would ingest through APIs, webhooks, or scheduled exports." />
-      <Alert severity="info" sx={{ mb: 2 }}>These are deterministic local fixtures, not live authenticated integrations.</Alert>
-      <Box className="template-source-grid">
-        {sources.map(([name, status, description]) => (
-          <Card key={name}>
-            <CardContent>
-              <Stack direction="row" justifyContent="space-between" alignItems="flex-start"><Typography variant="h6">{name}</Typography><Chip label="Fixture loaded" size="small" color="success" /></Stack>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{status}</Typography>
-              <Typography variant="body2" sx={{ mt: 2 }}>{description}</Typography>
-              <LinearProgress variant="determinate" value={100} sx={{ mt: 2 }} />
-            </CardContent>
-          </Card>
-        ))}
+      <Alert severity="info" className="template-disclosure">
+        <strong>Synthetic source records, production-shaped pipeline.</strong> The values are generated, but the demo begins with vendor, support, payment, product, billing, identity, and contract-shaped records before normalization and matching.
+      </Alert>
+      <PageHeader
+        eyebrow="Ingestion and evidence attribution"
+        title="How real customer data enters Evidue"
+        body="Evidue does not expect one clean outcome table. It collects read-only records from several systems, preserves each source payload, resolves identity, and builds a canonical evidence record before any charge is evaluated."
+      />
+
+      <Box className="template-stats-grid">
+        <MetricCard label="Source records received" value={totals.raw_records.toLocaleString()} helper={`${totals.sampled_raw_records.toLocaleString()} representative payloads inspectable in the demo`} icon={<TemplateIcon name="data" />} />
+        <MetricCard label="Vendor claims" value={totals.claimed_outcomes.toLocaleString()} helper="Outcome-level invoice manifest" icon={<TemplateIcon name="receipt" />} />
+        <MetricCard label="Secondary identity joins" value={totals.secondary_matches.toLocaleString()} helper="Matched without a source outcome ID" tone="warning" icon={<TemplateIcon name="ledger" />} />
+        <MetricCard label="Claim evidence coverage" value={`${totals.claim_coverage_percent.toFixed(2)}%`} helper={`${totals.review_records} claims require identity review`} tone="success" icon={<TemplateIcon name="check" />} />
       </Box>
-      <SectionCard title="Provenance retained" eyebrow="Operational event model">
-        <Box className="template-schema-grid">{["Source system", "Source record ID", "Event type", "Event timestamp", "Customer ID", "Outcome ID", "Normalized values", "Ingestion timestamp"].map((field) => <span key={field}>✓ {field}</span>)}</Box>
+
+      <SectionCard title="The ingestion path" eyebrow="Same stages used in production">
+        <Box className="ingestion-pipeline">
+          {readiness.pipeline.map((step, index) => (
+            <Box className="ingestion-stage" key={step.id}>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <Box>
+                <Typography fontWeight={700}>{step.label}</Typography>
+                <Typography variant="body2" color="text.secondary">{step.description}</Typography>
+              </Box>
+              {index < readiness.pipeline.length - 1 && <TemplateIcon name="arrow" />}
+            </Box>
+          ))}
+        </Box>
       </SectionCard>
+
+      <SectionCard title="Collection plan by source" eyebrow="Demo fixture → production connection">
+        <TableContainer className="source-collection-table">
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Source</TableCell>
+                <TableCell>Authority</TableCell>
+                <TableCell>Demo input</TableCell>
+                <TableCell>Production collection</TableCell>
+                <TableCell>Cadence</TableCell>
+                <TableCell align="right">Records</TableCell>
+                <TableCell />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {readiness.sources.map((source) => (
+                <TableRow key={source.id} selected={selectedSource === source.id} hover>
+                  <TableCell>
+                    <Typography fontWeight={700}>{source.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">{source.owner} · {source.category}</Typography>
+                  </TableCell>
+                  <TableCell><Chip label={source.authority} size="small" variant="outlined" /></TableCell>
+                  <TableCell>{source.collection_method}</TableCell>
+                  <TableCell>{source.production_method}</TableCell>
+                  <TableCell>{source.schedule}</TableCell>
+                  <TableCell align="right" className="mono">{source.raw_records.toLocaleString()}</TableCell>
+                  <TableCell align="right">
+                    <Button size="small" onClick={() => setSelectedSource(source.id)}>Inspect</Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </SectionCard>
+
+      <SectionCard
+        title="Raw record → normalized evidence"
+        eyebrow="Inspect the transformation"
+        action={sampleLoading ? <CircularProgress size={20} /> : <Chip label={samples?.source.name ?? "Source"} size="small" />}
+      >
+        <Typography color="text.secondary" sx={{ mb: 2 }}>{samples?.source.description}</Typography>
+        <Box className="raw-explorer">
+          <Box className="raw-record-list">
+            {(samples?.records ?? []).map((record) => (
+              <button
+                type="button"
+                className={selectedRecord?.id === record.id ? "selected" : ""}
+                onClick={() => setSelectedRecord(record)}
+                key={record.id}
+              >
+                <Box>
+                  <strong>{record.source_record_id}</strong>
+                  <small>{record.record_type.replaceAll("_", " ")}</small>
+                </Box>
+                <Chip
+                  label={record.match_status === "secondary" ? "Secondary match" : record.match_status ?? "Context"}
+                  size="small"
+                  color={record.match_status === "secondary" ? "warning" : "success"}
+                  variant="outlined"
+                />
+              </button>
+            ))}
+            {!sampleLoading && (samples?.records.length ?? 0) === 0 && (
+              <Alert severity="info">No representative raw payload is stored for this source in the current fixture.</Alert>
+            )}
+          </Box>
+
+          {selectedRecord && (
+            <Box className="record-transformation">
+              <Box className="record-match-summary">
+                <Box>
+                  <Typography variant="overline" color="text.secondary">Attribution result</Typography>
+                  <Typography variant="h6">{selectedRecord.matched_outcome_id ?? "Invoice-level context"}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Method</Typography>
+                  <Typography fontWeight={700}>{selectedRecord.match_method?.replaceAll("_", " ")}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Confidence</Typography>
+                  <Typography fontWeight={700}>{selectedRecord.match_confidence ? `${(Number(selectedRecord.match_confidence) * 100).toFixed(0)}%` : "—"}</Typography>
+                </Box>
+              </Box>
+              <Alert severity={selectedRecord.match_status === "secondary" ? "warning" : "success"} sx={{ mb: 2 }}>
+                {selectedRecord.match_reason}
+              </Alert>
+              <Box className="payload-comparison">
+                <Box>
+                  <Typography variant="overline" color="text.secondary">As received from source</Typography>
+                  <pre>{JSON.stringify(selectedRecord.payload, null, 2)}</pre>
+                </Box>
+                <Box className="payload-arrow"><TemplateIcon name="arrow" /></Box>
+                <Box>
+                  <Typography variant="overline" color="text.secondary">Canonical Evidue record</Typography>
+                  <pre>{JSON.stringify(selectedRecord.normalized_payload, null, 2)}</pre>
+                </Box>
+              </Box>
+              <Box className="record-provenance-strip">
+                <span>Schema <strong>{selectedRecord.schema_version}</strong></span>
+                <span>Received <strong>{new Date(selectedRecord.received_at).toLocaleString()}</strong></span>
+                <span className="mono">{selectedRecord.payload_hash.slice(0, 26)}…</span>
+              </Box>
+            </Box>
+          )}
+        </Box>
+        {samples?.sample_note && <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>{samples.sample_note}</Typography>}
+      </SectionCard>
+
+      <Box className="template-two-column">
+        <SectionCard title="How the first customer connects" eyebrow="Practical rollout">
+          <Stack divider={<Divider flexItem />}>
+            {[
+              ["01", "Start with exports", "Vendor claim CSV, support JSON/CSV, payment ledger, product-state export, identity map, and contract upload. Fastest route to the first real reconciliation."],
+              ["02", "Move to warehouse views", "The customer exposes approved read-only Snowflake, BigQuery, or Redshift views. Evidue avoids broad production-system permissions."],
+              ["03", "Add incremental connectors", "Use read-only APIs, webhooks, object storage, or SFTP for recurring invoice cycles and late-arriving evidence."],
+            ].map(([number, title, body]) => (
+              <Box className="template-action-row" key={number}>
+                <span>{number}</span>
+                <Box><strong>{title}</strong><small>{body}</small></Box>
+              </Box>
+            ))}
+          </Stack>
+        </SectionCard>
+        <SectionCard title="What stays separate" eyebrow="Neutrality and access control">
+          <Stack divider={<Divider flexItem />}>
+            <Box className="template-detail-row"><span>Vendor claim and execution evidence</span><strong>Vendor-controlled</strong></Box>
+            <Box className="template-detail-row"><span>Support, payment, product, and billing evidence</span><strong>Customer-controlled</strong></Box>
+            <Box className="template-detail-row"><span>Executable contract rules</span><strong>Customer-approved</strong></Box>
+            <Box className="template-detail-row"><span>Final payable decision</span><strong>Customer authority</strong></Box>
+          </Stack>
+          <Alert severity="warning" sx={{ mt: 2 }}>A vendor can improve its proof before invoicing, but cannot see private customer records or alter the customer determination.</Alert>
+        </SectionCard>
+      </Box>
     </PageFrame>
   );
 }

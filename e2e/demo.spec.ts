@@ -21,7 +21,7 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
   await expect(page.getByText("10,000 claimed outcomes from the vendor")).toBeVisible();
   await expect(page.getByText("Ready to reconcile")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Executable billing terms" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Available source systems" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Real records are collected and matched before reconciliation" })).toBeVisible();
 
   await page.getByRole("button", { name: "Run reconciliation" }).click();
   await expect(page.getByText("Evaluating persisted claims and evidence")).toBeVisible();
@@ -49,7 +49,7 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
   await expect(page.getByText("Downstream action failed", { exact: true })).toBeVisible();
   await expect(page.getByText("Completion window expired", { exact: true })).toBeVisible();
   await expect(page.getByText("Human completed the refund", { exact: true })).toBeVisible();
-  await expect(page.getByText("Imported operational evidence").first()).toBeVisible();
+  await expect(page.getByText("Customer-owned operational evidence").first()).toBeVisible();
   await expect(page.getByText(/Evidue-computed deadline/)).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
 
@@ -74,6 +74,26 @@ test("complete Evidue financial-decision demo path", async ({ page }) => {
   const csvDownload = page.waitForEvent("download");
   await page.getByRole("link", { name: "Disputed-lines CSV" }).click();
   await expect((await csvDownload).suggestedFilename()).toBe("disputed-lines.csv");
+});
+
+
+test("production-shaped data collection is inspectable before reconciliation", async ({ page }) => {
+  await page.request.post("/api/demo/reset?scenario_id=headline");
+  await page.goto("/demo/data-sources");
+
+  await expect(page.getByRole("heading", { name: "How real customer data enters Evidue" })).toBeVisible();
+  await expect(page.getByText("50,302")).toBeVisible();
+  await expect(page.getByText("100.00%")).toBeVisible();
+  await expect(page.getByText("25", { exact: true })).toBeVisible();
+  await expect(page.getByText("Vendor claim manifest")).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "Payment processor" })).toBeVisible();
+  await expect(page.getByText("Contract documents")).toBeVisible();
+
+  await expect(page.getByRole("heading", { name: "Raw record → normalized evidence" })).toBeVisible();
+  await expect(page.getByText("As received from source")).toBeVisible();
+  await expect(page.getByText("Canonical Evidue record")).toBeVisible();
+  await expect(page.locator(".payload-comparison pre").first()).toContainText("rejected");
+  await expect(page.getByText(/Production retains every permitted raw record/)).toBeVisible();
 });
 
 test("focused synthetic data sets demonstrate distinct contract decisions", async ({

@@ -1,6 +1,6 @@
 # Evidue YC Demo Script
 
-## Recording path: 100–110 seconds
+## Recording path: 105–120 seconds
 
 ### 0–15 seconds — Operating overview
 
@@ -10,13 +10,17 @@ Open `/demo`.
 
 Show the finance-control overview: Nova Support AI, June 2026, $15,000 submitted, seven approved rules, and the recurring invoice history. Click **Open June invoice**.
 
-### 15–30 seconds — Contract and evidence readiness
+### 15–38 seconds — Real-data collection and readiness
 
-> "The contract defines what counts as payable. Evidue applies seven approved billing rules and joins each claimed outcome to support, payment, billing, and product evidence."
+Open **Data Sources**.
 
-Briefly point to **Executable billing terms** and **Available source systems**. Do not open every rule.
+> "Real systems do not arrive already joined. Evidue collects vendor claims and customer-owned support, payment, product, billing, identity, and contract records; preserves the originals; normalizes them; and resolves identifiers before any payment rule runs."
 
-### 30–55 seconds — Reconciliation
+Show 10,000 claims, the aggregate source-record count, 9,975 direct matches, 25 secondary-key matches, and zero identity reviews. Open one payment-processor raw record, then return to Customer Verify.
+
+> "These records are synthetic, but they use the same ingestion stages planned for customer data. We start with exports, then replace them with read-only APIs or warehouse views."
+
+### 38–63 seconds — Reconciliation
 
 Click **Run reconciliation**.
 
@@ -31,7 +35,7 @@ Land on:
 
 Show the reconciliation bridge.
 
-### 55–85 seconds — One disputed outcome
+### 63–93 seconds — One disputed outcome
 
 Click **Failed downstream actions**, then **Review example dispute**.
 
@@ -39,7 +43,7 @@ Click **Failed downstream actions**, then **Review example dispute**.
 
 Show vendor claim, contract obligation, Evidue determination, source records, and the computed deadline. Close the inspector.
 
-### 85–105 seconds — Dispute handoff
+### 93–115 seconds — Dispute handoff
 
 Click **Download dispute package**, or open **Disputes** in the product navigation.
 

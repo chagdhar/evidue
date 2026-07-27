@@ -15,19 +15,25 @@ from app.fixtures.demo import (
     DemoScenario,
     scenario_fixture,
 )
+from app.ingestion.demo_pipeline import CONNECTORS, build_ingestion_bundle
+
 
 from .models import (
     Base,
+    ConnectorRow,
     ContractClauseRow,
     ContractRow,
     ContractRuleRow,
     ConversationRow,
     DemoStateRow,
+    EvidenceMatchRow,
     EvidenceReferenceRow,
+    IngestionBatchRow,
     InvoiceRow,
     OperationalEventRow,
     OutcomeClaimRow,
     OutcomeDeterminationRow,
+    RawRecordRow,
     ReconciliationRow,
 )
 
@@ -44,13 +50,25 @@ DISCLOSURE = (
 
 def initialize() -> None:
     Base.metadata.create_all(engine)
-    determination_columns = {
-        column["name"] for column in inspect(engine).get_columns("outcome_determinations")
+    required_columns = {
+        "outcome_claims": {"vendor_claim_id", "external_conversation_id", "agent_version"},
+        "operational_events": {"connector_id", "match_method", "payload_hash"},
+        "connectors": {"category", "records_received", "trust_boundary"},
+        "raw_records": {"normalized_payload", "payload_hash", "schema_version"},
+        "demo_state": {"scenario_id"},
+        "outcome_determinations": {"confirmed_disputed_amount"},
     }
-    state_columns = {column["name"] for column in inspect(engine).get_columns("demo_state")}
-    if (determination_columns and "confirmed_disputed_amount" not in determination_columns) or (
-        state_columns and "scenario_id" not in state_columns
-    ):
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    missing_table = (
+        not {"connectors", "raw_records", "evidence_matches", "ingestion_batches"} <= tables
+    )
+    missing_column = any(
+        table in tables
+        and not columns <= {column["name"] for column in inspector.get_columns(table)}
+        for table, columns in required_columns.items()
+    )
+    if missing_table or missing_column:
         Base.metadata.drop_all(engine)
         Base.metadata.create_all(engine)
 
@@ -75,9 +93,76 @@ def scenario_catalog() -> list[dict[str, str]]:
 def reset(scenario_id: str = "headline") -> dict[str, object]:
     records = scenario_fixture(scenario_id)
     scenario = SCENARIOS_BY_ID[scenario_id]
+    ingestion = build_ingestion_bundle(records, scenario_id)
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with SessionLocal.begin() as session:
+        for snapshot in ingestion.connectors:
+            connector = snapshot.connector
+            session.add(
+                ConnectorRow(
+                    id=connector.id,
+                    name=connector.name,
+                    category=connector.category,
+                    owner=connector.owner,
+                    authority=connector.authority,
+                    collection_method=connector.collection_method,
+                    production_method=connector.production_method,
+                    source_format=connector.source_format,
+                    schedule=connector.schedule,
+                    status="fixture_loaded",
+                    description=connector.description,
+                    fields=list(connector.fields),
+                    records_received=snapshot.records_received,
+                    records_normalized=snapshot.records_normalized,
+                    records_rejected=snapshot.records_rejected,
+                    last_synced_at=datetime(2026, 7, 1, 8),
+                    trust_boundary=connector.trust_boundary,
+                )
+            )
+        for raw in ingestion.raw_samples:
+            session.add(
+                RawRecordRow(
+                    id=raw.id,
+                    connector_id=raw.connector_id,
+                    source_record_id=raw.source_record_id,
+                    record_type=raw.record_type,
+                    occurred_at=raw.occurred_at,
+                    received_at=raw.received_at,
+                    payload=raw.payload,
+                    normalized_payload=raw.normalized_payload,
+                    payload_hash=raw.payload_hash,
+                    schema_version=raw.schema_version,
+                    sampled=True,
+                )
+            )
+            session.add(
+                EvidenceMatchRow(
+                    raw_record_id=raw.id,
+                    outcome_id=raw.matched_outcome_id,
+                    status=raw.match_status,
+                    match_method=raw.match_method,
+                    confidence=raw.match_confidence,
+                    reason=raw.match_reason,
+                    matched_at=datetime(2026, 7, 1, 8, 5),
+                )
+            )
+        session.add(
+            IngestionBatchRow(
+                id=f"INGEST-2026-06-{scenario.id.upper().replace('_', '-')}",
+                scenario_id=scenario.id,
+                started_at=datetime(2026, 7, 1, 8),
+                completed_at=datetime(2026, 7, 1, 8, 7),
+                claims_received=ingestion.stats.claims_received,
+                direct_matches=ingestion.stats.direct_matches,
+                secondary_matches=ingestion.stats.secondary_matches,
+                unresolved_matches=ingestion.stats.unresolved_matches,
+                source_records_received=ingestion.stats.source_records_received,
+                source_records_normalized=ingestion.stats.source_records_normalized,
+                source_records_rejected=ingestion.stats.source_records_rejected,
+                contract_rules_approved=len(RULES),
+            )
+        )
         contract = ContractRow(
             id="CONTRACT-ACME-NOVA-2026",
             customer="Acme Commerce",
@@ -132,29 +217,33 @@ def reset(scenario_id: str = "headline") -> dict[str, object]:
         session.add_all(
             [
                 OutcomeClaimRow(
-                    outcome_id=record.claim.outcome_id,
-                    invoice_id=record.claim.invoice_id,
-                    customer_id=record.claim.customer_id,
-                    intent=record.claim.intent,
-                    vendor_claim=record.claim.vendor_claim,
-                    closed_at=record.claim.closed_at,
-                    expected_action=record.claim.expected_action,
-                    account_id=record.claim.account_id,
-                    billed_amount=record.claim.billed_amount,
+                    outcome_id=claim.outcome_id,
+                    vendor_claim_id=claim.vendor_claim_id,
+                    external_conversation_id=claim.external_conversation_id,
+                    agent_version=claim.agent_version,
+                    raw_record_id=claim.raw_record_id,
+                    invoice_id=claim.invoice_id,
+                    customer_id=claim.customer_id,
+                    intent=claim.intent,
+                    vendor_claim=claim.vendor_claim,
+                    closed_at=claim.closed_at,
+                    expected_action=claim.expected_action,
+                    account_id=claim.account_id,
+                    billed_amount=claim.billed_amount,
                 )
-                for record in records
+                for claim in ingestion.claims
             ]
         )
         session.add_all(
             [
                 ConversationRow(
-                    id=record.conversation.id,
-                    outcome_id=record.conversation.outcome_id,
-                    customer_id=record.conversation.customer_id,
-                    intent=record.conversation.intent,
-                    closed_at=record.conversation.closed_at,
+                    id=conversation.id,
+                    outcome_id=conversation.outcome_id,
+                    customer_id=conversation.customer_id,
+                    intent=conversation.intent,
+                    closed_at=conversation.closed_at,
                 )
-                for record in records
+                for conversation in ingestion.conversations
             ]
         )
         session.add_all(
@@ -169,9 +258,16 @@ def reset(scenario_id: str = "headline") -> dict[str, object]:
                     outcome_id=event.outcome_id,
                     values=event.values,
                     ingested_at=event.ingested_at,
+                    connector_id=event.connector_id,
+                    raw_record_id=event.raw_record_id,
+                    match_method=event.match_method,
+                    match_confidence=event.match_confidence,
+                    payload_hash=event.payload_hash,
+                    schema_version=event.schema_version,
+                    source_locator=event.source_locator,
+                    external_keys=event.external_keys,
                 )
-                for record in records
-                for event in record.events
+                for event in ingestion.events
             ]
         )
         session.add(
@@ -202,6 +298,182 @@ def demo_status() -> dict[str, object]:
         "scenario_name": scenario.name,
         "scenario_description": scenario.description,
         "demo_outcome_id": scenario.demo_outcome_id,
+    }
+
+
+def _source_summary(session, connector: ConnectorRow) -> dict[str, object]:
+    match_counts = dict(
+        session.execute(
+            select(EvidenceMatchRow.status, func.count())
+            .join(RawRecordRow, RawRecordRow.id == EvidenceMatchRow.raw_record_id)
+            .where(RawRecordRow.connector_id == connector.id)
+            .group_by(EvidenceMatchRow.status)
+        ).all()
+    )
+    return {
+        "id": connector.id,
+        "name": connector.name,
+        "category": connector.category,
+        "owner": connector.owner,
+        "authority": connector.authority,
+        "collection_method": connector.collection_method,
+        "production_method": connector.production_method,
+        "source_format": connector.source_format,
+        "schedule": connector.schedule,
+        "status": connector.status,
+        "description": connector.description,
+        "fields": connector.fields,
+        "raw_records": connector.records_received,
+        "normalized_records": connector.records_normalized,
+        "rejected_records": connector.records_rejected,
+        "matched_records": connector.records_normalized - connector.records_rejected,
+        "secondary_matches": int(match_counts.get("secondary", 0)),
+        "review_records": connector.records_rejected
+        + int(match_counts.get("review", 0) + match_counts.get("unmatched", 0)),
+        "last_synced_at": connector.last_synced_at.isoformat(),
+        "trust_boundary": connector.trust_boundary,
+    }
+
+
+def data_readiness() -> dict[str, object]:
+    with SessionLocal() as session:
+        connector_rows = {
+            connector.id: connector for connector in session.scalars(select(ConnectorRow)).all()
+        }
+        sources = [
+            _source_summary(session, connector_rows[spec.id])
+            for spec in CONNECTORS
+            if spec.id in connector_rows
+        ]
+        batch = session.scalar(
+            select(IngestionBatchRow).order_by(IngestionBatchRow.completed_at.desc())
+        )
+        normalized_events = (
+            session.scalar(select(func.count()).select_from(OperationalEventRow)) or 0
+        )
+        sampled_records = session.scalar(select(func.count()).select_from(RawRecordRow)) or 0
+    if batch is None:
+        raise LookupError("Ingestion batch is not available")
+    covered = batch.direct_matches + batch.secondary_matches
+    coverage_percent = (
+        round((covered / batch.claims_received * 100), 2) if batch.claims_received else 0.0
+    )
+    return {
+        "status": "ready" if batch.unresolved_matches == 0 else "review_required",
+        "synthetic_disclosure": DISCLOSURE,
+        "collection_note": (
+            "The demo begins with source-shaped vendor, support, payment, product, billing, "
+            "identity, and contract records. Evidue preserves provenance, normalizes the fields, "
+            "matches evidence to claims, and only then runs contract rules. Production uses the "
+            "same stages through read-only APIs, warehouse views, SFTP, object storage, and uploads."
+        ),
+        "totals": {
+            "claimed_outcomes": batch.claims_received,
+            "raw_records": batch.source_records_received,
+            "sampled_raw_records": int(sampled_records),
+            "normalized_events": int(normalized_events),
+            "direct_matches": batch.direct_matches,
+            "secondary_matches": batch.secondary_matches,
+            "review_records": batch.unresolved_matches,
+            "claim_coverage_percent": coverage_percent,
+            "contract_rules_approved": batch.contract_rules_approved,
+        },
+        "sources": sources,
+        "pipeline": [
+            {
+                "id": "collect",
+                "label": "Collect",
+                "description": "Receive the vendor claim manifest, customer records, identity mappings, and contract documents through read-only channels.",
+            },
+            {
+                "id": "raw",
+                "label": "Preserve raw",
+                "description": "Retain source record IDs, receipt times, schema versions, content hashes, and representative payloads.",
+            },
+            {
+                "id": "normalize",
+                "label": "Normalize",
+                "description": "Map source-specific fields into claims, conversations, operational events, and approved rules.",
+            },
+            {
+                "id": "match",
+                "label": "Match",
+                "description": "Join records using stable outcome IDs or verified secondary keys such as conversation, account, and transaction IDs.",
+            },
+            {
+                "id": "evaluate",
+                "label": "Evaluate",
+                "description": "Apply deterministic contract rules only after evidence attribution is complete.",
+            },
+        ],
+        "onboarding": [
+            {
+                "phase": "1",
+                "label": "Start with exports",
+                "description": "CSV, JSONL, contract documents, and secure object-storage drops prove value without a long integration project.",
+            },
+            {
+                "phase": "2",
+                "label": "Connect read-only systems",
+                "description": "Support, payment, warehouse, SFTP, and vendor APIs replace manual exports while keeping the same normalized model.",
+            },
+            {
+                "phase": "3",
+                "label": "Incremental sync",
+                "description": "Webhooks, scheduled polling, or change-data capture keep evidence current before each invoice cycle.",
+            },
+        ],
+    }
+
+
+def source_samples(
+    source_id: str,
+    limit: int = 5,
+    outcome_id: str | None = None,
+) -> dict[str, object]:
+    with SessionLocal() as session:
+        connector = session.get(ConnectorRow, source_id)
+        if connector is None:
+            raise LookupError("Data source not found")
+        statement = (
+            select(RawRecordRow, EvidenceMatchRow)
+            .outerjoin(EvidenceMatchRow, EvidenceMatchRow.raw_record_id == RawRecordRow.id)
+            .where(RawRecordRow.connector_id == source_id)
+        )
+        if outcome_id:
+            statement = statement.where(EvidenceMatchRow.outcome_id == outcome_id)
+        statement = statement.order_by(
+            RawRecordRow.occurred_at.is_(None), RawRecordRow.occurred_at, RawRecordRow.id
+        ).limit(limit)
+        rows = session.execute(statement).all()
+        source = _source_summary(session, connector)
+    return {
+        "source": source,
+        "records": [
+            {
+                "id": raw.id,
+                "connector_id": raw.connector_id,
+                "source_record_id": raw.source_record_id,
+                "record_type": raw.record_type,
+                "occurred_at": raw.occurred_at.isoformat() if raw.occurred_at else None,
+                "received_at": raw.received_at.isoformat(),
+                "payload": raw.payload,
+                "normalized_payload": raw.normalized_payload,
+                "payload_hash": f"sha256:{raw.payload_hash}",
+                "schema_version": raw.schema_version,
+                "matched_outcome_id": match.outcome_id if match else None,
+                "match_status": match.status if match else None,
+                "match_method": match.match_method if match else None,
+                "match_confidence": f"{match.confidence:.4f}" if match else None,
+                "match_reason": match.reason if match else None,
+            }
+            for raw, match in rows
+        ],
+        "sample_note": (
+            "The demo stores representative raw payloads for inspection and exact aggregate counts "
+            "for the full batch. Production retains every permitted raw record according to the "
+            "customer's retention policy."
+        ),
     }
 
 
@@ -501,15 +773,35 @@ def outcome_detail(outcome_id: str) -> dict[str, object] | None:
         if row is None:
             return None
         determination, claim, conversation = row
-        events = session.scalars(
-            select(OperationalEventRow)
+        event_rows = session.execute(
+            select(
+                OperationalEventRow,
+                RawRecordRow,
+                EvidenceMatchRow,
+                ConnectorRow,
+            )
             .join(
                 EvidenceReferenceRow,
                 EvidenceReferenceRow.event_id == OperationalEventRow.id,
             )
+            .outerjoin(RawRecordRow, RawRecordRow.id == OperationalEventRow.raw_record_id)
+            .outerjoin(
+                EvidenceMatchRow,
+                EvidenceMatchRow.raw_record_id == RawRecordRow.id,
+            )
+            .outerjoin(ConnectorRow, ConnectorRow.id == OperationalEventRow.connector_id)
             .where(EvidenceReferenceRow.determination_id == determination.id)
             .order_by(OperationalEventRow.timestamp, OperationalEventRow.id)
         ).all()
+        claim_provenance_row = session.execute(
+            select(RawRecordRow, EvidenceMatchRow, ConnectorRow)
+            .outerjoin(
+                EvidenceMatchRow,
+                EvidenceMatchRow.raw_record_id == RawRecordRow.id,
+            )
+            .outerjoin(ConnectorRow, ConnectorRow.id == RawRecordRow.connector_id)
+            .where(RawRecordRow.id == claim.raw_record_id)
+        ).first()
         rule = (
             session.get(ContractRuleRow, determination.rule_id) if determination.rule_id else None
         )
@@ -539,6 +831,45 @@ def outcome_detail(outcome_id: str) -> dict[str, object] | None:
             }
             if rule
             else None,
+            "vendor_claim_id": claim.vendor_claim_id,
+            "agent_version": claim.agent_version,
+            "claim_provenance": (
+                {
+                    "connector_id": claim_provenance_row[2].id
+                    if claim_provenance_row and claim_provenance_row[2]
+                    else None,
+                    "connector_name": claim_provenance_row[2].name
+                    if claim_provenance_row and claim_provenance_row[2]
+                    else None,
+                    "collection_method": claim_provenance_row[2].collection_method
+                    if claim_provenance_row and claim_provenance_row[2]
+                    else None,
+                    "production_method": claim_provenance_row[2].production_method
+                    if claim_provenance_row and claim_provenance_row[2]
+                    else None,
+                    "raw_record_id": claim_provenance_row[0].id if claim_provenance_row else None,
+                    "source_record_id": claim_provenance_row[0].source_record_id
+                    if claim_provenance_row
+                    else None,
+                    "payload_hash": f"sha256:{claim_provenance_row[0].payload_hash}"
+                    if claim_provenance_row
+                    else None,
+                    "schema_version": claim_provenance_row[0].schema_version
+                    if claim_provenance_row
+                    else None,
+                    "match_method": claim_provenance_row[1].match_method
+                    if claim_provenance_row and claim_provenance_row[1]
+                    else None,
+                    "match_confidence": f"{claim_provenance_row[1].confidence:.4f}"
+                    if claim_provenance_row and claim_provenance_row[1]
+                    else None,
+                    "raw_payload": claim_provenance_row[0].payload
+                    if claim_provenance_row
+                    else None,
+                }
+                if claim_provenance_row
+                else None
+            ),
             "evidence": [
                 {
                     "id": event.id,
@@ -550,8 +881,30 @@ def outcome_detail(outcome_id: str) -> dict[str, object] | None:
                     "outcome_id": event.outcome_id,
                     "values": event.values,
                     "ingested_at": event.ingested_at.isoformat(),
+                    "provenance": {
+                        "connector_id": connector.id if connector else event.connector_id,
+                        "connector_name": connector.name
+                        if connector
+                        else event.source_system.replace("_", " ").title(),
+                        "authority": connector.authority if connector else None,
+                        "collection_method": connector.collection_method if connector else None,
+                        "production_method": connector.production_method if connector else None,
+                        "raw_record_id": raw.id if raw else event.raw_record_id,
+                        "raw_payload": raw.payload if raw else None,
+                        "payload_hash": f"sha256:{raw.payload_hash}" if raw else None,
+                        "schema_version": raw.schema_version if raw else event.schema_version,
+                        "match_status": match.status if match else None,
+                        "match_method": match.match_method if match else event.match_method,
+                        "match_confidence": f"{match.confidence:.4f}"
+                        if match
+                        else f"{event.match_confidence:.4f}",
+                        "match_reason": match.reason if match else None,
+                        "received_at": raw.received_at.isoformat()
+                        if raw
+                        else event.ingested_at.isoformat(),
+                    },
                 }
-                for event in events
+                for event, raw, match, connector in event_rows
             ],
             "evaluated_at": determination.evaluated_at.isoformat(),
             "engine_version": determination.engine_version,

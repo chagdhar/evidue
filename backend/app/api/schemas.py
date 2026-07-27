@@ -78,6 +78,9 @@ class OutcomePage(StrictModel):
 class OutcomeDetail(OutcomeListItem):
     account_id: str
     expected_action: str
+    vendor_claim_id: str
+    agent_version: str
+    claim_provenance: dict[str, Any] | None
     conversation: dict[str, Any]
     contract_clause: str | None
     rule: dict[str, Any] | None
@@ -86,3 +89,72 @@ class OutcomeDetail(OutcomeListItem):
     duplicate_winner_outcome_id: str | None
     evaluated_at: str
     engine_version: str
+
+
+class DataSourceSummary(StrictModel):
+    id: str
+    name: str
+    category: str
+    owner: str
+    authority: str
+    collection_method: str
+    production_method: str
+    source_format: str
+    schedule: str
+    status: str
+    description: str
+    fields: list[str]
+    raw_records: int
+    normalized_records: int
+    rejected_records: int
+    matched_records: int
+    secondary_matches: int
+    review_records: int
+    last_synced_at: str
+    trust_boundary: str
+
+
+class DataReadinessTotals(StrictModel):
+    claimed_outcomes: int
+    raw_records: int
+    sampled_raw_records: int
+    normalized_events: int
+    direct_matches: int
+    secondary_matches: int
+    review_records: int
+    claim_coverage_percent: float
+    contract_rules_approved: int
+
+
+class DataReadinessResponse(StrictModel):
+    status: str
+    synthetic_disclosure: str
+    collection_note: str
+    totals: DataReadinessTotals
+    sources: list[DataSourceSummary]
+    pipeline: list[dict[str, Any]]
+    onboarding: list[dict[str, Any]]
+
+
+class RawRecordSample(StrictModel):
+    id: str
+    connector_id: str
+    source_record_id: str
+    record_type: str
+    occurred_at: str | None
+    received_at: str
+    payload: dict[str, Any]
+    normalized_payload: dict[str, Any]
+    payload_hash: str
+    schema_version: str
+    matched_outcome_id: str | None
+    match_status: str | None
+    match_method: str | None
+    match_confidence: str | None
+    match_reason: str | None
+
+
+class DataSourceSamplesResponse(StrictModel):
+    source: DataSourceSummary
+    records: list[RawRecordSample]
+    sample_note: str

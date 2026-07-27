@@ -4,12 +4,19 @@ import json
 from decimal import Decimal
 
 import pytest
-from app.api.schemas import OutcomeDetail, ReconciliationSummary
+from app.api.schemas import (
+    DataReadinessResponse,
+    DataSourceSamplesResponse,
+    OutcomeDetail,
+    ReconciliationSummary,
+)
 from app.db import repository
 from app.db.models import OutcomeDeterminationRow
 from app.main import (
     current_contract,
     current_invoice,
+    data_readiness,
+    data_source_samples,
     current_reconciliation,
     demo_scenarios,
     demo_status,
@@ -48,6 +55,43 @@ def test_health_reset_seed_and_reconciliation_lifecycle():
         ),
         "demo_outcome_id": "OUT-004821",
     }
+
+
+def test_production_shaped_ingestion_readiness_and_source_samples():
+    readiness = data_readiness()
+    DataReadinessResponse.model_validate(readiness)
+    assert readiness["status"] == "ready"
+    assert readiness["totals"]["claimed_outcomes"] == 10_000
+    assert readiness["totals"]["direct_matches"] == 9_975
+    assert readiness["totals"]["secondary_matches"] == 25
+    assert readiness["totals"]["review_records"] == 0
+    assert readiness["totals"]["claim_coverage_percent"] == 100.0
+    assert readiness["totals"]["raw_records"] > 40_000
+    assert [source["id"] for source in readiness["sources"]] == [
+        "vendor_claim_manifest",
+        "vendor_agent_log",
+        "support_desk",
+        "payment_processor",
+        "product_operations",
+        "billing_ledger",
+        "identity_map",
+        "contract_documents",
+    ]
+
+    payment = data_source_samples("payment_processor", limit=5, outcome_id="OUT-004821")
+    DataSourceSamplesResponse.model_validate(payment)
+    assert payment["source"]["authority"] == "Customer financial record"
+    assert len(payment["records"]) == 1
+    sample = payment["records"][0]
+    assert sample["payload"]["result"] == "rejected"
+    assert sample["matched_outcome_id"] == "OUT-004821"
+    assert sample["match_method"] == "direct_outcome_id"
+    assert sample["payload_hash"].startswith("sha256:")
+
+    secondary = data_source_samples("product_operations", limit=5, outcome_id="OUT-009976")
+    assert secondary["records"][0]["match_status"] == "secondary"
+    assert secondary["records"][0]["match_method"] == ("conversation_id + customer_account_map")
+    assert "outcome_id" not in secondary["records"][0]["payload"]
 
 
 def test_contract_and_invoice_are_persisted_inputs():
@@ -133,6 +177,15 @@ def test_out_004821_detail_has_decisive_evidence_and_computed_deadline():
         }
     ]
     assert all(event["source_system"] != "evidue_engine" for event in detail["evidence"])
+    assert detail["vendor_claim_id"] == "CLM-004821"
+    assert detail["agent_version"] == "refund-v2.3"
+    assert detail["claim_provenance"]["collection_method"] == "CSV upload"
+    payment_event = next(
+        event for event in detail["evidence"] if event["event_type"] == "downstream_failed"
+    )
+    assert payment_event["provenance"]["connector_name"] == "Payment processor"
+    assert payment_event["provenance"]["match_method"] == "direct_outcome_id"
+    assert payment_event["provenance"]["raw_payload"]["result"] == "rejected"
     required = {
         "source_system",
         "source_record_id",

@@ -2,64 +2,38 @@
 
 ## Complete
 
-All implementation milestones are complete as of 2026-07-27.
-
-Environment used:
-
-- uv-managed CPython 3.13.14
-- uv 0.11.28
-- Node 26.4.0
-- npm 11.18.0
-- Docker 29.5.1
+The working demonstration now covers both financial reconciliation and the production-shaped evidence path that precedes it.
 
 Delivered:
 
-- pure deterministic contract-rule engine and reproducible 10,000-line fixture;
-- explicit domain evidence attribution with directly matched, review, unrelated,
-  and contradictory classifications;
-- customer/outcome/account/action isolation, duplicate-record handling, and
-  contradictory-evidence regression coverage;
-- two-pass invoice-context duplicate detection among otherwise-payable claims
-  using normalized intent and a documented deterministic winner, with disputed
-  and needs-review claims excluded and both outcome IDs retained;
-- mutually exclusive confirmed-payable, confirmed-disputed, and needs-review
-  financial buckets, with deductions derived only from confirmed disputes;
-- SQLAlchemy models for contracts, clauses, rules, invoices, claims,
-  conversations, operational events, reconciliations, determinations, and
-  evidence references;
-- persisted pre-reconciliation and completed lifecycle states;
-- typed FastAPI endpoints, server-side filtering/pagination, evidence detail,
-  and three record-derived exports;
-- focused React/Material UI `/demo` decision flow with a dominant payment
-  recommendation, reconciliation bridge, compact finding filters,
-  disputed-first claims review, wide evidence inspector, compact contract
-  controls, honest evidence readiness, and primary dispute-package export;
-- four selectable deterministic synthetic data sets covering the complete
-  invoice, contradictory evidence, failed-action recovery, and contextual
-  duplicate attribution, with scenario-aware reset scripts and API state;
-- 41 backend tests, 20 frontend tests, and two live Playwright paths;
-- fish-invokable bootstrap, development, seed, reset, and validation scripts;
-- a non-root, health-checked production Docker image serving React through
-  FastAPI;
-- successful full, container-runtime, and clean-checkout validation.
+- deterministic contract-rule engine and reproducible 10,000-claim headline fixture;
+- exact headline result of $15,000 submitted, $12,480 confirmed payable, and $2,520 confirmed deductions;
+- mutually exclusive payable, disputed, and needs-review financial buckets;
+- persisted contracts, rules, invoices, claims, conversations, source records, connectors, ingestion batches, operational events, evidence matches, reconciliations, determinations, and evidence references;
+- eight vendor/customer source types and 50,302 aggregate source-shaped records;
+- 20,301 normalized operational events;
+- 9,975 direct outcome-ID matches and 25 verified secondary-key matches;
+- representative raw payload inspection with normalized records, hashes, schemas, source authority, match method, confidence, and rationale;
+- explicit separation between collection, raw preservation, normalization, identity matching, and contract determination;
+- customer evidence-readiness experience before reconciliation;
+- production collection plan covering exports, read-only warehouse views/APIs, SFTP/object storage, webhooks, and incremental sync;
+- vendor/customer neutrality and access-control boundaries;
+- server-side filtering and pagination, evidence detail, and record-derived CSV/JSON exports;
+- Evidue Prove, Outcome Ledger, Evidue Verify, contract controls, dispute operations, data-source inspection, and technical scenario lab;
+- deterministic edge-case scenarios for contradictory evidence, failed-action recovery, and duplicate attribution;
+- fish-compatible setup, development, reset, and validation scripts;
+- production Docker image serving React through FastAPI.
 
-The financial-correctness defects identified in the follow-up audit are fixed.
-`docs/FINAL_VALIDATION.md` contains the exact commands and results.
+## Current validation
 
-The scenario expansion is complete. `docs/FINAL_VALIDATION.md` records the exact
-financial results and validation commands for every data set.
+- Backend: 42 tests passed.
+- Python compilation: passed.
+- Shell syntax: passed.
+- TypeScript/TSX syntax transpilation: passed.
+- Source-only TypeScript check: passed.
 
-The recording surface is now isolated from the technical scenario lab:
-`/demo` always restores the full headline invoice and contains no scenario
-selector, while `/demo/lab` retains the focused test cases. Generated
-TypeScript build metadata and the stale untracked `docs/GIT_HISTORY.txt`
-snapshot were removed from the working archive.
+Run `./scripts/dev-check.sh full` after dependency installation to execute the repository's frontend lint, unit tests, production build, and live Playwright paths on the target machine.
 
-## Two-sided product surfaces
+## Data-retention disclosure
 
-- Added Evidue Prove vendor invoice preflight.
-- Added shared Outcome Ledger product surface.
-- Added explicit neutrality and permission boundary between vendor preparation and customer verification.
-- Added revenue-at-risk diagnosis using the existing deterministic reconciliation summary.
-- Added direct product narrative on the Overview screen.
-- Preserved the existing customer reconciliation engine, totals, dispute package, and technical lab.
+The demo computes the complete aggregate ingestion batch but persists representative raw payloads to keep reset time and repository size practical. It retains exact connector counts and provenance for normalized events. Production would retain all permitted raw records according to customer policy.

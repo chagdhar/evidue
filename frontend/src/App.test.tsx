@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import type { Summary } from "./api";
+import type { DataReadiness, Summary } from "./api";
 
 const ruleDefinitions = [
   {
@@ -139,6 +139,81 @@ const summary: Summary = {
   synthetic_disclosure: "No real customer or vendor data is shown.",
 };
 
+const readiness: DataReadiness = {
+  status: "ready",
+  synthetic_disclosure: "No real customer or vendor data is shown.",
+  collection_note: "Source-shaped records are preserved, normalized, matched, and evaluated.",
+  totals: {
+    claimed_outcomes: 10000,
+    raw_records: 50121,
+    sampled_raw_records: 122,
+    normalized_events: 30000,
+    direct_matches: 9975,
+    secondary_matches: 25,
+    review_records: 0,
+    claim_coverage_percent: 100,
+    contract_rules_approved: 7,
+  },
+  sources: [
+    {
+      id: "vendor_claim_manifest",
+      name: "Vendor claim manifest",
+      category: "Invoice claims",
+      owner: "Nova Support AI",
+      authority: "Vendor assertion",
+      collection_method: "CSV upload",
+      production_method: "SFTP or invoice API",
+      source_format: "CSV",
+      schedule: "Per invoice",
+      status: "fixture_loaded",
+      description: "Outcome-level claims.",
+      fields: ["outcome_id"],
+      raw_records: 10000,
+      normalized_records: 10000,
+      rejected_records: 0,
+      matched_records: 10000,
+      secondary_matches: 0,
+      review_records: 0,
+      last_synced_at: "2026-07-01T08:00:00",
+      trust_boundary: "Declares the claim; does not decide payability.",
+    },
+    ...["Vendor agent execution log", "Customer support desk", "Payment processor", "Product operations", "Billing ledger", "Customer identity map", "Contract documents"].map((name, index) => ({
+      id: `source-${index}`,
+      name,
+      category: "Operational evidence",
+      owner: "Acme Commerce",
+      authority: "Customer system of record",
+      collection_method: "JSONL fixture",
+      production_method: "Read-only API or warehouse view",
+      source_format: "JSONL",
+      schedule: "Daily",
+      status: "fixture_loaded",
+      description: "Operational evidence.",
+      fields: ["source_record_id"],
+      raw_records: 5000,
+      normalized_records: 5000,
+      rejected_records: 0,
+      matched_records: 5000,
+      secondary_matches: index === 1 ? 25 : 0,
+      review_records: 0,
+      last_synced_at: "2026-07-01T08:00:00",
+      trust_boundary: "Read-only customer evidence.",
+    })),
+  ],
+  pipeline: [
+    { id: "collect", label: "Collect", description: "Receive records." },
+    { id: "raw", label: "Preserve raw", description: "Keep originals." },
+    { id: "normalize", label: "Normalize", description: "Map fields." },
+    { id: "match", label: "Match evidence", description: "Resolve identifiers." },
+    { id: "evaluate", label: "Evaluate", description: "Apply rules." },
+  ],
+  onboarding: [
+    { phase: "1", label: "Start with exports", description: "CSV and JSONL." },
+    { phase: "2", label: "Connect read-only systems", description: "APIs and warehouse views." },
+    { phase: "3", label: "Incremental sync", description: "Webhooks and polling." },
+  ],
+};
+
 const reviewInvoice = {
   ...invoice,
   claimed_outcomes: 2,
@@ -196,10 +271,30 @@ const reviewOutcome = {
   needs_review_amount: "1.50",
 };
 
+const provenance = {
+  connector_id: "payment_processor",
+  connector_name: "Payment processor",
+  authority: "Customer system of record",
+  collection_method: "JSONL fixture",
+  production_method: "Read-only API",
+  raw_record_id: "RAW-PAY-4821",
+  raw_payload: { transaction_id: "processor-4821", result: "rejected" },
+  payload_hash: "sha256:test",
+  schema_version: "2026-06-01",
+  match_status: "matched",
+  match_method: "direct_outcome_id",
+  match_confidence: "1.0000",
+  match_reason: "Stable outcome ID supplied.",
+  received_at: "2026-07-01T08:00:00",
+};
+
 const detail = {
   ...failedRefund,
   account_id: "ACC-004821",
   expected_action: "refund",
+  vendor_claim_id: "CLM-004821",
+  agent_version: "refund-v2.3",
+  claim_provenance: { ...provenance, connector_id: "vendor_claim_manifest", connector_name: "Vendor claim manifest", collection_method: "CSV upload" },
   conversation: {
     id: "CONV-004821",
     intent: "refund",
@@ -219,6 +314,7 @@ const detail = {
       outcome_id: failedRefund.outcome_id,
       values: { action: "refund" },
       ingested_at: "2026-07-01T08:00:00",
+      provenance: { ...provenance, connector_id: "vendor_agent_log", connector_name: "Vendor agent execution log", authority: "Vendor evidence" },
     },
     {
       id: "EV-FAILED",
@@ -230,6 +326,7 @@ const detail = {
       outcome_id: failedRefund.outcome_id,
       values: { action: "refund" },
       ingested_at: "2026-07-01T08:00:00",
+      provenance,
     },
   ],
   computed_timeline_markers: [
@@ -308,6 +405,7 @@ function mockApi(
       return response(activeStatus);
     }
     if (url.endsWith("/api/contracts/current")) return response(contract);
+    if (url.endsWith("/api/data-readiness")) return response(readiness);
     if (url.endsWith("/api/invoices/current")) return response(activeInvoice);
     if (url.endsWith("/api/reconciliations") && options?.method === "POST") {
       return response(summaryResult);
@@ -494,7 +592,7 @@ describe("Evidue financial-decision demo", () => {
     expect(screen.getByText("Downstream action failed")).toBeInTheDocument();
     expect(screen.getByText("Completion window expired")).toBeInTheDocument();
     expect(screen.getByText(/processor-4821/)).toBeInTheDocument();
-    expect(screen.getByText("Imported operational evidence")).toBeInTheDocument();
+    expect(screen.getByText("Customer-owned operational evidence")).toBeInTheDocument();
     expect(screen.getByText(/Evidue-computed deadline/)).toBeInTheDocument();
   });
 

@@ -28,6 +28,12 @@ reconciliation** to invoke the backend engine. It evaluates all 10,000 claims,
 persists the determinations, and returns a $12,480 corrected payable amount with
 a $2,520 recommended deduction.
 
+Before reconciliation, the demo now shows the production-shaped evidence path:
+eight vendor and customer sources, aggregate source-record volumes, 9,975 direct
+matches, 25 verified secondary-key matches, raw payload hashes, normalized
+records, and source authority. Representative source exports are checked into
+`demo-data/`; see [docs/REAL_DATA_INGESTION.md](docs/REAL_DATA_INGESTION.md).
+
 ## Validate
 
 ```fish
@@ -58,16 +64,16 @@ See [docs/HANDOFF.md](docs/HANDOFF.md) for fresh-checkout instructions and
 - `/demo/invoices/current` — complete working June reconciliation
 - `/demo/contracts/current` — contract clause-to-rule control center
 - `/demo/disputes/current` — dispute package and financial handoff
-- `/demo/data-sources` — synthetic fixture provenance
+- `/demo/data-sources` — production-shaped collection, matching, and raw-record provenance
 - `/demo/vendor-preflight` — vendor-side invoice preflight
 - `/demo/outcome-ledger` — shared outcome receipt model
 - `/demo/lab` — technical edge-case scenarios
 
 Only the June 2026 invoice is a fully interactive reconciliation. Historical invoice rows are explicitly labelled illustrative synthetic history; connector statuses are explicitly labelled local fixtures rather than live integrations.
 
-## Product surfaces
+## Product architecture
 
-The demo now presents Evidue as the financial control layer for outcome-priced AI agents:
+The demo presents Evidue as the financial control layer for outcome-priced AI agents:
 
 - **Evidue Prove** (`/demo/vendor-preflight`) helps agent vendors preflight proposed invoice claims and find revenue at risk before billing.
 - **Outcome Ledger** (`/demo/outcome-ledger`) shows the versioned proof envelope connecting agent execution, contract rules, and operational evidence.

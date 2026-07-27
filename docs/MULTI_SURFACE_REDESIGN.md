@@ -9,7 +9,7 @@ The demonstration is now presented as a financial-control product rather than a 
 - `/demo/invoices/current` — full working June 2026 reconciliation
 - `/demo/contracts/current` — approved contract clause-to-rule mappings
 - `/demo/disputes/current` — dispute package and customer handoff
-- `/demo/data-sources` — synthetic fixture provenance and ingestion model
+- `/demo/data-sources` — production-shaped collection, matching, and raw-record provenance
 - `/demo/lab` — edge-case engineering scenarios
 
 ## Truthfulness boundaries

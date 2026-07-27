@@ -79,6 +79,23 @@ export type Outcome = {
   closed_at: string;
 };
 
+export type EvidenceProvenance = {
+  connector_id: string | null;
+  connector_name: string | null;
+  authority: string | null;
+  collection_method: string | null;
+  production_method: string | null;
+  raw_record_id: string | null;
+  raw_payload: Record<string, unknown> | null;
+  payload_hash: string | null;
+  schema_version: string | null;
+  match_status: string | null;
+  match_method: string | null;
+  match_confidence: string | null;
+  match_reason: string | null;
+  received_at: string;
+};
+
 export type EvidenceEvent = {
   id: string;
   source_system: string;
@@ -89,11 +106,15 @@ export type EvidenceEvent = {
   outcome_id: string;
   values: Record<string, string>;
   ingested_at: string;
+  provenance: EvidenceProvenance;
 };
 
 export type OutcomeDetail = Outcome & {
   account_id: string;
   expected_action: string;
+  vendor_claim_id: string;
+  agent_version: string;
+  claim_provenance: EvidenceProvenance | null;
   conversation: { id: string; intent: string; closed_at: string };
   contract_clause: string | null;
   rule: Rule | null;
@@ -116,6 +137,73 @@ export type OutcomePage = {
   items: Outcome[];
 };
 
+export type DataSource = {
+  id: string;
+  name: string;
+  category: string;
+  owner: string;
+  authority: string;
+  collection_method: string;
+  production_method: string;
+  source_format: string;
+  schedule: string;
+  status: string;
+  description: string;
+  fields: string[];
+  raw_records: number;
+  normalized_records: number;
+  rejected_records: number;
+  matched_records: number;
+  secondary_matches: number;
+  review_records: number;
+  last_synced_at: string;
+  trust_boundary: string;
+};
+
+export type DataReadiness = {
+  status: string;
+  synthetic_disclosure: string;
+  collection_note: string;
+  totals: {
+    claimed_outcomes: number;
+    raw_records: number;
+    sampled_raw_records: number;
+    normalized_events: number;
+    direct_matches: number;
+    secondary_matches: number;
+    review_records: number;
+    claim_coverage_percent: number;
+    contract_rules_approved: number;
+  };
+  sources: DataSource[];
+  pipeline: Array<{ id: string; label: string; description: string }>;
+  onboarding: Array<{ phase: string; label: string; description: string }>;
+};
+
+export type RawRecordSample = {
+  id: string;
+  connector_id: string;
+  source_record_id: string;
+  record_type: string;
+  occurred_at: string | null;
+  received_at: string;
+  payload: Record<string, unknown>;
+  normalized_payload: Record<string, unknown>;
+  payload_hash: string;
+  schema_version: string;
+  matched_outcome_id: string | null;
+  match_status: string | null;
+  match_method: string | null;
+  match_confidence: string | null;
+  match_reason: string | null;
+};
+
+export type DataSourceSamples = {
+  source: DataSource;
+  records: RawRecordSample[];
+  sample_note: string;
+};
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, options);
   if (!response.ok) {
@@ -129,6 +217,12 @@ export const api = {
   status: () => request<DemoStatus>("/demo/status"),
   scenarios: () => request<DemoScenario[]>("/demo/scenarios"),
   contract: () => request<Contract>("/contracts/current"),
+  dataReadiness: () => request<DataReadiness>("/data-readiness"),
+  sourceSamples: (sourceId: string, outcomeId?: string, limit = 8) => {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (outcomeId) query.set("outcome_id", outcomeId);
+    return request<DataSourceSamples>(`/data-sources/${sourceId}/samples?${query}`);
+  },
   invoice: () => request<Invoice>("/invoices/current"),
   current: () => request<Summary>("/reconciliations/current"),
   reconcile: () => request<Summary>("/reconciliations", { method: "POST" }),

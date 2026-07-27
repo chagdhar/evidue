@@ -37,6 +37,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
   Contract,
+  DataReadiness,
   DemoScenario,
   DemoStatus,
   Invoice,
@@ -365,25 +366,36 @@ function ContractSummary({ contract }: { contract: Contract }) {
   );
 }
 
-function EvidenceReadiness({ sources }: { sources: string[] }) {
+function EvidenceReadiness({ readiness }: { readiness: DataReadiness }) {
   return (
     <section className="major-section" aria-labelledby="evidence-readiness-title">
-      <Box className="section-intro">
-        <Typography className="eyebrow">Evidence coverage</Typography>
-        <Typography variant="h4" id="evidence-readiness-title">
-          Available source systems
-        </Typography>
+      <Box className="section-intro readiness-intro">
+        <Box>
+          <Typography className="eyebrow">Evidence readiness</Typography>
+          <Typography variant="h4" id="evidence-readiness-title">
+            Real records are collected and matched before reconciliation
+          </Typography>
+          <Typography color="text.secondary">{readiness.collection_note}</Typography>
+        </Box>
+        <Button href="/demo/data-sources" variant="outlined">Inspect collection pipeline</Button>
       </Box>
-      <Paper className="source-list">
-        {sources.map((source) => (
-          <Box className="source-row" key={source}>
-            <span aria-hidden="true" />
-            <Typography fontWeight={700}>{source}</Typography>
-            <Typography color="text.secondary">
-              Available for deterministic reconciliation
-            </Typography>
-          </Box>
-        ))}
+      <Paper className="readiness-panel">
+        <Box className="readiness-metrics">
+          <div><span>Claim coverage</span><strong>{readiness.totals.claim_coverage_percent.toFixed(2)}%</strong></div>
+          <div><span>Direct outcome-ID matches</span><strong>{readiness.totals.direct_matches.toLocaleString()}</strong></div>
+          <div><span>Secondary-key matches</span><strong>{readiness.totals.secondary_matches.toLocaleString()}</strong></div>
+          <div><span>Needs identity review</span><strong>{readiness.totals.review_records.toLocaleString()}</strong></div>
+        </Box>
+        <LinearProgress variant="determinate" value={readiness.totals.claim_coverage_percent} />
+        <Box className="readiness-source-strip">
+          {readiness.sources.map((source) => (
+            <Box key={source.id}>
+              <span aria-hidden="true" />
+              <strong>{source.name}</strong>
+              <small>{source.raw_records.toLocaleString()} records · {source.collection_method}</small>
+            </Box>
+          ))}
+        </Box>
       </Paper>
     </section>
   );
@@ -413,7 +425,8 @@ function OutcomeInspector({
           caption:
             event.source_system === "nova_agent"
               ? "Vendor-provided evidence"
-              : "Imported operational evidence",
+              : "Customer-owned operational evidence",
+          provenance: event.provenance,
         })),
         ...detail.computed_timeline_markers.map((marker) => ({
           kind: "computed" as const,
@@ -423,6 +436,7 @@ function OutcomeInspector({
           source: "Evidue contract engine",
           record: marker.id,
           caption: `${marker.description}. Evidue-computed deadline—not imported evidence.`,
+          provenance: null,
         })),
       ].sort((left, right) => left.timestamp.localeCompare(right.timestamp))
     : [];
@@ -450,6 +464,15 @@ function OutcomeInspector({
             </Box>
             <Button onClick={onClose}>Close</Button>
           </Box>
+
+          {detail.claim_provenance && (
+            <Paper className="claim-provenance-strip">
+              <Box><Typography variant="caption" color="text.secondary">Vendor claim ID</Typography><strong className="mono">{detail.vendor_claim_id}</strong></Box>
+              <Box><Typography variant="caption" color="text.secondary">Agent version</Typography><strong>{detail.agent_version}</strong></Box>
+              <Box><Typography variant="caption" color="text.secondary">Collected through</Typography><strong>{detail.claim_provenance.collection_method}</strong></Box>
+              <Box><Typography variant="caption" color="text.secondary">Raw record</Typography><strong className="mono">{detail.claim_provenance.raw_record_id}</strong></Box>
+            </Paper>
+          )}
 
           <Box className="comparison-grid">
             <Box className="comparison-panel vendor">
@@ -515,6 +538,20 @@ function OutcomeInspector({
                     Source: {item.source} · Record:{" "}
                     <span className="mono">{item.record}</span>
                   </Typography>
+                  {item.provenance && (
+                    <details className="timeline-provenance">
+                      <summary>View source provenance</summary>
+                      <dl>
+                        <dt>Connector</dt><dd>{item.provenance.connector_name}</dd>
+                        <dt>Authority</dt><dd>{item.provenance.authority}</dd>
+                        <dt>Collected</dt><dd>{item.provenance.collection_method}</dd>
+                        <dt>Production path</dt><dd>{item.provenance.production_method}</dd>
+                        <dt>Match</dt><dd>{item.provenance.match_method} · {item.provenance.match_confidence}</dd>
+                        <dt>Payload hash</dt><dd className="mono">{item.provenance.payload_hash}</dd>
+                      </dl>
+                      {item.provenance.raw_payload && <pre>{JSON.stringify(item.provenance.raw_payload, null, 2)}</pre>}
+                    </details>
+                  )}
                 </Box>
               </Box>
             ))}
@@ -921,6 +958,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
   const [scenarios, setScenarios] = useState<DemoScenario[]>([]);
   const [contract, setContract] = useState<Contract | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [readiness, setReadiness] = useState<DataReadiness | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [selectedRule, setSelectedRule] = useState("");
   const [loading, setLoading] = useState(true);
@@ -931,23 +969,26 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
   useEffect(() => {
     async function initialize() {
       try {
-        const [initialStatus, scenarioResults, contractResult, initialInvoice] =
+        const [initialStatus, scenarioResults, contractResult, initialInvoice, readinessResult] =
           await Promise.all([
             api.status(),
             scenarioLab ? api.scenarios() : Promise.resolve([]),
             api.contract(),
             api.invoice(),
+            api.dataReadiness(),
           ]);
         let status = initialStatus;
         let invoiceResult = initialInvoice;
+        let readinessValue = readinessResult;
         if (!scenarioLab && status.scenario_id !== "headline") {
           status = await api.reset("headline");
-          invoiceResult = await api.invoice();
+          [invoiceResult, readinessValue] = await Promise.all([api.invoice(), api.dataReadiness()]);
         }
         setDemoStatus(status);
         setScenarios(scenarioResults);
         setContract(contractResult);
         setInvoice(invoiceResult);
+        setReadiness(readinessValue);
         if (status.reconciled) setSummary(await api.current());
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "Could not load demo");
@@ -989,9 +1030,10 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
     setError("");
     try {
       const status = await api.reset(scenarioId);
-      const invoiceResult = await api.invoice();
+      const [invoiceResult, readinessResult] = await Promise.all([api.invoice(), api.dataReadiness()]);
       setDemoStatus(status);
       setInvoice(invoiceResult);
+      setReadiness(readinessResult);
       setSummary(null);
       setSelectedRule("");
     } catch (requestError) {
@@ -1013,7 +1055,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
       </Box>
     );
   }
-  if (!contract || !invoice) {
+  if (!contract || !invoice || !readiness) {
     return (
       <Container sx={{ py: 8 }}>
         <Alert severity="error">{error || "Demo inputs unavailable"}</Alert>
@@ -1099,6 +1141,10 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
           </Paper>
         )}
 
+        <EvidenceReadiness readiness={readiness} />
+
+        {readiness && <EvidenceReadiness readiness={readiness} />}
+
         <PaymentRecommendation
           invoice={invoice}
           summary={summary}
@@ -1132,7 +1178,6 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
         )}
 
         <ContractSummary contract={contract} />
-        <EvidenceReadiness sources={contract.evidence_sources} />
       </Container>
     </>
   );
