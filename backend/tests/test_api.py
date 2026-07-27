@@ -40,6 +40,32 @@ def reconciled_demo():
     yield reconcile()
 
 
+def test_every_data_source_exposes_an_inspectable_sample():
+    readiness = data_readiness()
+    source_ids = {source["id"] for source in readiness["sources"]}
+    assert source_ids == {
+        "vendor_claim_manifest",
+        "vendor_agent_log",
+        "support_desk",
+        "payment_processor",
+        "product_operations",
+        "billing_ledger",
+        "identity_map",
+        "contract_documents",
+    }
+
+    for source_id in sorted(source_ids):
+        samples = data_source_samples(source_id, limit=8)
+        assert samples["source"]["id"] == source_id
+        assert samples["records"], f"{source_id} must have an inspectable raw record"
+        first = samples["records"][0]
+        assert first["source_record_id"]
+        assert first["schema_version"]
+        assert first["payload_hash"].startswith("sha256:")
+        assert isinstance(first["payload"], dict)
+        assert isinstance(first["normalized_payload"], dict)
+
+
 def test_health_reset_seed_and_reconciliation_lifecycle():
     assert health() == {"status": "ok"}
     state = demo_status()

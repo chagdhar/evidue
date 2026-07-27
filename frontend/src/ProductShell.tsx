@@ -19,7 +19,7 @@ import {
   Typography,
 } from "@mui/material";
 import { TemplateIcon } from "./TemplateIcons";
-import { ReactNode, useCallback, useEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   api,
@@ -67,8 +67,8 @@ export function ProductShell() {
   );
 }
 
-function PageFrame({ children }: { children: ReactNode }) {
-  return <Box className="template-page-container">{children}</Box>;
+function PageFrame({ children, testId }: { children: ReactNode; testId?: string }) {
+  return <Box className="template-page-container" data-testid={testId}>{children}</Box>;
 }
 
 function PageHeader({ eyebrow, title, body, action }: { eyebrow: string; title: string; body: string; action?: ReactNode }) {
@@ -201,7 +201,7 @@ export function OverviewPage() {
   ];
 
   return (
-    <PageFrame>
+    <PageFrame testId="overview-page">
       <Alert severity="warning" className="template-disclosure"><strong>Synthetic demonstration data.</strong> {disclosure}</Alert>
       <PageHeader
         eyebrow="Independent control for outcome-priced AI"
@@ -209,7 +209,7 @@ export function OverviewPage() {
         body="Evidue joins the vendor invoice to customer-owned operational evidence, applies customer-approved contract rules, and gives finance a reproducible payable amount—not a quality score."
         action={
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-            <Button variant="outlined" onClick={() => navigate("/demo/data-sources")}>Inspect source data</Button>
+            <Button variant="outlined" onClick={() => navigate("/demo/data-sources?source=payment_processor&inspect=1")}>Inspect example evidence</Button>
             <Button
               variant="contained"
               disabled={running}
@@ -328,7 +328,8 @@ export function OverviewPage() {
         </SectionCard>
       </Box>
 
-      <SectionCard title="Evidence and authority stay separated" eyebrow="Neutral financial infrastructure">
+      <Box data-testid="product-story">
+        <SectionCard title="Evidence and authority stay separated" eyebrow="Neutral financial infrastructure">
         <Box className="overview-authority-grid">
           <Box><Typography variant="overline" color="text.secondary">Vendor side</Typography><Typography variant="h6">{vendorSources} evidence sources</Typography><Typography variant="body2" color="text.secondary">Claims and execution proof can support an invoice, but cannot declare it payable.</Typography></Box>
           <Box><Typography variant="overline" color="text.secondary">Customer side</Typography><Typography variant="h6">{customerSources} private sources</Typography><Typography variant="body2" color="text.secondary">Support, payment, product, billing, and identity records remain customer-controlled.</Typography></Box>
@@ -351,7 +352,8 @@ export function OverviewPage() {
             <TemplateIcon name="arrow" />
           </button>
         </Box>
-      </SectionCard>
+        </SectionCard>
+      </Box>
     </PageFrame>
   );
 }
@@ -453,20 +455,24 @@ export function DataSourcesPage() {
   const [sampleLoading, setSampleLoading] = useState(false);
   const [error, setError] = useState("");
   const [sampleError, setSampleError] = useState("");
+  const sampleRequestId = useRef(0);
 
   const loadSourceSamples = useCallback(async (sourceId: string) => {
+    const requestId = ++sampleRequestId.current;
     setSampleLoading(true);
     setSampleError("");
     setSamples(null);
     setSelectedRecord(null);
     try {
       const result = await api.sourceSamples(sourceId, sourceId === "payment_processor" ? "OUT-004821" : undefined, 8);
+      if (requestId !== sampleRequestId.current) return;
       setSamples(result);
       setSelectedRecord(result.records[0] ?? null);
     } catch (requestError) {
+      if (requestId !== sampleRequestId.current) return;
       setSampleError(requestError instanceof Error ? requestError.message : "Could not load source records");
     } finally {
-      setSampleLoading(false);
+      if (requestId === sampleRequestId.current) setSampleLoading(false);
     }
   }, []);
 
@@ -498,7 +504,7 @@ export function DataSourcesPage() {
   const selectedSourceMetadata = readiness.sources.find((source) => source.id === selectedSource);
 
   return (
-    <PageFrame>
+    <PageFrame testId="data-sources-page">
       <Alert severity="info" className="template-disclosure">
         <strong>Synthetic source records, production-shaped pipeline.</strong> The values are generated, but the demo begins with vendor, support, payment, product, billing, identity, and contract-shaped records before normalization and matching.
       </Alert>
@@ -621,11 +627,11 @@ export function DataSourcesPage() {
         onClose={() => setInspectorOpen(false)}
         PaperProps={{ sx: { width: { xs: "100%", sm: "min(760px, 94vw)" } } }}
       >
-        <Box className="source-inspector-drawer" data-testid="source-inspector">
+        <Box className="source-inspector-drawer" data-testid="source-inspector" role="dialog" aria-modal="true" aria-labelledby="source-inspector-title" aria-busy={sampleLoading}>
           <Box className="source-inspector-header">
             <Box>
               <Typography variant="overline" color="primary">Raw source inspector</Typography>
-              <Typography variant="h4">{selectedSourceMetadata?.name ?? "Source records"}</Typography>
+              <Typography variant="h4" id="source-inspector-title">{selectedSourceMetadata?.name ?? "Source records"}</Typography>
               <Typography color="text.secondary">{selectedSourceMetadata?.description}</Typography>
             </Box>
             <Button variant="outlined" onClick={() => setInspectorOpen(false)}>Close inspector</Button>
@@ -639,8 +645,8 @@ export function DataSourcesPage() {
             </Box>
           )}
 
-          {sampleLoading && <Box className="source-inspector-loading"><CircularProgress size={28} /><Typography>Loading representative source records…</Typography></Box>}
-          {sampleError && <Alert severity="error">{sampleError}</Alert>}
+          {sampleLoading && <Box className="source-inspector-loading" role="status" aria-live="polite"><CircularProgress size={28} /><Typography>Loading representative source records…</Typography></Box>}
+          {sampleError && <Alert severity="error" role="alert">{sampleError}</Alert>}
 
           {!sampleLoading && !sampleError && samples && (
             <>

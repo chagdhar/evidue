@@ -96,9 +96,20 @@ test("overview runs the financial control and opens the completed decision", asy
 
   const decision = page.getByLabel("Current invoice decision");
   await expect(decision).toContainText("Pending");
+
+  await page.getByRole("button", { name: "Inspect example evidence" }).click();
+  await expect(page).toHaveURL(/\/demo\/data-sources\?source=payment_processor&inspect=1$/);
+  const inspector = page.getByTestId("source-inspector");
+  await expect(inspector).toBeVisible();
+  await expect(inspector.getByRole("heading", { name: "Payment processor", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close inspector" }).click();
+  await page.getByRole("link", { name: "Overview" }).click();
+  await expect(page).toHaveURL(/\/demo$/);
+
+  const refreshedDecision = page.getByLabel("Current invoice decision");
   await page.getByRole("button", { name: "Run June reconciliation" }).click();
-  await expect(decision).toContainText("$12,480.00", { timeout: 60_000 });
-  await expect(decision).toContainText("$2,520.00");
+  await expect(refreshedDecision).toContainText("$12,480.00", { timeout: 60_000 });
+  await expect(refreshedDecision).toContainText("$2,520.00");
   await expect(page.getByRole("button", { name: "Open full decision" })).toBeVisible();
 
   await page.getByRole("button", { name: "Open full decision" }).click();
@@ -111,30 +122,46 @@ test("production-shaped data collection is inspectable before reconciliation", a
   await page.request.post("/api/demo/reset?scenario_id=headline");
   await page.goto("/demo/data-sources?source=payment_processor&inspect=1");
 
-  await expect(page.getByRole("heading", { name: "How real customer data enters Evidue" })).toBeVisible();
-  await expect(page.getByText("50,302")).toBeVisible();
-  await expect(page.getByText("100.00%")).toBeVisible();
-  await expect(page.getByText("25", { exact: true })).toBeVisible();
-  await expect(page.getByText("Vendor claim manifest", { exact: true })).toBeVisible();
-  await expect(page.getByRole("row").filter({ hasText: "Payment processor" })).toBeVisible();
-  await expect(page.getByText("Contract documents", { exact: true })).toBeVisible();
-
   const inspector = page.getByTestId("source-inspector");
   await expect(inspector).toBeVisible();
-  await expect(inspector.getByRole("heading", { name: "Payment processor" })).toBeVisible();
-  await expect(inspector.getByText("As received from source")).toBeVisible();
-  await expect(inspector.getByText("Canonical Evidue record")).toBeVisible();
+  await expect(inspector.getByRole("heading", { name: "Payment processor", exact: true })).toBeVisible();
+  await expect(inspector.getByText("As received from source", { exact: true })).toBeVisible();
+  await expect(inspector.getByText("Canonical Evidue record", { exact: true })).toBeVisible();
   await expect(inspector.locator(".payload-comparison pre").first()).toContainText("rejected");
-  await expect(inspector).toContainText("processor-4821");
-  await page.getByRole("button", { name: "Close inspector" }).click();
+  await expect(inspector).toContainText("payment_processor-OUT-004821-FAILED");
+
+  // MUI correctly hides the background page from the accessibility tree while
+  // the modal inspector is open. Close it before asserting page-level content.
+  await inspector.getByRole("button", { name: "Close inspector" }).click();
   await expect(inspector).not.toBeVisible();
 
+  const dataSourcesPage = page.getByTestId("data-sources-page");
+  await expect(dataSourcesPage.getByRole("heading", { name: "How real customer data enters Evidue", exact: true })).toBeVisible();
+  await expect(dataSourcesPage.getByLabel("Source records received: 50,302")).toBeVisible();
+  await expect(dataSourcesPage.getByLabel("Claim evidence coverage: 100.00%")).toBeVisible();
+  await expect(dataSourcesPage.getByLabel("Secondary identity joins: 25")).toBeVisible();
+  await expect(
+  dataSourcesPage.getByRole("table").getByRole("row").filter({
+    hasText: "Vendor claim manifest",
+  }),
+).toBeVisible();
+  await expect(dataSourcesPage.getByRole("row").filter({ hasText: "Payment processor" })).toBeVisible();
+  await expect(
+  dataSourcesPage.getByRole("table").getByRole("row").filter({
+    hasText: "Contract documents",
+  }),
+).toBeVisible();
+
+  // Reopening an already-selected source must still open the inspector.
   await page.getByRole("button", { name: "Inspect Payment processor" }).click();
   await expect(inspector).toBeVisible();
-  await page.getByRole("button", { name: "Close inspector" }).click();
+  await expect(inspector.getByRole("heading", { name: "Payment processor", exact: true })).toBeVisible();
+  await inspector.getByRole("button", { name: "Close inspector" }).click();
 
+  // Switching sources must replace the payload rather than leave stale data.
   await page.getByRole("button", { name: "Inspect Vendor claim manifest" }).click();
-  await expect(inspector.getByRole("heading", { name: "Vendor claim manifest" })).toBeVisible();
+  await expect(inspector).toBeVisible();
+  await expect(inspector.getByRole("heading", { name: "Vendor claim manifest", exact: true })).toBeVisible();
   await expect(inspector).toContainText("vendor_claim");
   await expect(inspector.getByText(/Production retains every permitted raw record/)).toBeVisible();
 });
@@ -191,10 +218,14 @@ test("two-sided product story connects vendor preflight to independent verificat
   await page.request.post("/api/demo/reset?scenario_id=headline");
   await page.goto("/demo");
 
-  await expect(page.getByRole("heading", { name: "Prove before invoicing. Verify before payment." })).toBeVisible();
-  await expect(page.getByText("Evidue Prove")).toBeVisible();
-  await expect(page.getByRole("main").getByText("Outcome Ledger", { exact: true })).toBeVisible();
-  await expect(page.getByText("Evidue Verify")).toBeVisible();
+  const overviewPage = page.getByTestId("overview-page");
+  await expect(overviewPage.getByRole("heading", { name: "Know what the AI vendor actually earned", exact: true })).toBeVisible();
+  await expect(overviewPage.getByRole("heading", { name: "How Evidue reaches a payable amount", exact: true })).toBeVisible();
+  await expect(overviewPage.getByRole("heading", { name: "Example charge path", exact: true })).toBeVisible();
+  const productStory = overviewPage.getByTestId("product-story");
+  await expect(productStory.getByText("Evidue Prove", { exact: true })).toBeVisible();
+  await expect(productStory.getByText("Outcome Ledger", { exact: true })).toBeVisible();
+  await expect(productStory.getByText("Evidue Verify", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "Vendor Preflight" }).click();
   await expect(page).toHaveURL(/\/demo\/vendor-preflight$/);
