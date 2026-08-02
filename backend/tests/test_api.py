@@ -14,6 +14,7 @@ from app.api.schemas import (
 from app.db import repository
 from app.db.models import OutcomeDeterminationRow
 from app.main import (
+    app,
     current_contract,
     current_invoice,
     current_reconciliation,
@@ -24,16 +25,21 @@ from app.main import (
     demo_status,
     disputes_csv,
     ensure_mutation_allowed,
+    evaluate_public_outcome,
     evidence_json,
     health,
     outcome,
     outcomes,
+    public_config,
     public_demo_enabled,
     reconcile,
     reset,
+    run_public_reconciliation_sample,
     summary_json,
+    validate_public_rules,
 )
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 
@@ -123,7 +129,86 @@ def test_public_demo_mutations_are_blocked(monkeypatch):
     with pytest.raises(HTTPException) as error:
         ensure_mutation_allowed()
     assert error.value.status_code == 403
-    assert "read-only demo workspace" in str(error.value.detail)
+    assert str(error.value.detail) == (
+        "Public technical preview: shared state is read-only, but selected rule validation "
+        "and deterministic evaluations can be rerun safely."
+    )
+
+
+def test_public_stateless_actions_use_the_bundled_program():
+    validation = validate_public_rules()
+    assert validation["valid"] is True
+    assert validation["rule_ids"] == ["R7", "R6", "R1", "R2", "R3", "R5", "R4"]
+    assert validation["live_model_call"] is False
+
+    evaluation = evaluate_public_outcome("OUT-004821")
+    assert evaluation["status"] == "disputed"
+    assert evaluation["rule_id"] == "R3"
+    assert evaluation["confirmed_disputed_amount"] == "1.50"
+
+    sample = run_public_reconciliation_sample()
+    assert sample["sample_size"] == 100
+    assert sample["submitted_amount"] == "150.00"
+    assert (
+        sample["payable_outcomes"] + sample["disputed_outcomes"] + sample["needs_review_outcomes"]
+        == 100
+    )
+    assert (sample["payable_outcomes"], sample["disputed_outcomes"]) == (83, 17)
+    assert sample["compilation_id"] == "COMP-RECORDED-GEMINI-V1"
+
+
+def test_public_http_routes_block_mutation_and_allow_safe_actions(monkeypatch):
+    monkeypatch.setenv("EVIDUE_PUBLIC_DEMO", "true")
+    with TestClient(app) as client:
+        for path in (
+            "/api/demo/reset",
+            "/api/contracts/current/compile",
+            "/api/contracts/current/compilations/COMP-RECORDED-GEMINI-V1/approve",
+            "/api/reconciliations",
+        ):
+            response = client.post(path)
+            assert response.status_code == 403
+            assert "shared state is read-only" in response.json()["detail"]
+        assert client.post("/api/public-demo/rules/validate").json()["valid"] is True
+        evaluation = client.post("/api/public-demo/outcomes/OUT-004821/evaluate")
+        assert evaluation.status_code == 200
+        assert evaluation.json()["compilation_id"] == "COMP-RECORDED-GEMINI-V1"
+
+
+def test_public_config_is_safe_without_google_credentials(monkeypatch):
+    monkeypatch.setenv("EVIDUE_PUBLIC_DEMO", "true")
+    monkeypatch.delenv("EVIDUE_BETA_FORM_URL", raising=False)
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    monkeypatch.delenv("EVIDUE_FIRESTORE_PROJECT_ID", raising=False)
+    assert public_config() == {"beta_form_configured": False, "beta_form_url": None}
+    with TestClient(app) as client:
+        assert client.get("/api/demo/status").json()["public_demo"] is True
+        assert client.get("/api/public-config").json() == {
+            "beta_form_configured": False,
+            "beta_form_url": None,
+        }
+
+
+@pytest.mark.parametrize(
+    "configured_url",
+    [
+        "http://tally.so/r/form",
+        "https://example.com/r/form",
+        "javascript:alert(1)",
+        "https://127.0.0.1/r/form",
+        "//tally.so/r/form",
+        "https://tally.so.evil.example/r/form",
+    ],
+)
+def test_public_config_rejects_unsafe_beta_urls(monkeypatch, configured_url):
+    monkeypatch.setenv("EVIDUE_BETA_FORM_URL", configured_url)
+    assert public_config() == {"beta_form_configured": False, "beta_form_url": None}
+
+
+def test_public_config_allows_tally_https_url(monkeypatch):
+    configured_url = "https://tally.so/r/test-form?source=hacker_news"
+    monkeypatch.setenv("EVIDUE_BETA_FORM_URL", configured_url)
+    assert public_config() == {"beta_form_configured": True, "beta_form_url": configured_url}
 
 
 def test_production_shaped_ingestion_readiness_and_source_samples():

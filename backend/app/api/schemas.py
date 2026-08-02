@@ -20,6 +20,57 @@ class HealthResponse(StrictModel):
     status: str
 
 
+class PublicConfigResponse(StrictModel):
+    beta_form_configured: bool
+    beta_form_url: str | None
+
+
+class RecordedProposalValidationResponse(StrictModel):
+    valid: bool
+    contract_id: str
+    source_hash: str
+    prompt_hash: str
+    rule_count: int
+    rule_ids: list[str]
+    compiler_version: str
+    live_model_call: bool
+    duration_ms: int
+
+
+class PublicOutcomeEvaluationResponse(StrictModel):
+    outcome_id: str
+    status: str
+    rule_id: str | None
+    reason: str
+    confirmed_payable_amount: str
+    confirmed_disputed_amount: str
+    needs_review_amount: str
+    evidence_ids: list[str]
+    engine_version: str
+    compilation_id: str
+    program_version: int
+    source_hash: str
+    canonical: dict[str, Any] | None
+    duration_ms: int
+
+
+class PublicReconciliationSampleResponse(StrictModel):
+    sample_size: int
+    payable_outcomes: int
+    disputed_outcomes: int
+    needs_review_outcomes: int
+    submitted_amount: str
+    confirmed_payable_amount: str
+    recommended_deduction: str
+    representative_outcome_ids: list[str]
+    sampling_method: str
+    compilation_id: str
+    program_version: int
+    source_hash: str
+    engine_version: str
+    duration_ms: int
+
+
 class DemoStatusResponse(StrictModel):
     public_demo: bool
     seeded: bool

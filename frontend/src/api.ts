@@ -10,6 +10,11 @@ export type DemoStatus = {
   demo_outcome_id: string;
 };
 
+export type PublicConfig = {
+  beta_form_configured: boolean;
+  beta_form_url: string | null;
+};
+
 export type DemoScenario = {
   id: string;
   name: string;
@@ -173,6 +178,52 @@ export type OutcomePage = {
   items: Outcome[];
 };
 
+export type RecordedProposalValidation = {
+  valid: boolean;
+  contract_id: string;
+  source_hash: string;
+  prompt_hash: string;
+  rule_count: number;
+  rule_ids: string[];
+  compiler_version: string;
+  live_model_call: boolean;
+  duration_ms: number;
+};
+
+export type PublicOutcomeEvaluation = {
+  outcome_id: string;
+  status: string;
+  rule_id: string | null;
+  reason: string;
+  confirmed_payable_amount: string;
+  confirmed_disputed_amount: string;
+  needs_review_amount: string;
+  evidence_ids: string[];
+  engine_version: string;
+  compilation_id: string;
+  program_version: number;
+  source_hash: string;
+  canonical: OutcomeDetail | null;
+  duration_ms: number;
+};
+
+export type PublicReconciliationSample = {
+  sample_size: number;
+  payable_outcomes: number;
+  disputed_outcomes: number;
+  needs_review_outcomes: number;
+  submitted_amount: string;
+  confirmed_payable_amount: string;
+  recommended_deduction: string;
+  representative_outcome_ids: string[];
+  sampling_method: string;
+  compilation_id: string;
+  program_version: number;
+  source_hash: string;
+  engine_version: string;
+  duration_ms: number;
+};
+
 export type DataSource = {
   id: string;
   name: string;
@@ -257,6 +308,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  publicConfig: () => request<PublicConfig>("/public-config"),
   status: () => request<DemoStatus>("/demo/status"),
   scenarios: () => request<DemoScenario[]>("/demo/scenarios"),
   contract: () => request<Contract>("/contracts/current"),
@@ -287,6 +339,14 @@ export const api = {
   invoice: () => request<Invoice>("/invoices/current"),
   current: () => request<Summary>("/reconciliations/current"),
   reconcile: () => request<Summary>("/reconciliations", { method: "POST" }),
+  validateRecordedProposal: () =>
+    request<RecordedProposalValidation>("/public-demo/rules/validate", { method: "POST" }),
+  evaluatePublicOutcome: (id: string) =>
+    request<PublicOutcomeEvaluation>(`/public-demo/outcomes/${encodeURIComponent(id)}/evaluate`, {
+      method: "POST",
+    }),
+  publicReconciliationSample: () =>
+    request<PublicReconciliationSample>("/public-demo/reconciliations/sample", { method: "POST" }),
   reset: (scenarioId = "headline") =>
     request<DemoStatus>(
       `/demo/reset?scenario_id=${encodeURIComponent(scenarioId)}`,

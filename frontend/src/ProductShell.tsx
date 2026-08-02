@@ -506,6 +506,20 @@ export function ContractsPage() {
     }
   }
 
+  async function validateRecordedProposal() {
+    setWorkingAction("compile");
+    setActionError("");
+    setNotice("");
+    try {
+      const result = await api.validateRecordedProposal();
+      setNotice(`Recorded proposal validated: ${result.rule_count} allowlisted rules in ${result.duration_ms} ms. No model call or shared-state write occurred.`);
+    } catch (requestError) {
+      setActionError(requestError instanceof Error ? requestError.message : "Rule validation failed");
+    } finally {
+      setWorkingAction(null);
+    }
+  }
+
   if (loading) return <LoadingPage />;
   if (loadError || !contract) return <ErrorPage message={loadError || "Contract controls are unavailable"} />;
 
@@ -529,11 +543,11 @@ export function ContractsPage() {
   return (
     <PageFrame testId="contracts-page">
       <PageHeader
-        eyebrow="Contract rule compiler"
-        title="Compile contract language into an approvable rule program"
-        body="The visible contract text is sent to Gemini, the response is constrained to allowlisted operations, and a human-approved immutable version is the only input the deterministic reconciliation engine can execute."
+        eyebrow={publicDemo ? "Approved rule program" : "Contract rule compiler"}
+        title={publicDemo ? "Approved billing rules" : "Compile contract language into an approvable rule program"}
+        body={publicDemo ? "Public technical preview: shared state is read-only, but selected rule validation and deterministic evaluations can be rerun safely." : "The visible contract text is sent to Gemini, the response is constrained to allowlisted operations, and a human-approved immutable version is the only input the deterministic reconciliation engine can execute."}
         action={
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+          publicDemo ? <Button variant="contained" onClick={() => void validateRecordedProposal()} disabled={workingAction !== null}>Validate recorded proposal</Button> : <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
             <Button
               variant="outlined"
               disabled={publicDemo || workingAction !== null}
@@ -554,7 +568,7 @@ export function ContractsPage() {
       />
 
       {actionError && <Alert severity="error" sx={{ mb: 2 }}>{actionError}</Alert>}
-      {publicDemo && <Alert severity="info" sx={{ mb: 2 }}>Public technical preview: the displayed Gemini proposal and approved rule version are read-only because all visitors share this workspace.</Alert>}
+      {publicDemo && <Alert severity="info" sx={{ mb: 2 }}>Public technical preview: shared state is read-only, but selected rule validation and deterministic evaluations can be rerun safely.</Alert>}
       {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
       {customDraftWithoutKey && (
         <Alert severity="warning" sx={{ mb: 2 }}>
@@ -593,7 +607,7 @@ export function ContractsPage() {
         <SectionCard
           title="Contract source"
           eyebrow="Exactly what the compiler reads"
-          action={
+          action={!publicDemo ? (
             <Button
               size="small"
               disabled={publicDemo || workingAction !== null || draft === contract.demo_contract_text}
@@ -605,9 +619,9 @@ export function ContractsPage() {
             >
               Restore bundled contract
             </Button>
-          }
+          ) : undefined}
         >
-          <TextField
+          {publicDemo ? <Typography component="pre" className="contract-excerpt">{proposal.source_text}</Typography> : <><TextField
             label="Source document"
             fullWidth
             value={sourceDocument}
@@ -625,6 +639,7 @@ export function ContractsPage() {
             disabled={publicDemo || workingAction !== null}
             helperText={`${draft.length.toLocaleString()} characters${draftChanged ? " · source differs from the displayed proposal" : " · exact source for the displayed proposal"}`}
           />
+          </>}
         </SectionCard>
 
         <SectionCard
@@ -1050,7 +1065,7 @@ export function DataSourcesPage() {
 
 export function VendorPreflightPage() {
   const navigate = useNavigate();
-  const { invoice, contract, summary: existingSummary, loading, error, setSummary } = useProductData();
+  const { status, invoice, contract, summary: existingSummary, loading, error, setSummary } = useProductData();
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState("");
   const [summary, setLocalSummary] = useState<Summary | null>(existingSummary);
@@ -1059,6 +1074,7 @@ export function VendorPreflightPage() {
   if (error || !invoice || !contract) return <ErrorPage message={error} />;
 
   async function runPreflight() {
+    if (status?.public_demo) return;
     setRunning(true); setRunError("");
     try { const result = await api.reconcile(); setLocalSummary(result); setSummary(result); }
     catch (requestError) { setRunError(requestError instanceof Error ? requestError.message : "Could not run preflight"); }
@@ -1068,7 +1084,8 @@ export function VendorPreflightPage() {
   return (
     <PageFrame>
       <Alert severity="info" sx={{ mb: 2 }}><strong>Demonstration evidence model.</strong> This synthetic demo uses one shared evidence fixture so both calculations are inspectable. Production vendor evidence and customer-private evidence remain separate.</Alert>
-      <PageHeader eyebrow="Evidue Prove · Agent vendor workspace" title="Send an invoice you can defend" body="Preflight proposed outcome charges against approved billing rules before they reach the customer." action={<Button variant="contained" disabled={running} onClick={runPreflight}>{running ? "Running preflight…" : "Run invoice preflight"}</Button>} />
+      <PageHeader eyebrow="Evidue Prove · Agent vendor workspace" title="Send an invoice you can defend" body="Preflight proposed outcome charges against approved billing rules before they reach the customer." action={status?.public_demo ? undefined : <Button variant="contained" disabled={running} onClick={runPreflight}>{running ? "Running preflight…" : "Run invoice preflight"}</Button>} />
+      {status?.public_demo && <Alert severity="info" sx={{ mb: 2 }}>Public technical preview: shared state is read-only, but selected rule validation and deterministic evaluations can be rerun safely.</Alert>}
       {runError && <Alert severity="error" sx={{ mb: 2 }}>{runError}</Alert>}
       <Box className="template-stats-grid">
         <MetricCard label="Proposed invoice" value={formatUsd(invoice.submitted_amount)} helper={`${invoice.claimed_outcomes.toLocaleString()} proposed claims`} />

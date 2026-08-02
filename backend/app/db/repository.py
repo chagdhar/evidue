@@ -10,8 +10,9 @@ from app.contracts.compiler import (
     DEFAULT_CONTRACT_PATH,
     compile_with_gemini,
     load_recorded_proposal,
+    recorded_rule_program,
 )
-from app.domain.engine import reconcile
+from app.domain.engine import evaluate, reconcile
 from app.domain.models import ExecutableRule, OperationalEvent, OutcomeClaim, RuleProgram
 from app.fixtures.demo import (
     INVOICE_ID,
@@ -51,6 +52,7 @@ DISCLOSURE = (
     "Operationally realistic data generated deterministically. "
     "No real customer or vendor data is shown."
 )
+_public_evidence_package_cache: dict[str, object] | None = None
 
 
 def initialize() -> None:
@@ -173,6 +175,12 @@ def _active_rule_program(session) -> RuleProgram:
     )
 
 
+def load_active_rule_program() -> RuleProgram:
+    """Load the exact approved, persisted program used by reconciliation."""
+    with SessionLocal() as session:
+        return _active_rule_program(session)
+
+
 def _compilation_view(row: RuleCompilationRow | None) -> dict[str, object]:
     if row is None:
         raise LookupError("No contract rule compilation exists")
@@ -209,6 +217,8 @@ def _compilation_view(row: RuleCompilationRow | None) -> dict[str, object]:
 
 
 def reset(scenario_id: str = "headline") -> dict[str, object]:
+    global _public_evidence_package_cache
+    _public_evidence_package_cache = None
     records = scenario_fixture(scenario_id)
     scenario = SCENARIOS_BY_ID[scenario_id]
     ingestion = build_ingestion_bundle(records, scenario_id)
@@ -421,6 +431,7 @@ def prepare_public_demo() -> None:
         reset("headline")
     if not demo_status()["reconciled"]:
         run_reconciliation()
+    cache_public_evidence_package()
 
 
 def _source_summary(session, connector: ConnectorRow) -> dict[str, object]:
@@ -628,6 +639,8 @@ def _domain_event(row: OperationalEventRow) -> OperationalEvent:
 
 
 def run_reconciliation() -> dict[str, object]:
+    global _public_evidence_package_cache
+    _public_evidence_package_cache = None
     if not demo_status()["seeded"]:
         reset()
     with SessionLocal.begin() as session:
@@ -701,6 +714,124 @@ def run_reconciliation() -> dict[str, object]:
         if state:
             state.reconciled = True
     return summary()
+
+
+def validate_recorded_proposal() -> dict[str, object]:
+    """Validate only the immutable bundled proposal; this never writes or calls a model."""
+    result = load_recorded_proposal(DEFAULT_CONTRACT_PATH.read_text())
+    program = recorded_rule_program()
+    return {
+        "valid": True,
+        "contract_id": result.proposal.contract_id,
+        "source_hash": result.source_hash,
+        "prompt_hash": result.prompt_hash,
+        "rule_count": len(program.rules),
+        "rule_ids": [rule.id for rule in program.rules],
+        "compiler_version": result.proposal.compiler_version,
+        "live_model_call": False,
+    }
+
+
+def public_outcome_evaluation(outcome_id: str) -> dict[str, object]:
+    """Rerun the approved program in memory for a supported demo outcome."""
+    if outcome_id != "OUT-004821":
+        raise LookupError("Only OUT-004821 is available for public deterministic evaluation")
+    with SessionLocal() as session:
+        claim = session.get(OutcomeClaimRow, outcome_id)
+        if claim is None:
+            raise LookupError("Outcome not found")
+        events = session.scalars(
+            select(OperationalEventRow)
+            .where(OperationalEventRow.outcome_id == outcome_id)
+            .order_by(OperationalEventRow.timestamp, OperationalEventRow.id)
+        ).all()
+        program = _active_rule_program(session)
+    determination = evaluate(
+        _domain_claim(claim),
+        [_domain_event(event) for event in events],
+        program=program,
+    )
+    return {
+        "outcome_id": outcome_id,
+        "status": determination.status,
+        "rule_id": determination.rule_id,
+        "reason": determination.reason,
+        "confirmed_payable_amount": _money(determination.confirmed_payable_amount),
+        "confirmed_disputed_amount": _money(determination.confirmed_disputed_amount),
+        "needs_review_amount": _money(determination.needs_review_amount),
+        "evidence_ids": [reference.event_id for reference in determination.evidence],
+        "engine_version": determination.engine_version,
+        "compilation_id": program.compilation_id,
+        "program_version": program.version,
+        "source_hash": program.source_hash,
+        "canonical": outcome_detail(outcome_id),
+    }
+
+
+def public_reconciliation_sample(limit: int = 100) -> dict[str, object]:
+    """Evaluate a stable subset against the approved program without persisting anything."""
+    with SessionLocal() as session:
+        program = _active_rule_program(session)
+        determinations = session.execute(
+            select(OutcomeClaimRow, OutcomeDeterminationRow)
+            .join(
+                OutcomeDeterminationRow,
+                OutcomeDeterminationRow.outcome_id == OutcomeClaimRow.outcome_id,
+            )
+            .order_by(OutcomeClaimRow.outcome_id)
+        ).all()
+        payable = [
+            claim for claim, determination in determinations if determination.status == "payable"
+        ][:83]
+        disputed_by_rule = {
+            rule_id: [
+                claim for claim, determination in determinations if determination.rule_id == rule_id
+            ][:count]
+            for rule_id, count in (("R1", 7), ("R2", 4), ("R3", 3), ("R4", 2), ("R5", 1))
+        }
+        claims = payable + [claim for rows in disputed_by_rule.values() for claim in rows]
+        outcome_ids = [claim.outcome_id for claim in claims]
+        event_rows = session.scalars(
+            select(OperationalEventRow)
+            .where(OperationalEventRow.outcome_id.in_(outcome_ids))
+            .order_by(OperationalEventRow.outcome_id, OperationalEventRow.timestamp)
+        ).all()
+    by_outcome: dict[str, list[OperationalEventRow]] = {}
+    for event in event_rows:
+        if event.outcome_id:
+            by_outcome.setdefault(event.outcome_id, []).append(event)
+    results = reconcile(
+        [
+            (
+                _domain_claim(row),
+                [_domain_event(event) for event in by_outcome.get(row.outcome_id, [])],
+            )
+            for row in claims
+        ],
+        program=program,
+    )
+    disputed = [result for result in results if result.status == "disputed"]
+    return {
+        "sample_size": len(results),
+        "payable_outcomes": sum(result.status == "payable" for result in results),
+        "disputed_outcomes": len(disputed),
+        "needs_review_outcomes": sum(result.status == "needs_review" for result in results),
+        "submitted_amount": _money(
+            sum((result.claim.billed_amount for result in results), Decimal())
+        ),
+        "confirmed_payable_amount": _money(
+            sum((result.confirmed_payable_amount for result in results), Decimal())
+        ),
+        "recommended_deduction": _money(
+            sum((result.confirmed_disputed_amount for result in results), Decimal())
+        ),
+        "representative_outcome_ids": [result.claim.outcome_id for result in disputed[:5]],
+        "sampling_method": "Deterministic stratified sample: 83 payable; 7 R1, 4 R2, 3 R3, 2 R4, and 1 R5 disputes.",
+        "compilation_id": program.compilation_id,
+        "program_version": program.version,
+        "source_hash": program.source_hash,
+        "engine_version": program.engine_version,
+    }
 
 
 def summary() -> dict[str, object]:
@@ -1251,9 +1382,16 @@ def all_disputes() -> list[dict[str, object]]:
 
 
 def evidence_package() -> dict[str, object]:
+    if _public_evidence_package_cache is not None:
+        return _public_evidence_package_cache
     disputes = all_disputes()
     return {
         "reconciliation": summary(),
         "outcomes": [outcome_detail(str(row["outcome_id"])) for row in disputes],
         "synthetic_disclosure": DISCLOSURE,
     }
+
+
+def cache_public_evidence_package() -> None:
+    global _public_evidence_package_cache
+    _public_evidence_package_cache = evidence_package()

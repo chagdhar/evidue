@@ -47,7 +47,8 @@ import {
   RuleCompilation,
   Summary,
 } from "./api";
-import { contactHref } from "./contact";
+import { track } from "./analytics";
+import { BetaApplicationCTA } from "./BetaApplicationCTA";
 import { disclosure, formatPercent, formatUsd } from "./presentation";
 
 const categoryOrder = ["R1", "R2", "R3", "R4", "R5"];
@@ -256,6 +257,7 @@ function FeaturedDispute({ detail }: { detail: OutcomeDetail | null }) {
       <Button variant="contained" href={`/demo/invoices/current?outcome=${encodeURIComponent(detail.outcome_id)}`}>
         Inspect contract rule and evidence
       </Button>
+      <BetaApplicationCTA compact />
     </Paper>
   );
 }
@@ -277,7 +279,7 @@ function DemoInputs() {
       </Box>
       <Paper className="demo-input-list">
         {inputs.map(([label, href]) => (
-          <Link key={label} href={href} download>
+          <Link key={label} href={href} download onClick={() => track("demo_input_downloaded", { input: label })}>
             <span>{label}</span><span aria-hidden="true">↓</span>
           </Link>
         ))}
@@ -300,7 +302,9 @@ function Methodology({ contract }: { contract: Contract }) {
   ];
   return (
     <section className="major-section trust-methodology" aria-labelledby="methodology-title">
-      <details>
+      <details onToggle={(event) => {
+        if (event.currentTarget.open) track("methodology_opened");
+      }}>
         <summary><span>How Evidue reaches a financial decision</span><span>View methodology</span></summary>
         <Box className="methodology-content">
           <Alert severity="info">
@@ -336,6 +340,7 @@ function CurrentLimitations() {
       <Typography className="eyebrow">Trust and scope</Typography>
       <Typography variant="h4" id="limitations-title">Current limitations</Typography>
       <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>
+      <BetaApplicationCTA />
     </section>
   );
 }
@@ -346,12 +351,9 @@ function ContactCta() {
       <Box>
         <Typography className="eyebrow">Real invoice review</Typography>
         <Typography variant="h4" id="contact-title">Reviewing an outcome-priced AI invoice?</Typography>
-        <Typography>Send me a redacted contract, invoice, or sample export. I will audit one billing period with you.</Typography>
+        <Typography>Apply for the beta to share how your team verifies outcome-priced AI charges today.</Typography>
       </Box>
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-        <Button variant="contained" href={contactHref}>Email Dharun</Button>
-        <Button variant="outlined" href={contactHref}>Share a redacted sample</Button>
-      </Stack>
+      <BetaApplicationCTA />
     </Paper>
   );
 }
@@ -470,7 +472,7 @@ function ContractRulesDialog({
   );
 }
 
-function ContractSummary({ contract }: { contract: Contract }) {
+function ContractSummary({ contract, publicDemo }: { contract: Contract; publicDemo: boolean }) {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [activeCompilation, setActiveCompilation] = useState(contract.compilation);
   const [latestCompilation, setLatestCompilation] = useState(contract.latest_compilation);
@@ -531,27 +533,45 @@ function ContractSummary({ contract }: { contract: Contract }) {
     }
   }
 
+  async function validateRules() {
+    setCompilerError("");
+    setCompilerMessage("");
+    try {
+      const result = await api.validateRecordedProposal();
+      track("rule_proposal_validated", { rule_count: result.rule_count });
+      setCompilerMessage(
+        `Recorded proposal validated: ${result.rule_count} allowlisted rules in ${result.duration_ms} ms. No model call or shared-state write occurred.`,
+      );
+    } catch (requestError) {
+      setCompilerError(requestError instanceof Error ? requestError.message : "Rule validation failed");
+    }
+  }
+
   const pending = latestCompilation.status === "pending_approval";
   return (
     <section className="major-section" aria-labelledby="contract-title">
       <Box className="section-intro horizontal">
         <Box>
-          <Typography className="eyebrow">Contract compiler</Typography>
+          <Typography className="eyebrow">{publicDemo ? "Approved rule program" : "Contract compiler"}</Typography>
           <Typography variant="h4" id="contract-title">
             Executable billing terms
           </Typography>
           <Typography color="text.secondary">
-            The LLM proposes a constrained program; a person approves it; the model never adjudicates an invoice line.
+            {publicDemo
+              ? "Public technical preview: shared state is read-only, but selected rule validation and deterministic evaluations can be rerun safely."
+              : "The LLM proposes a constrained program; a person approves it; the model never adjudicates an invoice line."}
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
           <Button variant="outlined" onClick={() => setRulesOpen(true)}>
             View all contract rules
           </Button>
-          <Button variant="contained" onClick={() => void compileRules()} disabled={compiling}>
-            {compiling ? "Compiling…" : "Compile contract"}
-          </Button>
-          {pending && (
+          {publicDemo ? <Button variant="contained" onClick={() => void validateRules()}>Validate recorded proposal</Button> : (
+            <Button variant="contained" onClick={() => void compileRules()} disabled={compiling}>
+              {compiling ? "Compiling…" : "Compile contract"}
+            </Button>
+          )}
+          {!publicDemo && pending && (
             <Button variant="contained" color="success" onClick={() => void approveRules()} disabled={approving}>
               {approving ? "Approving…" : `Approve v${latestCompilation.version}`}
             </Button>
@@ -650,15 +670,58 @@ function EvidenceReadiness({ readiness }: { readiness: DataReadiness }) {
   );
 }
 
+function LiveSample() {
+  const [result, setResult] = useState<Awaited<ReturnType<typeof api.publicReconciliationSample>> | null>(null);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState("");
+  async function runSample() {
+    setRunning(true); setError("");
+    try {
+      const next = await api.publicReconciliationSample();
+      setResult(next);
+      track("sample_reconciliation_run", { sample_size: next.sample_size });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Sample failed");
+    } finally { setRunning(false); }
+  }
+  return <Paper className="live-sample-panel">
+    <Typography className="eyebrow">Safe live check</Typography>
+    <Typography variant="h6">Run a live 100-outcome sample</Typography>
+    <Typography color="text.secondary">This reruns the approved deterministic rules in memory. It does not modify the shared demo or call an LLM.</Typography>
+    <Button sx={{ mt: 1.5 }} variant="outlined" onClick={() => void runSample()} disabled={running}>{running ? "Running sample…" : "Run live 100-outcome sample"}</Button>
+    {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
+    {result && <Alert severity="success" sx={{ mt: 1 }}>Sample complete in {result.duration_ms} ms: {result.payable_outcomes} payable, {result.disputed_outcomes} disputed, {formatUsd(result.confirmed_payable_amount)} supported payable. {result.sampling_method}</Alert>}
+  </Paper>;
+}
+
 function OutcomeInspector({
   detail,
   demoOutcomeId,
   onClose,
+  publicDemo,
 }: {
   detail: OutcomeDetail | null;
   demoOutcomeId: string;
   onClose: () => void;
+  publicDemo: boolean;
 }) {
+  const [evaluation, setEvaluation] = useState<Awaited<ReturnType<typeof api.evaluatePublicOutcome>> | null>(null);
+  const [evaluationError, setEvaluationError] = useState("");
+  const [evaluating, setEvaluating] = useState(false);
+
+  async function reevaluate() {
+    if (!detail || detail.outcome_id !== "OUT-004821") return;
+    setEvaluating(true);
+    setEvaluationError("");
+    try {
+      setEvaluation(await api.evaluatePublicOutcome(detail.outcome_id));
+      track("outcome_reevaluated", { outcome_id: detail.outcome_id });
+    } catch (requestError) {
+      setEvaluationError(requestError instanceof Error ? requestError.message : "Evaluation failed");
+    } finally {
+      setEvaluating(false);
+    }
+  }
   const timeline = detail
     ? [
         ...detail.evidence.map((event) => ({
@@ -720,6 +783,16 @@ function OutcomeInspector({
             <Box><span>Evidue determination</span><strong>{readable(detail.status)}</strong><small>{detail.reason}</small></Box>
             <Box><span>Recommended deduction</span><strong>{formatUsd(detail.confirmed_disputed_amount)}</strong></Box>
           </Box>
+          {publicDemo && detail.outcome_id === "OUT-004821" && <Box className="inspector-actions">
+            <Button variant="contained" onClick={() => void reevaluate()} disabled={evaluating}>
+              {evaluating ? "Evaluating…" : "Re-evaluate deterministically"}
+            </Button>
+            <Button href="mailto:chagdhar@gmail.com?subject=Evidue%20question%20about%20OUT-004821" variant="outlined">Challenge this determination</Button>
+          </Box>}
+          {evaluationError && <Alert severity="error">{evaluationError}</Alert>}
+          {evaluation && <Alert severity="info">
+            Live result: {readable(evaluation.status)} under {evaluation.rule_id ?? "no rule"} in {evaluation.duration_ms} ms. It {evaluation.status === detail.status && evaluation.rule_id === detail.rule_id ? "matches" : "differs from"} the canonical recorded determination.
+          </Alert>}
 
           <Box className="inspector-rule-review">
             <Box>
@@ -807,12 +880,14 @@ function ClaimsReview({
   demoOutcomeId,
   onRuleChange,
   initialOutcomeId,
+  publicDemo,
 }: {
   summary: Summary;
   selectedRule: string;
   demoOutcomeId: string;
   onRuleChange: (ruleId: string) => void;
   initialOutcomeId?: string;
+  publicDemo: boolean;
 }) {
   const defaultStatus =
     summary.disputed_outcomes > 0
@@ -888,6 +963,7 @@ function ClaimsReview({
     setError("");
     try {
       setDetail(await api.outcome(id));
+      if (id === demoOutcomeId) track("example_dispute_opened");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Could not load evidence");
     }
@@ -1138,6 +1214,7 @@ function ClaimsReview({
       <OutcomeInspector
         detail={detail}
         demoOutcomeId={demoOutcomeId}
+        publicDemo={publicDemo}
         onClose={() => setDetail(null)}
       />
     </section>
@@ -1167,6 +1244,7 @@ function Exports({ summary }: { summary: Summary }) {
       anchor.download = "evidue-dispute-package.json";
       anchor.click();
       URL.revokeObjectURL(url);
+      track("dispute_package_downloaded", { disputed_outcomes: summary.disputed_outcomes });
       setMessage(
         `Dispute package ready: ${summary.disputed_outcomes.toLocaleString()} disputed outcomes · ${formatUsd(summary.recommended_deduction)}.`,
       );
@@ -1239,6 +1317,10 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
   const [error, setError] = useState("");
 
   useEffect(() => {
+    track("reconciliation_opened", { surface: scenarioLab ? "scenario_lab" : "demo" });
+  }, [scenarioLab]);
+
+  useEffect(() => {
     async function initialize() {
       try {
         const [initialStatus, scenarioResults, contractResult, initialInvoice, readinessResult] =
@@ -1270,6 +1352,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
           setExampleOutcome(exampleResult);
         }
       } catch (requestError) {
+        track("demo_error", { surface: scenarioLab ? "scenario_lab" : "demo" });
         setError(requestError instanceof Error ? requestError.message : "Could not load demo");
       } finally {
         setLoading(false);
@@ -1437,6 +1520,8 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
           <>
             <FeaturedDispute detail={scenarioLab ? null : exampleOutcome} />
             <ReconciliationBridge summary={summary} />
+            <BetaApplicationCTA />
+            {demoStatus?.public_demo && <LiveSample />}
             <Box className="trust-strip">
               <Typography>
                 No model decides whether a charge is payable. Every amount is
@@ -1455,6 +1540,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
               demoOutcomeId={demoStatus?.demo_outcome_id ?? ""}
               onRuleChange={setSelectedRule}
               initialOutcomeId={initialOutcomeId}
+              publicDemo={demoStatus?.public_demo === true}
             />
             <Exports summary={summary} />
             <DemoInputs />
@@ -1465,7 +1551,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
         )}
 
         {readiness && <EvidenceReadiness readiness={readiness} />}
-        <ContractSummary contract={contract} />
+        <ContractSummary contract={contract} publicDemo={demoStatus?.public_demo === true} />
       </Container>
     </>
   );

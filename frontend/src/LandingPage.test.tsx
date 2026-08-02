@@ -1,7 +1,11 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
+import { track } from "./analytics";
 import LandingPage from "./LandingPage";
+
+vi.mock("./analytics", () => ({ track: vi.fn() }));
 
 const status = {
   public_demo: true,
@@ -44,7 +48,10 @@ const summary = {
   synthetic_disclosure: "No real customer or vendor data is shown.",
 };
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
+});
 
 it("states the product and financial result plainly with working launch calls to action", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
@@ -53,7 +60,9 @@ it("states the product and financial result plainly with working launch calls to
       ? status
       : url.endsWith("/api/invoices/current")
         ? invoice
-        : summary;
+        : url.endsWith("/api/public-config")
+          ? { beta_form_configured: true, beta_form_url: "https://tally.so/r/test-form" }
+          : summary;
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response);
   });
 
@@ -67,8 +76,32 @@ it("states the product and financial result plainly with working launch calls to
   ).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Open the \$15,000 reconciliation/ })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Inspect one disputed outcome" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Email Dharun" })).toHaveAttribute(
-    "href",
-    expect.stringContaining("subject=Evidue%20invoice%20audit"),
-  );
+  const betaLink = await screen.findByRole("link", { name: "Apply for the Evidue beta" });
+  expect(betaLink).toHaveAttribute("href", "https://tally.so/r/test-form");
+  expect(betaLink).toHaveAttribute("target", "_blank");
+  expect(betaLink).toHaveAttribute("rel", "noopener noreferrer");
+  await userEvent.click(betaLink);
+  expect(track).toHaveBeenCalledWith("beta_form_opened");
+  expect(screen.queryByText("Join the beta waitlist")).not.toBeInTheDocument();
+  expect(screen.queryByText("Give feedback")).not.toBeInTheDocument();
+});
+
+it("falls back to direct contact when no beta form is configured", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+    const url = String(input);
+    const body = url.endsWith("/api/demo/status")
+      ? status
+      : url.endsWith("/api/invoices/current")
+        ? invoice
+        : url.endsWith("/api/public-config")
+          ? { beta_form_configured: false, beta_form_url: null }
+          : summary;
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response);
+  });
+
+  render(<LandingPage />, { wrapper: MemoryRouter });
+
+  const contact = await screen.findByRole("link", { name: "Contact Evidue" });
+  expect(contact).toHaveAttribute("href", expect.stringContaining("mailto:"));
+  expect(screen.queryByRole("link", { name: "Apply for the Evidue beta" })).not.toBeInTheDocument();
 });

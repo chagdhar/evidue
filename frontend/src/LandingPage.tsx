@@ -11,9 +11,10 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, DemoStatus, Invoice, Summary } from "./api";
-import { contactHref } from "./contact";
+import { BetaApplicationCTA } from "./BetaApplicationCTA";
 import { disclosure, formatPercent, formatUsd } from "./presentation";
 import { TemplateIcon } from "./TemplateIcons";
+import { track } from "./analytics";
 
 function Brand() {
   return (
@@ -60,7 +61,9 @@ function DecisionSurface({ invoice, summary }: { invoice: Invoice | null; summar
             <Typography variant="h5">Acme Commerce</Typography>
             <Typography>{invoice?.invoice_id ?? "Current invoice"} · Customer-approved rule program</Typography>
           </Box>
-          <Button size="small" variant="outlined">Export decision</Button>
+          <Button size="small" variant="outlined" href="/api/reconciliations/current/exports/summary.json">
+            Export decision
+          </Button>
         </Box>
 
         <Box className="landing-decision-strip">
@@ -103,6 +106,7 @@ export default function LandingPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
 
   useEffect(() => {
+    track("landing_viewed");
     let active = true;
     void Promise.all([api.status(), api.invoice()]).then(([statusResult, invoiceResult]) => {
       if (!active) return;
@@ -255,14 +259,11 @@ export default function LandingPage() {
       <Box className="landing-cta-band">
         <Container maxWidth="xl" className="landing-container landing-cta-inner">
           <Box>
-            <Typography>Real invoice review</Typography>
-            <Typography variant="h2">Reviewing an outcome-priced AI invoice?</Typography>
-            <Typography className="landing-cta-copy">Send me a redacted contract, invoice, or sample export. I will audit one billing period with you.</Typography>
+            <Typography>Private beta</Typography>
+            <Typography variant="h2">Apply with your current invoice-review workflow.</Typography>
+            <Typography className="landing-cta-copy">The beta form is for product research only. Do not submit confidential contract or invoice data.</Typography>
           </Box>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-            <Button variant="contained" size="large" href={contactHref}>Email Dharun</Button>
-            <Button variant="outlined" size="large" href={contactHref}>Share a redacted sample</Button>
-          </Stack>
+          <BetaApplicationCTA />
         </Container>
       </Box>
 

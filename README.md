@@ -88,10 +88,12 @@ See [docs/HANDOFF.md](docs/HANDOFF.md) for fresh-checkout instructions and
 
 ## Hosted deployment
 
-The public technical preview is configured for Google Cloud Run. See
-[docs/DEPLOY_CLOUD_RUN.md](docs/DEPLOY_CLOUD_RUN.md) for the first manual
-deployment, Workload Identity Federation setup for GitHub Actions, Secret
-Manager handling for `GEMINI_API_KEY`, and ongoing deploys from `main`.
+Temporary beta-validation deployment: Railway. This branch uses no
+Firestore or Google Cloud credentials; see [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md).
+
+Longer-term container deployment reference: Google Cloud Run. See
+[docs/DEPLOY_CLOUD_RUN.md](docs/DEPLOY_CLOUD_RUN.md); it is not used by the
+Railway deployment.
 
 ## Product surfaces
 

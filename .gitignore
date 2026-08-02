@@ -3,11 +3,13 @@
 .ruff_cache/
 __pycache__/
 *.py[cod]
+*.tsbuildinfo
 .env
 .env.*
 !.env.example
 gha-creds-*.json
 data/*.db
+data/*.db-*
 data/*.sqlite
 data/*.sqlite3
 frontend/node_modules/

@@ -433,6 +433,9 @@ function mockApi(
       return response(activeStatus);
     }
     if (url.endsWith("/api/demo/scenarios")) return response(scenarios);
+    if (url.endsWith("/api/public-config")) {
+      return response({ beta_form_configured: true, beta_form_url: "https://tally.so/r/test-form" });
+    }
     if (url.includes("/api/demo/reset?") && options?.method === "POST") {
       const scenarioId = new URL(url, "http://localhost").searchParams.get("scenario_id");
       if (scenarioId === "evidence_review") {
@@ -592,10 +595,7 @@ describe("Evidue financial-decision demo", () => {
     );
     expect(screen.getByText("The LLM does not decide what gets paid.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Current limitations" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Email Dharun" })).toHaveAttribute(
-      "href",
-      expect.stringContaining("subject=Evidue%20invoice%20audit"),
-    );
+    expect((await screen.findAllByRole("link", { name: "Apply for the Evidue beta" })).length).toBeGreaterThan(1);
   });
 
   it("requests disputed claims by default after reconciliation", async () => {

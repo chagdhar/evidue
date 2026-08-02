@@ -1,25 +1,16 @@
-# Deploy Evidue to Google Cloud Run
+# Deploy Evidue's public technical preview to Cloud Run
 
-Evidue is one Docker service: FastAPI serves both the API and the compiled Vite
-frontend. The existing `Dockerfile` already works with Cloud Run without
-modification: its command binds Uvicorn to Cloud Run's injected `$PORT`, and
-`/api/health` is available for a Cloud Run startup probe.
+Evidue is one Docker service: FastAPI serves the API and compiled Vite frontend.
+The existing Dockerfile is Cloud Run compatible: it binds to Cloud Run's `$PORT`
+and exposes `/api/health`. The public service is intentionally disposable:
+`EVIDUE_PUBLIC_DEMO=true` reseeds its deterministic SQLite fixture at startup.
 
-This deployment is deliberately disposable. `EVIDUE_PUBLIC_DEMO=true` makes the
-public workspace read-only, and the SQLite database at `/app/data/evidue.db` is
-rebuilt from the deterministic fixture when an instance starts. Do not use this
-service for customer data.
+The public deployment does **not** receive `GEMINI_API_KEY`. It replays the
+checked-in, schema-validated proposal and exposes only safe deterministic
+validation and evaluation actions. Live Gemini compilation remains a private or
+local workflow; do not put that credential in the public Cloud Run service.
 
-## Prerequisites
-
-- Install and authenticate the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install).
-- Install Docker for the first local image build.
-- Pick a globally unique project ID and a billing account.
-- Keep `GEMINI_API_KEY` out of Git, shell history, and deployment manifests.
-
-## First manual deployment
-
-Run these commands from a fish shell after replacing the example values:
+## First manual deployment (fish)
 
 ```fish
 set PROJECT_ID your-gcp-project-id
@@ -27,46 +18,19 @@ set BILLING_ACCOUNT 000000-000000-000000
 set REGION us-central1
 set SERVICE evidue-demo
 set REPOSITORY evidue
-set GEMINI_SECRET evidue-gemini-api-key
 
 gcloud auth login
 gcloud projects create $PROJECT_ID --name="Evidue Demo"
 gcloud billing projects link $PROJECT_ID --billing-account=$BILLING_ACCOUNT
 gcloud config set project $PROJECT_ID
-gcloud services enable run.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com iamcredentials.googleapis.com
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com iamcredentials.googleapis.com firestore.googleapis.com
 gcloud artifacts repositories create $REPOSITORY --repository-format=docker --location=$REGION --description="Evidue Cloud Run images"
-```
-
-Create the Secret Manager secret without placing its value in a command:
-
-```fish
-gcloud secrets create $GEMINI_SECRET --replication-policy=automatic
-gcloud secrets versions add $GEMINI_SECRET --data-file=-
-```
-
-The second command reads the key from standard input. Paste the key, press
-Enter, then press `Ctrl-D`. If you do not need live Gemini compilation, create
-the secret with a deliberately empty-safe placeholder only after deciding how
-you want to rotate it; the included recorded proposal works without a live key.
-
-Create the dedicated Cloud Run runtime identity and permit it to read this one
-secret:
-
-```fish
-set PROJECT_NUMBER (gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-set RUNTIME_SERVICE_ACCOUNT evidue-runtime@$PROJECT_ID.iam.gserviceaccount.com
 
 gcloud iam service-accounts create evidue-runtime --display-name="Evidue Cloud Run runtime"
-gcloud secrets add-iam-policy-binding $GEMINI_SECRET \
-  --member="serviceAccount:$RUNTIME_SERVICE_ACCOUNT" \
-  --role="roles/secretmanager.secretAccessor"
-```
-
-Build, push, and deploy the existing Dockerfile:
-
-```fish
+set RUNTIME_SERVICE_ACCOUNT evidue-runtime@$PROJECT_ID.iam.gserviceaccount.com
+gcloud firestore databases create --database='(default)' --location=$REGION --type=firestore-native --delete-protection
+gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$RUNTIME_SERVICE_ACCOUNT" --role="roles/datastore.user"
 set IMAGE $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE:manual
-
 gcloud auth configure-docker $REGION-docker.pkg.dev
 docker build --tag $IMAGE .
 docker push $IMAGE
@@ -75,88 +39,103 @@ gcloud run deploy $SERVICE \
   --image $IMAGE \
   --region $REGION \
   --allow-unauthenticated \
-  --min-instances 0 \
+  --min-instances 1 \
+  --max-instances 3 \
+  --cpu 1 \
+  --memory 1Gi \
+  --concurrency 40 \
+  --timeout 60 \
+  --cpu-boost \
   --port 8080 \
   --service-account $RUNTIME_SERVICE_ACCOUNT \
-  --set-env-vars EVIDUE_PUBLIC_DEMO=true,EVIDUE_DB_PATH=/app/data/evidue.db \
-  --set-secrets GEMINI_API_KEY=$GEMINI_SECRET:latest \
+  --set-env-vars EVIDUE_PUBLIC_DEMO=true,EVIDUE_DB_PATH=/app/data/evidue.db,EVIDUE_FIRESTORE_PROJECT_ID=$PROJECT_ID \
   --startup-probe httpGet.path=/api/health,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=10,failureThreshold=10
 ```
 
-Cloud Run injects `PORT=8080`; the Dockerfile's `${PORT:-10000}` command uses it
-automatically. The startup probe verifies `/api/health`, and
-`--min-instances 0` allows the synthetic demo to scale to zero.
+Keep `--min-instances 1` for a launch/demo window. Afterward, return to
+scale-to-zero with `gcloud run services update $SERVICE --region $REGION
+--min-instances 0`.
 
-After the command returns, verify the public service:
+Verify the deployed service:
 
 ```fish
 set SERVICE_URL (gcloud run services describe $SERVICE --region $REGION --format='value(status.url)')
 curl --fail $SERVICE_URL/api/health
+curl --fail $SERVICE_URL/api/reconciliations/current
 echo $SERVICE_URL/demo
 ```
 
-## GitHub Actions continuous deployment
+## Beta waitlist and feedback
 
-`.github/workflows/deploy-cloud-run.yml` deploys on every push to `main`,
-matching the previous commit-triggered deployment. It uses Workload Identity
-Federation (WIF), rather than a long-lived Google service-account key. The
-workflow builds and pushes to Artifact Registry, writes the GitHub
-`GEMINI_API_KEY` secret as a new Secret Manager version, and binds Cloud Run to
-that secret with `--set-secrets`.
+The public forms write to two private Firestore collections using the Cloud Run
+runtime service identity:
 
-Before enabling the workflow, create the image repository and runtime service
-account from the manual setup above, then create a deployer identity and WIF
-provider. Substitute your GitHub organization and repository:
+- `beta_waitlist`: one deduplicated document per normalized email address.
+- `preview_feedback`: feedback text and an optional reply email.
+
+There is no public endpoint for reading either collection. View them in the
+Firestore Data tab in Google Cloud Console, or list beta signup emails from a
+fish shell using your own IAM credentials:
+
+```fish
+./scripts/list-beta-signups.sh $PROJECT_ID
+```
+
+The script requires `gcloud`, `curl`, and `jq`. Grant human operators only the
+Firestore read access they need. The Cloud Run runtime uses `roles/datastore.user`
+to create documents without service-account keys. Firestore creation and REST
+document writes follow the official [database management](https://cloud.google.com/firestore/docs/manage-databases)
+and [createDocument](https://cloud.google.com/firestore/docs/reference/rest/v1/projects.databases.documents/createDocument)
+interfaces.
+
+## Optional private Gemini secret
+
+Only a private, non-public service that intentionally enables live compilation
+needs this secret. It is not a prerequisite for the public demo:
+
+```fish
+set GEMINI_SECRET evidue-gemini-api-key
+gcloud services enable secretmanager.googleapis.com
+gcloud secrets create $GEMINI_SECRET --replication-policy=automatic
+gcloud secrets versions add $GEMINI_SECRET --data-file=-
+```
+
+Do not add `--set-secrets GEMINI_API_KEY=...` to the public demo deployment.
+
+## GitHub Actions deployment
+
+`.github/workflows/deploy-cloud-run.yml` runs formatting, linting, focused
+backend tests, frontend lint/tests/build, then deploys every push to `main`.
+It uses Workload Identity Federation (WIF), avoiding a long-lived service
+account key. The public workflow does not read or require `GEMINI_API_KEY`.
+
+After the manual setup, create a deployer and WIF provider (replace the GitHub
+organization and repository):
 
 ```fish
 set GITHUB_ORG your-github-org
 set GITHUB_REPO evidue
-set POOL_ID github
-set PROVIDER_ID github
+set PROJECT_NUMBER (gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 set DEPLOYER_SERVICE_ACCOUNT evidue-github-deployer@$PROJECT_ID.iam.gserviceaccount.com
 
 gcloud iam service-accounts create evidue-github-deployer --display-name="Evidue GitHub Actions deployer"
 gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$DEPLOYER_SERVICE_ACCOUNT" --role="roles/run.admin"
 gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$DEPLOYER_SERVICE_ACCOUNT" --role="roles/artifactregistry.writer"
-gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$DEPLOYER_SERVICE_ACCOUNT" --role="roles/secretmanager.admin"
 gcloud iam service-accounts add-iam-policy-binding $RUNTIME_SERVICE_ACCOUNT --member="serviceAccount:$DEPLOYER_SERVICE_ACCOUNT" --role="roles/iam.serviceAccountUser"
-
-gcloud iam workload-identity-pools create $POOL_ID --location=global --display-name="GitHub Actions"
-gcloud iam workload-identity-pools providers create-oidc $PROVIDER_ID \
-  --location=global \
-  --workload-identity-pool=$POOL_ID \
-  --display-name="GitHub Actions provider" \
-  --issuer-uri="https://token.actions.githubusercontent.com" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
-  --attribute-condition="assertion.repository=='$GITHUB_ORG/$GITHUB_REPO' && assertion.ref=='refs/heads/main'"
-gcloud iam service-accounts add-iam-policy-binding $DEPLOYER_SERVICE_ACCOUNT \
-  --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL_ID/attribute.repository/$GITHUB_ORG/$GITHUB_REPO"
+gcloud iam workload-identity-pools create github --location=global --display-name="GitHub Actions"
+gcloud iam workload-identity-pools providers create-oidc github --location=global --workload-identity-pool=github --issuer-uri="https://token.actions.githubusercontent.com" --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" --attribute-condition="assertion.repository=='$GITHUB_ORG/$GITHUB_REPO' && assertion.ref=='refs/heads/main'"
+gcloud iam service-accounts add-iam-policy-binding $DEPLOYER_SERVICE_ACCOUNT --role="roles/iam.workloadIdentityUser" --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/$GITHUB_ORG/$GITHUB_REPO"
 ```
 
-Add these GitHub Actions repository secrets:
+Add these GitHub repository secrets: `GCP_PROJECT_ID`,
+`GCP_WORKLOAD_IDENTITY_PROVIDER` (the provider resource name), and
+`GCP_DEPLOYER_SERVICE_ACCOUNT`. Configure the optional GitHub `production`
+environment if deployment approvals are desired.
 
-- `GCP_PROJECT_ID`: the Google Cloud project ID.
-- `GCP_WORKLOAD_IDENTITY_PROVIDER`: the full provider resource name from:
+Set the following GitHub Actions variables when needed:
 
-  ```fish
-  gcloud iam workload-identity-pools providers describe $PROVIDER_ID --location=global --workload-identity-pool=$POOL_ID --format='value(name)'
-  ```
-
-- `GCP_DEPLOYER_SERVICE_ACCOUNT`: `$DEPLOYER_SERVICE_ACCOUNT`.
-- `GEMINI_API_KEY`: the live Gemini key. It is only exposed to the workflow's
-  Secret Manager step and is never passed to `gcloud run deploy` as plaintext.
-
-The `production` environment in the workflow is optional but recommended so
-GitHub can require review before deployment. If you use a different region,
-service name, or Artifact Registry repository, change the three top-level
-workflow environment values and use the same values in the setup commands.
-
-## Operational notes
-
-- Every new workflow run creates a Secret Manager version. Disable or destroy
-  superseded versions according to your key-rotation policy.
-- A secret passed as an environment variable is resolved when a Cloud Run
-  instance starts. Redeploy after rotating it, as the workflow does.
-- The service is intentionally public via `--allow-unauthenticated`; do not add
-  customer data or credentials to its SQLite database.
+- `CLOUD_RUN_MIN_INSTANCES`: use `1` during a launch window and `0` afterward.
+- `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST`: optional anonymous product analytics.
+  They are Docker build arguments because Vite embeds `VITE_*` values at build
+  time. Leave both unset to disable analytics. If enabled, set Cloud Run's
+  `POSTHOG_HOST` to the same HTTPS host so its CSP permits that exact origin.

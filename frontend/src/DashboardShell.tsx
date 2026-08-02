@@ -54,7 +54,7 @@ const navigation: Array<{ label: string; items: NavEntry[]; secondary?: boolean 
 const routeTitles: Record<string, { title: string; context: string }> = {
   "/demo": { title: "Overview", context: "June 2026 control workspace" },
   "/demo/invoices": { title: "Invoices", context: "AI vendor billing periods" },
-  "/demo/invoices/current": { title: "Payment decision", context: "June 2026 · Northstar Support AI" },
+  "/demo/invoices/current": { title: "Payment decision", context: "June 2026 · Nova Support AI" },
   "/demo/disputes/current": { title: "Findings", context: "Evidence-backed deductions" },
   "/demo/contracts/current": { title: "Contract rules", context: "Approved program and compilation history" },
   "/demo/outcome-ledger": { title: "Outcome ledger", context: "Versioned outcome receipts" },
@@ -77,13 +77,13 @@ function Brand() {
   );
 }
 
-function NavigationContent({ onNavigate }: { onNavigate?: () => void }) {
+function NavigationContent({ onNavigate, publicDemo }: { onNavigate?: () => void; publicDemo: boolean }) {
   return (
     <Box className="evidue-sidebar-content">
       <Box className="evidue-sidebar-brand"><Brand /></Box>
       <Box className="evidue-sidebar-rule" />
       <Box className="evidue-sidebar-nav">
-        {navigation.map((group) => (
+        {navigation.filter((group) => !publicDemo || !group.secondary).map((group) => (
           <Box key={group.label} className={group.secondary ? "evidue-nav-group secondary" : "evidue-nav-group"}>
             <Typography className="evidue-nav-label">{group.label}</Typography>
             <List disablePadding>
@@ -142,7 +142,7 @@ export function DashboardShell({ onOpenHowItWorks }: { onOpenHowItWorks: () => v
           "& .MuiDrawer-paper": { width: DRAWER_WIDTH, boxSizing: "border-box" },
         }}
       >
-        <NavigationContent />
+        <NavigationContent publicDemo={publicDemo} />
       </Drawer>
 
       <Drawer
@@ -155,7 +155,7 @@ export function DashboardShell({ onOpenHowItWorks }: { onOpenHowItWorks: () => v
           "& .MuiDrawer-paper": { width: DRAWER_WIDTH },
         }}
       >
-        <NavigationContent onNavigate={() => setMobileOpen(false)} />
+        <NavigationContent publicDemo={publicDemo} onNavigate={() => setMobileOpen(false)} />
       </Drawer>
 
       <Box className="template-main-column">

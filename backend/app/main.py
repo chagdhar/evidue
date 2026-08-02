@@ -1,12 +1,15 @@
 import csv
 import io
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse, urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.api.schemas import (
     ContractCompileRequest,
@@ -17,7 +20,11 @@ from app.api.schemas import (
     HealthResponse,
     OutcomeDetail,
     OutcomePage,
+    PublicConfigResponse,
+    PublicOutcomeEvaluationResponse,
+    PublicReconciliationSampleResponse,
     ReconciliationSummary,
+    RecordedProposalValidationResponse,
 )
 from app.db import repository
 
@@ -33,6 +40,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Evidue", version="0.1.0", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 DEMO_INPUTS = {
     "contract": (
@@ -64,8 +72,8 @@ DEMO_INPUTS = {
 DEMO_DATA_ROOT = Path(__file__).parents[2] / "demo-data"
 
 PUBLIC_DEMO_MESSAGE = (
-    "This action is disabled in the public technical preview because visitors "
-    "share one read-only demo workspace."
+    "Public technical preview: shared state is read-only, but selected rule validation "
+    "and deterministic evaluations can be rerun safely."
 )
 
 
@@ -78,9 +86,73 @@ def ensure_mutation_allowed() -> None:
         raise HTTPException(status_code=403, detail=PUBLIC_DEMO_MESSAGE)
 
 
+@app.middleware("http")
+async def security_and_cache_headers(request, call_next):
+    response = await call_next(request)
+    posthog_host = os.getenv("POSTHOG_HOST", "").strip()
+    connect_sources = ["'self'"]
+    parsed_host = urlparse(posthog_host)
+    if parsed_host.scheme == "https" and parsed_host.netloc:
+        connect_sources.append(f"https://{parsed_host.netloc}")
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; font-src 'self' data:; connect-src "
+        + " ".join(connect_sources)
+        + "; base-uri 'self'; frame-ancestors 'none'; form-action 'self' mailto:"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = (
+        "accelerometer=(), camera=(), geolocation=(), microphone=(), payment=(), usb=()"
+    )
+    if public_demo_enabled():
+        if request.url.path.startswith("/assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif request.url.path.startswith("/api/demo/inputs/"):
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        elif request.url.path in {
+            "/api/reconciliations/current",
+            "/api/reconciliations/current/exports/evidence.json",
+            "/api/reconciliations/current/exports/summary.json",
+        }:
+            response.headers["Cache-Control"] = "public, max-age=300"
+    return response
+
+
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def beta_form_url() -> str | None:
+    configured = os.getenv("EVIDUE_BETA_FORM_URL", "").strip()
+    if not configured:
+        return None
+    parsed = urlsplit(configured)
+    hostname = parsed.hostname.casefold() if parsed.hostname else ""
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme != "https"
+        or not hostname
+        or parsed.username
+        or parsed.password
+        or (port not in {None, 443})
+        or not (hostname == "tally.so" or hostname.endswith(".tally.so"))
+    ):
+        return None
+    return configured
+
+
+@app.get("/api/public-config", response_model=PublicConfigResponse)
+def public_config() -> dict[str, object]:
+    configured_url = beta_form_url()
+    return {
+        "beta_form_configured": configured_url is not None,
+        "beta_form_url": configured_url,
+    }
 
 
 @app.get("/api/demo/scenarios", response_model=list[DemoScenarioResponse])
@@ -156,6 +228,39 @@ def compile_contract(
         )
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+@app.post(
+    "/api/public-demo/rules/validate",
+    response_model=RecordedProposalValidationResponse,
+)
+def validate_public_rules() -> dict[str, object]:
+    started_at = time.perf_counter()
+    result = repository.validate_recorded_proposal()
+    return {**result, "duration_ms": round((time.perf_counter() - started_at) * 1000)}
+
+
+@app.post(
+    "/api/public-demo/outcomes/{outcome_id}/evaluate",
+    response_model=PublicOutcomeEvaluationResponse,
+)
+def evaluate_public_outcome(outcome_id: str) -> dict[str, object]:
+    started_at = time.perf_counter()
+    try:
+        result = repository.public_outcome_evaluation(outcome_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return {**result, "duration_ms": round((time.perf_counter() - started_at) * 1000)}
+
+
+@app.post(
+    "/api/public-demo/reconciliations/sample",
+    response_model=PublicReconciliationSampleResponse,
+)
+def run_public_reconciliation_sample() -> dict[str, object]:
+    started_at = time.perf_counter()
+    result = repository.public_reconciliation_sample()
+    return {**result, "duration_ms": round((time.perf_counter() - started_at) * 1000)}
 
 
 @app.get("/api/contracts/current/compilations")
