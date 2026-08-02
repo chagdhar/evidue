@@ -1,1 +1,1 @@
-{"root":["./src/App.test.tsx","./src/App.tsx","./src/DashboardShell.tsx","./src/ProductShell.tsx","./src/TemplateIcons.tsx","./src/api.ts","./src/main.tsx","./src/presentation.test.ts","./src/presentation.ts","./src/templateTheme.tsx","./src/testSetup.ts"],"version":"5.9.3"}
+{"root":["./src/App.test.tsx","./src/App.tsx","./src/DashboardShell.tsx","./src/LandingPage.tsx","./src/ProductShell.tsx","./src/TemplateIcons.tsx","./src/api.ts","./src/main.tsx","./src/presentation.test.ts","./src/presentation.ts","./src/templateTheme.tsx","./src/testSetup.ts"],"version":"5.9.3"}

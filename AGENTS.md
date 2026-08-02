@@ -191,26 +191,17 @@ The application is complete only when:
 Final principle:
 
 One invoice enters. One defensible payable amount leaves.
-## Design governance
+## Product design
 
-Before changing product UI, read:
+Before modifying the frontend, read:
 
 - docs/BRAND_GUIDELINES.md
 - docs/DESIGN_SYSTEM.md
 - docs/UX_REDESIGN_SPEC.md
 - docs/MOBBIN_REFERENCE_BOARD.md
-- docs/DESIGN_IMPLEMENTATION_PLAN.md
-- docs/DESIGN_QA_CHECKLIST.md
 
-Design invariants:
+The product must look like an audit-grade financial control workspace.
+Do not add generic AI gradients, sparkle motifs, excessive cards, glass effects,
+or decorative charts. Preserve the primary workflow:
 
-- The public product tells one buyer-side financial-control story.
-- Lead with the payable decision, not the model or a generic dashboard.
-- Use one primary action and one dominant work surface per page.
-- Do not add decorative AI gradients, glow, glass, sparkles, or chat interfaces.
-- Avoid nested cards and card-per-row layouts.
-- Use semantic green, red, and amber only for payable, disputed, and review states.
-- Use tables for cross-reference, lists for small explanatory sets, and drawers for record detail.
-- Keep synthetic-data and LLM/deterministic trust-boundary disclosures accurate.
-- Do not expose experimental routes as equal primary navigation.
-- Do not implement a broad redesign in one task; follow the milestones in docs/DESIGN_IMPLEMENTATION_PLAN.md.
+Decision → Findings → Contract rules → Evidence

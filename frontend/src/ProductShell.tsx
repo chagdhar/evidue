@@ -334,7 +334,7 @@ export function OverviewPage() {
       </Box>
 
       <Alert severity="info" sx={{ mt: 2 }}>
-        Reviewing an outcome-priced AI invoice? <a href="mailto:YOUR_EMAIL_ADDRESS">Contact YOUR_EMAIL_ADDRESS</a>
+        Reviewing an outcome-priced AI invoice? Use the project contact listed with this technical preview.
       </Alert>
 
       <Box data-testid="product-story">

@@ -12,12 +12,14 @@ import {
   VendorPreflightPage,
 } from "./ProductShell";
 import { EvidueThemeProvider } from "./templateTheme";
+import LandingPage from "./LandingPage";
 import "./style.css";
 
 createRoot(document.getElementById("root")!).render(
   <EvidueThemeProvider>
     <BrowserRouter>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route path="/demo" element={<ProductShell />}>
           <Route index element={<OverviewPage />} />
           <Route path="invoices" element={<InvoicesPage />} />

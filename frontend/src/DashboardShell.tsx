@@ -3,7 +3,6 @@ import {
   AppBar,
   Box,
   Chip,
-  Divider,
   Drawer,
   IconButton,
   List,
@@ -20,7 +19,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEvidueThemeMode } from "./templateTheme";
 import { api } from "./api";
 
-const DRAWER_WIDTH = 228;
+const DRAWER_WIDTH = 252;
 
 type NavEntry = {
   label: string;
@@ -29,54 +28,50 @@ type NavEntry = {
   end?: boolean;
 };
 
-const navigation: Array<{ label: string; items: NavEntry[] }> = [
+const navigation: Array<{ label: string; items: NavEntry[]; secondary?: boolean }> = [
   {
-    label: "Workspace",
+    label: "Review",
+    items: [
+      { label: "Decision", to: "/demo/invoices/current", icon: <TemplateIcon name="verify" /> },
+      { label: "Findings", to: "/demo/disputes/current", icon: <TemplateIcon name="shield" /> },
+      { label: "Contract rules", to: "/demo/contracts/current", icon: <TemplateIcon name="contract" /> },
+      { label: "Evidence", to: "/demo/data-sources", icon: <TemplateIcon name="data" /> },
+    ],
+  },
+  {
+    label: "Technical",
+    secondary: true,
     items: [
       { label: "Overview", to: "/demo", icon: <TemplateIcon name="dashboard" />, end: true },
-      { label: "Evidue reconciliation", to: "/demo/invoices/current", icon: <TemplateIcon name="verify" /> },
-      { label: "Vendor Preflight", to: "/demo/vendor-preflight", icon: <TemplateIcon name="preflight" /> },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
       { label: "Invoices", to: "/demo/invoices", icon: <TemplateIcon name="receipt" /> },
-      { label: "Disputes", to: "/demo/disputes/current", icon: <TemplateIcon name="shield" /> },
-      { label: "Contracts", to: "/demo/contracts/current", icon: <TemplateIcon name="contract" /> },
-    ],
-  },
-  {
-    label: "Infrastructure",
-    items: [
-      { label: "Outcome Ledger", to: "/demo/outcome-ledger", icon: <TemplateIcon name="ledger" /> },
-      { label: "Data Sources", to: "/demo/data-sources", icon: <TemplateIcon name="data" /> },
-      { label: "Scenario Lab", to: "/demo/lab", icon: <TemplateIcon name="lab" /> },
+      { label: "Outcome ledger", to: "/demo/outcome-ledger", icon: <TemplateIcon name="ledger" /> },
+      { label: "Vendor preflight", to: "/demo/vendor-preflight", icon: <TemplateIcon name="preflight" /> },
+      { label: "Scenario lab", to: "/demo/lab", icon: <TemplateIcon name="lab" /> },
     ],
   },
 ];
 
-const routeTitles: Record<string, string> = {
-  "/demo": "Overview",
-  "/demo/invoices": "Invoices",
-  "/demo/invoices/current": "Evidue reconciliation",
-  "/demo/disputes/current": "Dispute package",
-  "/demo/contracts/current": "Contract controls",
-  "/demo/outcome-ledger": "Outcome Ledger",
-  "/demo/data-sources": "Data sources",
-  "/demo/vendor-preflight": "Vendor Preflight",
-  "/demo/lab": "Scenario Lab",
+const routeTitles: Record<string, { title: string; context: string }> = {
+  "/demo": { title: "Overview", context: "June 2026 control workspace" },
+  "/demo/invoices": { title: "Invoices", context: "AI vendor billing periods" },
+  "/demo/invoices/current": { title: "Payment decision", context: "June 2026 · Northstar Support AI" },
+  "/demo/disputes/current": { title: "Findings", context: "Evidence-backed deductions" },
+  "/demo/contracts/current": { title: "Contract rules", context: "Approved program and compilation history" },
+  "/demo/outcome-ledger": { title: "Outcome ledger", context: "Versioned outcome receipts" },
+  "/demo/data-sources": { title: "Evidence", context: "Customer and vendor source records" },
+  "/demo/vendor-preflight": { title: "Vendor preflight", context: "Pre-invoice evidence readiness" },
+  "/demo/lab": { title: "Scenario lab", context: "Technical demonstration controls" },
 };
 
 function Brand() {
   return (
-    <Stack direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 0 }}>
-      <Box className="template-logo" aria-hidden="true">
-        <TemplateIcon name="wallet" size={20} />
+    <Stack direction="row" spacing={1.4} alignItems="center" sx={{ minWidth: 0 }}>
+      <Box className="evidue-brand-mark" aria-hidden="true">
+        <span>E</span>
       </Box>
       <Box sx={{ minWidth: 0 }}>
-        <Typography variant="h6" noWrap>Evidue</Typography>
-        <Typography variant="caption" color="text.secondary" noWrap>Outcome invoice control</Typography>
+        <Typography className="evidue-wordmark" noWrap>Evidue</Typography>
+        <Typography className="evidue-brand-caption" noWrap>Outcome invoice control</Typography>
       </Box>
     </Stack>
   );
@@ -84,16 +79,14 @@ function Brand() {
 
 function NavigationContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Box sx={{ px: 2.25, py: 2.1 }}><Brand /></Box>
-      <Divider />
-      <Box sx={{ px: 1.25, py: 1.5, overflowY: "auto", flex: 1 }}>
+    <Box className="evidue-sidebar-content">
+      <Box className="evidue-sidebar-brand"><Brand /></Box>
+      <Box className="evidue-sidebar-rule" />
+      <Box className="evidue-sidebar-nav">
         {navigation.map((group) => (
-          <Box key={group.label} sx={{ mb: 1.5 }}>
-            <Typography variant="overline" color="text.secondary" sx={{ px: 1.5, fontSize: 10.5 }}>
-              {group.label}
-            </Typography>
-            <List disablePadding sx={{ mt: 0.25 }}>
+          <Box key={group.label} className={group.secondary ? "evidue-nav-group secondary" : "evidue-nav-group"}>
+            <Typography className="evidue-nav-label">{group.label}</Typography>
+            <List disablePadding>
               {group.items.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.end} className="template-nav-link" onClick={onNavigate}>
                   {({ isActive }) => (
@@ -108,14 +101,14 @@ function NavigationContent({ onNavigate }: { onNavigate?: () => void }) {
           </Box>
         ))}
       </Box>
-      <Box sx={{ p: 1.5 }}>
-        <Box className="demo-environment-card">
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Typography variant="subtitle2">Synthetic environment</Typography>
-            <Chip label="Synthetic" size="small" variant="outlined" />
+      <Box className="evidue-sidebar-footer">
+        <Box className="evidue-environment-note">
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+            <Typography className="evidue-environment-title">Technical preview</Typography>
+            <span className="evidue-status-dot" aria-hidden="true" />
           </Stack>
-          <Typography variant="caption" color="text.secondary">
-            Demonstration data only. No real customer or vendor records.
+          <Typography className="evidue-environment-copy">
+            Synthetic records. Deterministic decisions. No customer data.
           </Typography>
         </Box>
       </Box>
@@ -133,7 +126,10 @@ export function DashboardShell({ onOpenHowItWorks }: { onOpenHowItWorks: () => v
     void api.status().then((status) => setPublicDemo(status.public_demo)).catch(() => undefined);
   }, []);
 
-  const currentTitle = useMemo(() => routeTitles[location.pathname] ?? "Evidue", [location.pathname]);
+  const route = useMemo(
+    () => routeTitles[location.pathname] ?? { title: "Evidue", context: "Outcome invoice control" },
+    [location.pathname],
+  );
 
   return (
     <Box className="template-app-shell">
@@ -172,15 +168,13 @@ export function DashboardShell({ onOpenHowItWorks }: { onOpenHowItWorks: () => v
             >
               <TemplateIcon name="menu" />
             </IconButton>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: ".06em", textTransform: "uppercase" }}>
-                Evidue demo workspace
-              </Typography>
-              <Typography variant="h6" noWrap>{currentTitle}</Typography>
+            <Box className="evidue-page-identity">
+              <Typography className="evidue-page-title" noWrap>{route.title}</Typography>
+              <Typography className="evidue-page-context" noWrap>{route.context}</Typography>
             </Box>
             <Box sx={{ flex: 1 }} />
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              {publicDemo && <Chip label="Public technical preview · Read-only shared workspace" size="small" color="info" />}
+            <Stack direction="row" spacing={0.75} alignItems="center">
+              {publicDemo && <Chip label="Read-only preview" size="small" className="evidue-readonly-chip" />}
               <Tooltip title="How Evidue works">
                 <IconButton aria-label="How Evidue works" onClick={onOpenHowItWorks}>
                   <TemplateIcon name="help" />
@@ -191,7 +185,6 @@ export function DashboardShell({ onOpenHowItWorks }: { onOpenHowItWorks: () => v
                   {mode === "dark" ? <TemplateIcon name="sun" /> : <TemplateIcon name="moon" />}
                 </IconButton>
               </Tooltip>
-              <Chip label="Synthetic environment" size="small" sx={{ display: { xs: "none", sm: "inline-flex" } }} />
             </Stack>
           </Toolbar>
         </AppBar>
