@@ -21,14 +21,17 @@ from app.main import (
     demo_scenarios,
     demo_status,
     disputes_csv,
+    ensure_mutation_allowed,
     evidence_json,
     health,
     outcome,
     outcomes,
+    public_demo_enabled,
     reconcile,
     reset,
     summary_json,
 )
+from fastapi import HTTPException
 from sqlalchemy import select
 
 
@@ -70,6 +73,7 @@ def test_health_reset_seed_and_reconciliation_lifecycle():
     assert health() == {"status": "ok"}
     state = demo_status()
     assert state == {
+        "public_demo": False,
         "seeded": True,
         "reconciled": True,
         "claimed_outcomes": 10_000,
@@ -81,6 +85,20 @@ def test_health_reset_seed_and_reconciliation_lifecycle():
         ),
         "demo_outcome_id": "OUT-004821",
     }
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "On"])
+def test_public_demo_configuration_is_case_insensitive(monkeypatch, value):
+    monkeypatch.setenv("EVIDUE_PUBLIC_DEMO", value)
+    assert public_demo_enabled() is True
+
+
+def test_public_demo_mutations_are_blocked(monkeypatch):
+    monkeypatch.setenv("EVIDUE_PUBLIC_DEMO", "on")
+    with pytest.raises(HTTPException) as error:
+        ensure_mutation_allowed()
+    assert error.value.status_code == 403
+    assert "read-only demo workspace" in str(error.value.detail)
 
 
 def test_production_shaped_ingestion_readiness_and_source_samples():

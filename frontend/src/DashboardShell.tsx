@@ -15,9 +15,10 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEvidueThemeMode } from "./templateTheme";
+import { api } from "./api";
 
 const DRAWER_WIDTH = 228;
 
@@ -126,6 +127,11 @@ export function DashboardShell({ onOpenHowItWorks }: { onOpenHowItWorks: () => v
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const { mode, toggleMode } = useEvidueThemeMode();
+  const [publicDemo, setPublicDemo] = useState(false);
+
+  useEffect(() => {
+    void api.status().then((status) => setPublicDemo(status.public_demo)).catch(() => undefined);
+  }, []);
 
   const currentTitle = useMemo(() => routeTitles[location.pathname] ?? "Evidue", [location.pathname]);
 
@@ -174,6 +180,7 @@ export function DashboardShell({ onOpenHowItWorks }: { onOpenHowItWorks: () => v
             </Box>
             <Box sx={{ flex: 1 }} />
             <Stack direction="row" spacing={0.5} alignItems="center">
+              {publicDemo && <Chip label="Public technical preview · Read-only shared workspace" size="small" color="info" />}
               <Tooltip title="How Evidue works">
                 <IconButton aria-label="How Evidue works" onClick={onOpenHowItWorks}>
                   <TemplateIcon name="help" />

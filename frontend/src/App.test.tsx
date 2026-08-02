@@ -144,6 +144,7 @@ const scenarios = [
 ];
 
 const headlineStatus = {
+  public_demo: false,
   seeded: true,
   reconciled: false,
   claimed_outcomes: 10000,

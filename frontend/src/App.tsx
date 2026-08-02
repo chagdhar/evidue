@@ -117,11 +117,13 @@ function PaymentRecommendation({
   summary,
   running,
   onRun,
+  publicDemo,
 }: {
   invoice: Invoice;
   summary: Summary | null;
   running: boolean;
   onRun: () => void;
+  publicDemo: boolean;
 }) {
   return (
     <Paper className={`recommendation ${summary ? "reconciled" : "ready"}`}>
@@ -138,9 +140,9 @@ function PaymentRecommendation({
           </Box>
           <Box className="ready-action">
             <Chip label="Ready to reconcile" className="ready-chip" />
-            <Button variant="contained" size="large" disabled={running} onClick={onRun}>
+            {!publicDemo ? <Button variant="contained" size="large" disabled={running} onClick={onRun}>
               {running ? "Running reconciliation…" : "Run reconciliation"}
-            </Button>
+            </Button> : <Typography color="error">Decision unavailable. The shared preview workspace is read-only.</Typography>}
           </Box>
         </>
       ) : (
@@ -304,7 +306,7 @@ function ContractRulesDialog({
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle component="div">
         <Typography className="eyebrow">Clause-to-rule mapping</Typography>
-        <Typography variant="h4" component="h2">Approved deterministic program</Typography>
+          <Typography variant="h4" component="h2">All contract rules</Typography>
       </DialogTitle>
       <DialogContent>
         <Alert severity="info" sx={{ mb: 2 }}>
@@ -319,7 +321,7 @@ function ContractRulesDialog({
                 <Typography color="text.secondary">{clause.text}</Typography>
               </Box>
               <Box>
-                <Typography className="eyebrow">Validated operation</Typography>
+                <Typography className="eyebrow">Executable rule</Typography>
                 <Typography className="operation-code">{clause.rule.operation}</Typography>
                 <Typography>{clause.rule.description}</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -416,7 +418,7 @@ function ContractSummary({ contract }: { contract: Contract }) {
         </Box>
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
           <Button variant="outlined" onClick={() => setRulesOpen(true)}>
-            Inspect approved rules
+            View all contract rules
           </Button>
           <Button variant="contained" onClick={() => void compileRules()} disabled={compiling}>
             {compiling ? "Compiling…" : "Compile contract"}
@@ -691,11 +693,13 @@ function ClaimsReview({
   selectedRule,
   demoOutcomeId,
   onRuleChange,
+  initialOutcomeId,
 }: {
   summary: Summary;
   selectedRule: string;
   demoOutcomeId: string;
   onRuleChange: (ruleId: string) => void;
+  initialOutcomeId?: string;
 }) {
   const defaultStatus =
     summary.disputed_outcomes > 0
@@ -775,6 +779,10 @@ function ClaimsReview({
       setError(requestError instanceof Error ? requestError.message : "Could not load evidence");
     }
   }
+
+  useEffect(() => {
+    if (initialOutcomeId) void openOutcome(initialOutcomeId);
+  }, [initialOutcomeId]);
 
   function applyFilters() {
     setStatus(draftStatus);
@@ -1103,6 +1111,7 @@ function Exports({ summary }: { summary: Summary }) {
 }
 
 export default function App({ scenarioLab = false, embedded = false }: { scenarioLab?: boolean; embedded?: boolean }) {
+  const initialOutcomeId = new URLSearchParams(window.location.search).get("outcome") ?? undefined;
   const [demoStatus, setDemoStatus] = useState<DemoStatus | null>(null);
   const [scenarios, setScenarios] = useState<DemoScenario[]>([]);
   const [contract, setContract] = useState<Contract | null>(null);
@@ -1129,7 +1138,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
         let status = initialStatus;
         let invoiceResult = initialInvoice;
         let readinessValue = readinessResult;
-        if (!scenarioLab && status.scenario_id !== "headline") {
+        if (!status.public_demo && !scenarioLab && status.scenario_id !== "headline") {
           status = await api.reset("headline");
           [invoiceResult, readinessValue] = await Promise.all([api.invoice(), api.dataReadiness()]);
         }
@@ -1159,6 +1168,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
   }, [invoice]);
 
   async function run(resetFirst = false) {
+    if (demoStatus?.public_demo) return;
     setRunning(true);
     setError("");
     try {
@@ -1175,6 +1185,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
   }
 
   async function selectScenario(scenarioId: string) {
+    if (demoStatus?.public_demo) return;
     setSwitching(true);
     setError("");
     try {
@@ -1233,7 +1244,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
             <Typography className="vendor-line">
               Vendor: <strong>{contract.vendor}</strong> · {month}
             </Typography>
-            {scenarioLab && demoStatus && (
+            {scenarioLab && demoStatus && !demoStatus.public_demo && (
               <Box className="scenario-control">
                 <FormControl size="small">
                   <InputLabel id="scenario-label">Synthetic data set</InputLabel>
@@ -1259,7 +1270,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
           </Box>
           <Box className="header-action">
             <Workflow reconciled={Boolean(summary)} />
-            {summary && (
+            {summary && !demoStatus?.public_demo && (
               <Button
                 variant="outlined"
                 disabled={running}
@@ -1297,6 +1308,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
           summary={summary}
           running={running || switching}
           onRun={() => void run(false)}
+          publicDemo={demoStatus?.public_demo === true}
         />
 
         {summary && (
@@ -1319,6 +1331,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
               selectedRule={selectedRule}
               demoOutcomeId={demoStatus?.demo_outcome_id ?? ""}
               onRuleChange={setSelectedRule}
+              initialOutcomeId={initialOutcomeId}
             />
             <Exports summary={summary} />
           </>

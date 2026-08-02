@@ -1,5 +1,6 @@
 import csv
 import io
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -24,12 +25,30 @@ from app.db import repository
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     repository.initialize()
-    if not repository.demo_status()["seeded"]:
+    if public_demo_enabled():
+        repository.prepare_public_demo()
+    elif not repository.demo_status()["seeded"]:
         repository.reset()
     yield
 
 
 app = FastAPI(title="Evidue", version="0.1.0", lifespan=lifespan)
+
+PUBLIC_DEMO_MESSAGE = (
+    "This action is disabled in the public technical preview because visitors "
+    "share one read-only demo workspace."
+)
+
+
+def public_demo_enabled() -> bool:
+    return os.getenv("EVIDUE_PUBLIC_DEMO", "false").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+
+def ensure_mutation_allowed() -> None:
+    if public_demo_enabled():
+        raise HTTPException(status_code=403, detail=PUBLIC_DEMO_MESSAGE)
 
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -44,15 +63,16 @@ def demo_scenarios() -> list[dict[str, str]]:
 
 @app.post("/api/demo/reset", response_model=DemoStatusResponse)
 def reset(scenario_id: str = "headline") -> dict[str, object]:
+    ensure_mutation_allowed()
     try:
-        return repository.reset(scenario_id)
+        return {**repository.reset(scenario_id), "public_demo": public_demo_enabled()}
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
 
 @app.get("/api/demo/status", response_model=DemoStatusResponse)
 def demo_status() -> dict[str, object]:
-    return repository.demo_status()
+    return {**repository.demo_status(), "public_demo": public_demo_enabled()}
 
 
 @app.get("/api/data-readiness", response_model=DataReadinessResponse)
@@ -88,6 +108,7 @@ def compile_contract(
     request: ContractCompileRequest | None = None,
     mode: str = Query("auto", pattern="^(auto|live|recorded)$"),
 ) -> dict[str, object]:
+    ensure_mutation_allowed()
     try:
         return repository.compile_contract_rules(
             mode,
@@ -105,6 +126,7 @@ def contract_compilations() -> list[dict[str, object]]:
 
 @app.post("/api/contracts/current/compilations/{compilation_id}/approve")
 def approve_contract_compilation(compilation_id: str) -> dict[str, object]:
+    ensure_mutation_allowed()
     try:
         return repository.approve_compilation(compilation_id)
     except LookupError as exc:
@@ -123,6 +145,7 @@ def current_invoice() -> dict[str, object]:
 
 @app.post("/api/reconciliations", response_model=ReconciliationSummary)
 def reconcile() -> dict[str, object]:
+    ensure_mutation_allowed()
     return repository.run_reconciliation()
 
 

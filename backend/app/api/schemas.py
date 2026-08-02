@@ -21,6 +21,7 @@ class HealthResponse(StrictModel):
 
 
 class DemoStatusResponse(StrictModel):
+    public_demo: bool
     seeded: bool
     reconciled: bool
     claimed_outcomes: int

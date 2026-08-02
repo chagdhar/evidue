@@ -400,6 +400,29 @@ def demo_status() -> dict[str, object]:
     }
 
 
+def prepare_public_demo() -> None:
+    """Leave the shared public workspace on the immutable headline result."""
+    state = demo_status()
+    if not state["seeded"] or state["scenario_id"] != "headline":
+        reset("headline")
+    with SessionLocal() as session:
+        demo_state = session.get(DemoStateRow, 1)
+        compilation = (
+            session.get(RuleCompilationRow, demo_state.active_compilation_id)
+            if demo_state and demo_state.active_compilation_id
+            else None
+        )
+        valid_program = bool(
+            compilation
+            and compilation.id == "COMP-RECORDED-GEMINI-V1"
+            and compilation.status == "approved"
+        )
+    if not valid_program:
+        reset("headline")
+    if not demo_status()["reconciled"]:
+        run_reconciliation()
+
+
 def _source_summary(session, connector: ConnectorRow) -> dict[str, object]:
     match_counts = dict(
         session.execute(

@@ -129,7 +129,9 @@ function useProductData() {
     (async () => {
       try {
         let currentStatus = await api.status();
-        if (currentStatus.scenario_id !== "headline") currentStatus = await api.reset("headline");
+        if (!currentStatus.public_demo && currentStatus.scenario_id !== "headline") {
+          currentStatus = await api.reset("headline");
+        }
         const [invoiceResult, contractResult, readinessResult] = await Promise.all([
           api.invoice(),
           api.contract(),
@@ -164,6 +166,7 @@ export function OverviewPage() {
   const vendorSources = readiness.sources.filter((source) => source.authority.toLowerCase().includes("vendor")).length;
 
   async function runReconciliation() {
+    if (status?.public_demo) return;
     setRunning(true);
     setActionError("");
     try {
@@ -217,7 +220,7 @@ export function OverviewPage() {
               disabled={running}
               onClick={summary ? () => navigate("/demo/invoices/current") : runReconciliation}
             >
-              {running ? "Reconciling…" : summary ? "Open full decision" : "Run June reconciliation"}
+              {running ? "Reconciling…" : summary ? "Open full decision" : status.public_demo ? "Decision unavailable" : "Run June reconciliation"}
             </Button>
           </Stack>
         }
@@ -325,10 +328,14 @@ export function OverviewPage() {
           </Box>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2 }}>
             <Button variant="outlined" onClick={() => navigate("/demo/data-sources?source=payment_processor&inspect=1")}>Inspect original records</Button>
-            <Button onClick={() => navigate("/demo/invoices/current")}>Open Evidue reconciliation</Button>
+            <Button onClick={() => navigate("/demo/invoices/current?outcome=OUT-004821")}>Open Evidue reconciliation</Button>
           </Stack>
         </SectionCard>
       </Box>
+
+      <Alert severity="info" sx={{ mt: 2 }}>
+        Reviewing an outcome-priced AI invoice? <a href="mailto:YOUR_EMAIL_ADDRESS">Contact YOUR_EMAIL_ADDRESS</a>
+      </Alert>
 
       <Box data-testid="product-story">
         <SectionCard title="Evidence and authority stay separated" eyebrow="Neutral financial infrastructure">
@@ -348,7 +355,7 @@ export function OverviewPage() {
             <strong>Outcome Ledger</strong>
             <small>Versioned receipts · identifiers · evidence provenance</small>
           </Box>
-          <button onClick={() => navigate("/demo/invoices/current")}>
+          <button onClick={() => navigate("/demo/invoices/current?outcome=OUT-004821")}>
             <Box className="template-flow-icon"><TemplateIcon name="verify" /></Box>
             <Box><strong>Evidue</strong><small>Customer control · Should we pay this charge?</small></Box>
             <TemplateIcon name="arrow" />
@@ -373,7 +380,7 @@ export function InvoicesPage() {
           <TableHead><TableRow><TableCell>Vendor</TableCell><TableCell>Period</TableCell><TableCell align="right">Submitted</TableCell><TableCell align="right">Recommended</TableCell><TableCell>Status</TableCell><TableCell /></TableRow></TableHead>
           <TableBody>
             <TableRow hover>
-              <TableCell><strong>Nova Support AI</strong></TableCell><TableCell>June 2026</TableCell><TableCell align="right">{formatUsd(invoice.submitted_amount)}</TableCell><TableCell align="right">{summary ? formatUsd(summary.confirmed_payable_amount) : "Pending"}</TableCell><TableCell><Chip label={summary ? "Ready to approve" : "Ready to reconcile"} color={summary ? "success" : "warning"} size="small" /></TableCell><TableCell align="right"><Button onClick={() => navigate("/demo/invoices/current")}>Open</Button></TableCell>
+            <TableCell><strong>Nova Support AI</strong></TableCell><TableCell>June 2026</TableCell><TableCell align="right">{formatUsd(invoice.submitted_amount)}</TableCell><TableCell align="right">{summary ? formatUsd(summary.confirmed_payable_amount) : "Pending"}</TableCell><TableCell><Chip label={summary ? "Ready to approve" : "Ready to reconcile"} color={summary ? "success" : "warning"} size="small" /></TableCell><TableCell align="right"><Button onClick={() => navigate("/demo/invoices/current?outcome=OUT-004821")}>Open</Button></TableCell>
             </TableRow>
             <TableRow><TableCell colSpan={6}><Typography variant="caption" color="text.secondary">Only the June invoice is a fully interactive fixture in this demonstration.</Typography></TableCell></TableRow>
           </TableBody>
@@ -401,6 +408,7 @@ function ruleFingerprint(rule: RuleCompilation["rules"][number]): string {
 }
 
 export function ContractsPage() {
+  const [demoStatus, setDemoStatus] = useState<DemoStatus | null>(null);
   const [contract, setContract] = useState<Contract | null>(null);
   const [history, setHistory] = useState<RuleCompilation[]>([]);
   const [draft, setDraft] = useState("");
@@ -431,7 +439,7 @@ export function ContractsPage() {
       setLoading(true);
       setLoadError("");
       try {
-        const [contractResult, historyResult] = await Promise.all([api.contract(), api.compilations()]);
+        const [contractResult, historyResult, statusResult] = await Promise.all([api.contract(), api.compilations(), api.status()]);
         if (cancelled) return;
         setContract(contractResult);
         setHistory(historyResult);
@@ -441,6 +449,7 @@ export function ContractsPage() {
             : contractResult.contract_text,
         );
         setSourceDocument(contractResult.latest_compilation.source_document);
+        setDemoStatus(statusResult);
       } catch (requestError) {
         if (!cancelled) setLoadError(requestError instanceof Error ? requestError.message : "Could not load contract controls");
       } finally {
@@ -451,7 +460,7 @@ export function ContractsPage() {
   }, []);
 
   async function compileRules(mode: "auto" | "recorded") {
-    if (!contract) return;
+    if (!contract || demoStatus?.public_demo) return;
     const text = mode === "recorded" ? contract.demo_contract_text : draft;
     setWorkingAction("compile");
     setActionError("");
@@ -480,7 +489,7 @@ export function ContractsPage() {
   }
 
   async function approveRules() {
-    if (!contract || contract.latest_compilation.status !== "pending_approval") return;
+    if (!contract || demoStatus?.public_demo || contract.latest_compilation.status !== "pending_approval") return;
     setWorkingAction("approve");
     setActionError("");
     setNotice("");
@@ -515,6 +524,7 @@ export function ContractsPage() {
     return !previous || ruleFingerprint(previous) !== ruleFingerprint(rule);
   }).length;
   const removedRules = active.rules.filter((rule) => !proposalRules.has(rule.id)).length;
+  const publicDemo = demoStatus?.public_demo === true;
 
   return (
     <PageFrame testId="contracts-page">
@@ -526,14 +536,14 @@ export function ContractsPage() {
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
             <Button
               variant="outlined"
-              disabled={workingAction !== null}
+              disabled={publicDemo || workingAction !== null}
               onClick={() => void compileRules("recorded")}
             >
               Replay recorded Gemini result
             </Button>
             <Button
               variant="contained"
-              disabled={workingAction !== null || draft.trim().length < 50 || customDraftWithoutKey}
+              disabled={publicDemo || workingAction !== null || draft.trim().length < 50 || customDraftWithoutKey}
               onClick={() => void compileRules("auto")}
               startIcon={workingAction === "compile" ? <CircularProgress size={18} color="inherit" /> : undefined}
             >
@@ -544,12 +554,20 @@ export function ContractsPage() {
       />
 
       {actionError && <Alert severity="error" sx={{ mb: 2 }}>{actionError}</Alert>}
+      {publicDemo && <Alert severity="info" sx={{ mb: 2 }}>Public technical preview: the displayed Gemini proposal and approved rule version are read-only because all visitors share this workspace.</Alert>}
       {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
       {customDraftWithoutKey && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           This draft differs from the bundled contract. Add <code>GEMINI_API_KEY</code> to compile custom terms, or restore/replay the recorded demo contract.
         </Alert>
       )}
+
+      <Alert severity="info" sx={{ mb: 2 }}>
+        The LLM proposes contract rules. A human approves and versions them. Deterministic code evaluates every invoice line.
+      </Alert>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        The bundled proposal was previously generated by Gemini and validated against Evidue’s restricted rule schema. Viewing this page does not trigger a live model call.
+      </Typography>
 
       <Box className="contract-compiler-flow" aria-label="Contract compilation trust boundary">
         {[
@@ -578,7 +596,7 @@ export function ContractsPage() {
           action={
             <Button
               size="small"
-              disabled={workingAction !== null || draft === contract.demo_contract_text}
+              disabled={publicDemo || workingAction !== null || draft === contract.demo_contract_text}
               onClick={() => {
                 setDraft(contract.demo_contract_text);
                 setSourceDocument("Acme-Nova-Outcome-Pricing-Order-Form.pdf");
@@ -594,7 +612,7 @@ export function ContractsPage() {
             fullWidth
             value={sourceDocument}
             onChange={(event) => setSourceDocument(event.target.value)}
-            disabled={workingAction !== null}
+            disabled={publicDemo || workingAction !== null}
             sx={{ mb: 1.5 }}
           />
           <TextField
@@ -604,7 +622,7 @@ export function ContractsPage() {
             minRows={15}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            disabled={workingAction !== null}
+            disabled={publicDemo || workingAction !== null}
             helperText={`${draft.length.toLocaleString()} characters${draftChanged ? " · source differs from the displayed proposal" : " · exact source for the displayed proposal"}`}
           />
         </SectionCard>
@@ -616,7 +634,7 @@ export function ContractsPage() {
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
               <Button
                 variant="outlined"
-                disabled={workingAction !== null || !draftChanged}
+                disabled={publicDemo || workingAction !== null || !draftChanged}
                 onClick={() => {
                   setDraft(proposal.source_text);
                   setSourceDocument(proposal.source_document);
@@ -628,7 +646,7 @@ export function ContractsPage() {
               <Button
                 variant="contained"
                 color="success"
-                disabled={workingAction !== null || draftChanged}
+                disabled={publicDemo || workingAction !== null || draftChanged}
                 onClick={() => void approveRules()}
                 startIcon={workingAction === "approve" ? <CircularProgress size={18} color="inherit" /> : undefined}
               >
@@ -1092,7 +1110,7 @@ export function VendorPreflightPage() {
               <Typography color="text.secondary" sx={{ mt: 1 }}>The agent marked a refund resolved, but the payment processor rejected it and a human completed it after the contract window.</Typography>
               <Box className="template-example-amount"><span>Revenue at risk</span><strong>$1.50</strong></Box>
               <Alert severity="warning" sx={{ mt: 2 }}>Keep the outcome open until the payment processor confirms the refund successfully posted.</Alert>
-              <Button sx={{ mt: 2 }} onClick={() => navigate("/demo/invoices/current")}>Review customer-side evidence</Button>
+              <Button sx={{ mt: 2 }} onClick={() => navigate("/demo/invoices/current?outcome=OUT-004821")}>Review customer-side evidence</Button>
             </CardContent>
           </Card>
         </Box>

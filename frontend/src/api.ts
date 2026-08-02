@@ -1,4 +1,5 @@
 export type DemoStatus = {
+  public_demo: boolean;
   seeded: boolean;
   reconciled: boolean;
   claimed_outcomes: number;
