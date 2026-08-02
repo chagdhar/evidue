@@ -23,6 +23,9 @@ Delivered:
 - deterministic edge-case scenarios for contradictory evidence, failed-action recovery, and duplicate attribution;
 - fish-compatible setup, development, reset, and validation scripts;
 - production Docker image serving React through FastAPI.
+- Cloud Run deployment configuration using public scale-to-zero service settings,
+  Artifact Registry images, Secret Manager binding for Gemini, and GitHub
+  Actions Workload Identity Federation.
 - HN-ready landing and Decision surfaces with API-derived financial messaging, a compact accounting bridge, and a featured evidence-backed dispute;
 - read-only downloads for the synthetic contract, invoice, operational events, approved rule proposal, and reconciliation package;
 - launch trust content covering the LLM boundary, rule-compilation metadata, current limitations, and a real invoice-review contact path;
@@ -35,6 +38,7 @@ Delivered:
 - Frontend: ESLint passed; 23 Vitest tests passed; production build passed.
 - Browser: all 5 Playwright journeys passed.
 - Docker: image built, health endpoint passed, and the in-container headline reconciliation reproduced 10,000 claimed, 8,320 payable, 1,680 disputed, $12,480 payable, and a $2,520 deduction.
+- Cloud Run deployment configuration: GitHub Actions YAML parsed; the Docker image built and returned a healthy `/api/health` response with `PORT=8080`.
 
 Run `./scripts/dev-check.sh full` after dependency installation to execute the repository's frontend lint, unit tests, production build, and live Playwright paths on the target machine.
 

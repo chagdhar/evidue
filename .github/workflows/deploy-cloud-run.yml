@@ -1,0 +1,69 @@
+name: Deploy Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: us-central1
+  SERVICE: evidue-demo
+  ARTIFACT_REPOSITORY: evidue
+  GEMINI_SECRET: evidue-gemini-api-key
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud with Workload Identity Federation
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push the container image
+        run: |
+          image="$REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/$ARTIFACT_REPOSITORY/$SERVICE:$GITHUB_SHA"
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build --tag "$image" .
+          docker push "$image"
+
+      - name: Store Gemini key in Secret Manager
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [[ -z "$GEMINI_API_KEY" ]]; then
+            echo "GEMINI_API_KEY must be configured as a GitHub Actions secret." >&2
+            exit 1
+          fi
+          gcloud secrets describe "$GEMINI_SECRET" --project="${{ secrets.GCP_PROJECT_ID }}" >/dev/null 2>&1 || \
+            gcloud secrets create "$GEMINI_SECRET" --replication-policy=automatic --project="${{ secrets.GCP_PROJECT_ID }}"
+          printf '%s' "$GEMINI_API_KEY" | \
+            gcloud secrets versions add "$GEMINI_SECRET" --data-file=- --project="${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Deploy to Cloud Run
+        run: |
+          image="$REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/$ARTIFACT_REPOSITORY/$SERVICE:$GITHUB_SHA"
+          gcloud run deploy "$SERVICE" \
+            --image "$image" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --region "$REGION" \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --port 8080 \
+            --service-account "evidue-runtime@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --set-env-vars "EVIDUE_PUBLIC_DEMO=true,EVIDUE_DB_PATH=/app/data/evidue.db" \
+            --set-secrets "GEMINI_API_KEY=$GEMINI_SECRET:latest" \
+            --startup-probe "httpGet.path=/api/health,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=10,failureThreshold=10"

@@ -86,6 +86,13 @@ Open <http://localhost:8000/demo>.
 See [docs/HANDOFF.md](docs/HANDOFF.md) for fresh-checkout instructions and
 [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the demo narration.
 
+## Hosted deployment
+
+The public technical preview is configured for Google Cloud Run. See
+[docs/DEPLOY_CLOUD_RUN.md](docs/DEPLOY_CLOUD_RUN.md) for the first manual
+deployment, Workload Identity Federation setup for GitHub Actions, Secret
+Manager handling for `GEMINI_API_KEY`, and ongoing deploys from `main`.
+
 ## Product surfaces
 
 - `/demo` — finance control overview

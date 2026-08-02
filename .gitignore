@@ -6,6 +6,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+gha-creds-*.json
 data/*.db
 data/*.sqlite
 data/*.sqlite3
