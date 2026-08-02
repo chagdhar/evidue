@@ -1142,6 +1142,11 @@ def outcome_detail(outcome_id: str) -> dict[str, object] | None:
                 "title": rule.title,
                 "description": rule.description,
                 "parameters": rule.parameters,
+                "operation": rule.operation,
+                "priority": rule.priority,
+                "consequence": rule.consequence,
+                "evidence_required": rule.evidence_required,
+                "compilation_id": rule.compilation_id,
             }
             if rule
             else None,

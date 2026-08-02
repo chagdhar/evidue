@@ -580,6 +580,24 @@ describe("Evidue financial-decision demo", () => {
     expect(scoped.getByText("= $12,480.00")).toBeInTheDocument();
   });
 
+  it("exposes the launch proof, trust boundary, inputs, limitations, and contact path", async () => {
+    mockApi(true);
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Example dispute · OUT-004821" })).toBeInTheDocument();
+    expect(screen.getAllByText(failedRefund.reason).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: "Natural-language contract" })).toHaveAttribute(
+      "href",
+      "/api/demo/inputs/contract",
+    );
+    expect(screen.getByText("The LLM does not decide what gets paid.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Current limitations" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Email Dharun" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("subject=Evidue%20invoice%20audit"),
+    );
+  });
+
   it("requests disputed claims by default after reconciliation", async () => {
     mockApi(true);
     render(<App />);
@@ -628,6 +646,8 @@ describe("Evidue financial-decision demo", () => {
     expect(await screen.findByText("Vendor claim")).toBeInTheDocument();
     expect(screen.getByText("Contract obligation")).toBeInTheDocument();
     expect(screen.getByText("Evidue determination")).toBeInTheDocument();
+    expect(screen.getByText("Rule inputs and evaluated result")).toBeInTheDocument();
+    expect(screen.getAllByText("require_success_event_within")).toHaveLength(2);
     expect(screen.getByText("What happened, in order")).toBeInTheDocument();
     expect(screen.getByText("AI marked outcome resolved")).toBeInTheDocument();
     expect(screen.getByText("Downstream action failed")).toBeInTheDocument();

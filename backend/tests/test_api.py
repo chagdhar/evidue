@@ -2,6 +2,7 @@ import csv
 import io
 import json
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from app.api.schemas import (
@@ -18,6 +19,7 @@ from app.main import (
     current_reconciliation,
     data_readiness,
     data_source_samples,
+    demo_input,
     demo_scenarios,
     demo_status,
     disputes_csv,
@@ -85,6 +87,29 @@ def test_health_reset_seed_and_reconciliation_lifecycle():
         ),
         "demo_outcome_id": "OUT-004821",
     }
+
+
+@pytest.mark.parametrize(
+    ("input_id", "filename", "media_type"),
+    [
+        ("contract", "evidue-demo-contract.txt", "text/plain"),
+        ("invoice", "evidue-demo-vendor-invoice.csv", "text/csv"),
+        ("support-events", "evidue-demo-support-events.jsonl", "application/x-ndjson"),
+        ("payment-events", "evidue-demo-payment-events.jsonl", "application/x-ndjson"),
+        ("rule-proposal", "evidue-approved-rule-proposal.json", "application/json"),
+    ],
+)
+def test_demo_inputs_are_read_only_downloads(input_id, filename, media_type):
+    response = demo_input(input_id)
+    assert Path(response.path).is_file()
+    assert response.filename == filename
+    assert response.media_type == media_type
+
+
+def test_unknown_demo_input_is_not_exposed():
+    with pytest.raises(HTTPException) as error:
+        demo_input("../../.env")
+    assert error.value.status_code == 404
 
 
 @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "On"])
@@ -202,6 +227,9 @@ def test_out_004821_detail_has_decisive_evidence_and_computed_deadline():
     assert detail["vendor_claim"] == "resolved"
     assert detail["status"] == "disputed"
     assert detail["rule_id"] == "R3"
+    assert detail["rule"]["operation"] == "require_success_event_within"
+    assert detail["rule"]["parameters"]["window_value"] == 2
+    assert detail["rule"]["parameters"]["window_unit"] == "hours"
     assert detail["billed_amount"] == "1.50"
     assert detail["confirmed_payable_amount"] == "0.00"
     assert detail["confirmed_disputed_amount"] == "1.50"

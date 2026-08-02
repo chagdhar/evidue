@@ -1,4 +1,4 @@
-# YC demo completion
+# Demo completion
 
 Implemented in this archive:
 

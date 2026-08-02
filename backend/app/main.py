@@ -34,6 +34,35 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Evidue", version="0.1.0", lifespan=lifespan)
 
+DEMO_INPUTS = {
+    "contract": (
+        "contract/acme-nova-outcome-pricing-order-form.txt",
+        "evidue-demo-contract.txt",
+        "text/plain",
+    ),
+    "invoice": (
+        "vendor/june-claim-manifest.csv",
+        "evidue-demo-vendor-invoice.csv",
+        "text/csv",
+    ),
+    "support-events": (
+        "customer/support-events.jsonl",
+        "evidue-demo-support-events.jsonl",
+        "application/x-ndjson",
+    ),
+    "payment-events": (
+        "customer/payment-events.jsonl",
+        "evidue-demo-payment-events.jsonl",
+        "application/x-ndjson",
+    ),
+    "rule-proposal": (
+        "contract/recorded-gemini-rule-proposal.json",
+        "evidue-approved-rule-proposal.json",
+        "application/json",
+    ),
+}
+DEMO_DATA_ROOT = Path(__file__).parents[2] / "demo-data"
+
 PUBLIC_DEMO_MESSAGE = (
     "This action is disabled in the public technical preview because visitors "
     "share one read-only demo workspace."
@@ -71,6 +100,18 @@ def reset(scenario_id: str = "headline") -> dict[str, object]:
 @app.get("/api/demo/status", response_model=DemoStatusResponse)
 def demo_status() -> dict[str, object]:
     return {**repository.demo_status(), "public_demo": public_demo_enabled()}
+
+
+@app.get("/api/demo/inputs/{input_id}")
+def demo_input(input_id: str) -> FileResponse:
+    input_spec = DEMO_INPUTS.get(input_id)
+    if input_spec is None:
+        raise HTTPException(404, "Demo input not found")
+    relative_path, filename, media_type = input_spec
+    path = DEMO_DATA_ROOT / relative_path
+    if not path.is_file():
+        raise HTTPException(404, "Demo input is unavailable")
+    return FileResponse(path, media_type=media_type, filename=filename)
 
 
 @app.get("/api/data-readiness", response_model=DataReadinessResponse)

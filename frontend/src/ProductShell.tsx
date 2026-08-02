@@ -328,7 +328,7 @@ export function OverviewPage() {
           </Box>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 2 }}>
             <Button variant="outlined" onClick={() => navigate("/demo/data-sources?source=payment_processor&inspect=1")}>Inspect original records</Button>
-            <Button onClick={() => navigate("/demo/invoices/current?outcome=OUT-004821")}>Open Evidue reconciliation</Button>
+            <Button onClick={() => navigate("/demo/invoices/current")}>Open Evidue reconciliation</Button>
           </Stack>
         </SectionCard>
       </Box>
@@ -1143,6 +1143,7 @@ export function OutcomeLedgerPage() {
         <SectionCard title="Proof that travels with the claim" eyebrow="Canonical receipt schema">
           <Box className="template-schema-grid">{["Stable outcome ID", "Customer and account IDs", "Agent and workflow version", "Claimed outcome and action", "Downstream source record", "Execution and completion timestamps", "Contract-rule version", "Evidence provenance"].map((field) => <span key={field}>✓ {field}</span>)}</Box>
           <Alert severity="info" sx={{ mt: 2 }}>A receipt supports a claim; it never self-declares the charge payable.</Alert>
+          <Button href="/demo/invoices/current" sx={{ mt: 2 }}>Evidue reconciliation</Button>
         </SectionCard>
       </Box>
       <Box className="template-two-column">

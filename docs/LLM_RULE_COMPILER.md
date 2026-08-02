@@ -27,7 +27,7 @@ The LLM cannot emit Python, SQL, JavaScript, or arbitrary expressions. Adding a 
 `POST /api/contracts/current/compile?mode=auto`
 
 - Uses a live Gemini call when `GEMINI_API_KEY` is set.
-- Otherwise replays `demo-data/contract/recorded-gemini-rule-proposal.json` so the YC demo works offline.
+- Otherwise replays `demo-data/contract/recorded-gemini-rule-proposal.json` so the technical preview works offline.
 
 `mode=live` requires a configured key. `mode=recorded` always uses the checked-in response.
 

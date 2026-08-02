@@ -47,6 +47,7 @@ import {
   RuleCompilation,
   Summary,
 } from "./api";
+import { contactHref } from "./contact";
 import { disclosure, formatPercent, formatUsd } from "./presentation";
 
 const categoryOrder = ["R1", "R2", "R3", "R4", "R5"];
@@ -157,23 +158,29 @@ function PaymentRecommendation({
               {summary.claimed_outcomes.toLocaleString()} outcomes payable
             </Typography>
           </Box>
-          <Box className="recommendation-facts">
-            <Box>
-              <Typography className="fact-label">Submitted invoice</Typography>
-              <Typography className="fact-value">{formatUsd(summary.submitted_amount)}</Typography>
+          <Box className="decision-accounting-bridge" aria-label="Invoice accounting bridge">
+            <Box><Typography>Submitted invoice</Typography><strong>{formatUsd(summary.submitted_amount)}</strong></Box>
+            <Box className="deduction">
+              <Typography>Unsupported charges</Typography>
+              <span aria-label={`minus ${formatUsd(summary.recommended_deduction)}`}>
+                − <strong className="fact-value disputed">{formatUsd(summary.recommended_deduction)}</strong>
+              </span>
             </Box>
-            <Box>
-              <Typography className="fact-label">Recommended deduction</Typography>
-              <Typography className="fact-value disputed">
-                {formatUsd(summary.recommended_deduction)}
-              </Typography>
-            </Box>
-            <Box>
-              <Typography className="fact-label">Needs review</Typography>
-              <Typography className="fact-value review">
-                {formatUsd(summary.needs_review_amount)}
-              </Typography>
-            </Box>
+            {summary.needs_review_amount !== "0.00" && (
+              <Box className="review-hold">
+                <Typography>Held for evidence review</Typography>
+                <span aria-label={`minus ${formatUsd(summary.needs_review_amount)}`}>
+                  − <strong className="fact-value review">{formatUsd(summary.needs_review_amount)}</strong>
+                </span>
+              </Box>
+            )}
+            <Box className="result"><Typography>Payable</Typography><strong>= {formatUsd(summary.confirmed_payable_amount)}</strong></Box>
+          </Box>
+          <Box className="decision-count-strip" aria-label="Outcome counts">
+            <Box><span>Submitted outcomes</span><strong>{summary.claimed_outcomes.toLocaleString()}</strong></Box>
+            <Box><span>Payable</span><strong>{summary.payable_outcomes.toLocaleString()}</strong></Box>
+            <Box><span>Disputed</span><strong>{summary.disputed_outcomes.toLocaleString()}</strong></Box>
+            <Box><span>Needs review</span><strong>{summary.needs_review_outcomes.toLocaleString()}</strong></Box>
           </Box>
         </>
       )}
@@ -225,6 +232,127 @@ function ReconciliationBridge({ summary }: { summary: Summary }) {
         </Box>
       </Paper>
     </section>
+  );
+}
+
+function FeaturedDispute({ detail }: { detail: OutcomeDetail | null }) {
+  if (!detail) return null;
+  return (
+    <Paper className="featured-dispute" component="section" aria-labelledby="featured-dispute-title">
+      <Box>
+        <Typography className="eyebrow">Featured finding</Typography>
+        <Typography variant="h5" id="featured-dispute-title">Example dispute · {detail.outcome_id}</Typography>
+        <Typography color="text.secondary">
+          The vendor claimed a successful resolution. Customer-side operational evidence shows why the charge failed the approved contract rule.
+        </Typography>
+      </Box>
+      <Box className="featured-dispute-facts">
+        <Box><span>Charged</span><strong>{formatUsd(detail.billed_amount)}</strong></Box>
+        <Box><span>Recommended deduction</span><strong>{formatUsd(detail.confirmed_disputed_amount)}</strong></Box>
+        <Box><span>Determination</span><strong>{readable(detail.status)}</strong></Box>
+        <Box><span>Reason code</span><strong>{detail.rule_id ?? "—"}</strong></Box>
+      </Box>
+      <Typography className="featured-dispute-reason">{detail.reason}</Typography>
+      <Button variant="contained" href={`/demo/invoices/current?outcome=${encodeURIComponent(detail.outcome_id)}`}>
+        Inspect contract rule and evidence
+      </Button>
+    </Paper>
+  );
+}
+
+function DemoInputs() {
+  const inputs = [
+    ["Natural-language contract", "/api/demo/inputs/contract"],
+    ["Vendor invoice CSV", "/api/demo/inputs/invoice"],
+    ["Support-event export", "/api/demo/inputs/support-events"],
+    ["Payment-event export", "/api/demo/inputs/payment-events"],
+    ["Approved rule proposal JSON", "/api/demo/inputs/rule-proposal"],
+    ["Reconciliation evidence JSON", "/api/reconciliations/current/exports/evidence.json"],
+  ];
+  return (
+    <section className="major-section" aria-labelledby="demo-inputs-title">
+      <Box className="section-intro">
+        <Typography className="eyebrow">Demo inputs</Typography>
+        <Typography variant="h4" id="demo-inputs-title">Synthetic, production-shaped demonstration files</Typography>
+      </Box>
+      <Paper className="demo-input-list">
+        {inputs.map(([label, href]) => (
+          <Link key={label} href={href} download>
+            <span>{label}</span><span aria-hidden="true">↓</span>
+          </Link>
+        ))}
+      </Paper>
+    </section>
+  );
+}
+
+function Methodology({ contract }: { contract: Contract }) {
+  const compilation = contract.compilation;
+  const operations = [...new Set(compilation.rules.map((rule) => rule.operation))];
+  const steps = [
+    "Import contract, invoice, and customer-system evidence.",
+    "Gemini proposes constrained structured rules.",
+    "Validate the proposal against a restricted schema.",
+    "A human approves an immutable rule version.",
+    "Deterministic code evaluates every invoice line.",
+    "Produce payable, disputed, and needs-review results.",
+    "Retain contract and evidence provenance for every result.",
+  ];
+  return (
+    <section className="major-section trust-methodology" aria-labelledby="methodology-title">
+      <details>
+        <summary><span>How Evidue reaches a financial decision</span><span>View methodology</span></summary>
+        <Box className="methodology-content">
+          <Alert severity="info">
+            <strong>The LLM does not decide what gets paid.</strong><br />
+            It proposes structured rules from the contract. A human approves them, and deterministic code evaluates the invoice.
+          </Alert>
+          <ol>{steps.map((step) => <li key={step}>{step}</li>)}</ol>
+          <Box className="methodology-audit-grid">
+            <Box><span>Compilation ID</span><strong>{compilation.id}</strong></Box>
+            <Box><span>Rule version</span><strong>v{compilation.version}</strong></Box>
+            <Box><span>Model</span><strong>{compilation.model}</strong></Box>
+            <Box><span>Approval status</span><strong>{readable(compilation.status)}</strong></Box>
+            <Box><span>Contract source hash</span><strong className="mono">{compilation.source_hash}</strong></Box>
+            <Box><span>Supported operations</span><strong>{operations.join(", ")}</strong></Box>
+          </Box>
+        </Box>
+      </details>
+    </section>
+  );
+}
+
+function CurrentLimitations() {
+  const items = [
+    "The dataset is synthetic but shaped like production exports.",
+    "The displayed contract proposal was previously generated by Gemini.",
+    "Viewing this demo does not necessarily invoke a live model.",
+    "Evidue has not yet processed a real customer invoice.",
+    "Production integrations and customer validation are still in progress.",
+    "The public preview uses one shared, read-only workspace.",
+  ];
+  return (
+    <section className="major-section limitations-section" aria-labelledby="limitations-title">
+      <Typography className="eyebrow">Trust and scope</Typography>
+      <Typography variant="h4" id="limitations-title">Current limitations</Typography>
+      <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>
+    </section>
+  );
+}
+
+function ContactCta() {
+  return (
+    <Paper className="contact-cta" component="section" aria-labelledby="contact-title">
+      <Box>
+        <Typography className="eyebrow">Real invoice review</Typography>
+        <Typography variant="h4" id="contact-title">Reviewing an outcome-priced AI invoice?</Typography>
+        <Typography>Send me a redacted contract, invoice, or sample export. I will audit one billing period with you.</Typography>
+      </Box>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+        <Button variant="contained" href={contactHref}>Email Dharun</Button>
+        <Button variant="outlined" href={contactHref}>Share a redacted sample</Button>
+      </Stack>
+    </Paper>
   );
 }
 
@@ -410,7 +538,7 @@ function ContractSummary({ contract }: { contract: Contract }) {
         <Box>
           <Typography className="eyebrow">Contract compiler</Typography>
           <Typography variant="h4" id="contract-title">
-            Natural language in. Deterministic disputes out.
+            Executable billing terms
           </Typography>
           <Typography color="text.secondary">
             The LLM proposes a constrained program; a person approves it; the model never adjudicates an invoice line.
@@ -586,58 +714,43 @@ function OutcomeInspector({
             <Button onClick={onClose}>Close</Button>
           </Box>
 
-          {detail.claim_provenance && (
-            <Paper className="claim-provenance-strip">
-              <Box><Typography variant="caption" color="text.secondary">Vendor claim ID</Typography><strong className="mono">{detail.vendor_claim_id}</strong></Box>
-              <Box><Typography variant="caption" color="text.secondary">Agent version</Typography><strong>{detail.agent_version}</strong></Box>
-              <Box><Typography variant="caption" color="text.secondary">Collected through</Typography><strong>{detail.claim_provenance.collection_method}</strong></Box>
-              <Box><Typography variant="caption" color="text.secondary">Raw record</Typography><strong className="mono">{detail.claim_provenance.raw_record_id}</strong></Box>
-            </Paper>
-          )}
+          <Box className="outcome-decision-summary">
+            <Box><span>Vendor claim</span><strong>Marked {detail.vendor_claim}</strong><small>{readable(detail.expected_action)} · {detail.vendor_claim_id}</small></Box>
+            <Box><span>Amount charged</span><strong>{formatUsd(detail.billed_amount)}</strong></Box>
+            <Box><span>Evidue determination</span><strong>{readable(detail.status)}</strong><small>{detail.reason}</small></Box>
+            <Box><span>Recommended deduction</span><strong>{formatUsd(detail.confirmed_disputed_amount)}</strong></Box>
+          </Box>
 
-          <Box className="comparison-grid">
-            <Box className="comparison-panel vendor">
-              <Typography className="eyebrow">Vendor claim</Typography>
-              <Typography variant="h6">Marked {detail.vendor_claim}</Typography>
-              <dl>
-                <dt>Claimed action</dt>
-                <dd>{readable(detail.expected_action)}</dd>
-                <dt>Billed amount</dt>
-                <dd>{formatUsd(detail.billed_amount)}</dd>
-              </dl>
-            </Box>
-            <Box className="comparison-panel contract">
+          <Box className="inspector-rule-review">
+            <Box>
               <Typography className="eyebrow">Contract obligation</Typography>
-              {detail.rule ? (
-                <>
-                  <Typography variant="h6">
-                    {detail.rule.id} · {detail.rule.title}
-                  </Typography>
-                  <Typography>{detail.contract_clause}</Typography>
-                  <Typography className="requirement">
-                    {ruleRequirement(detail.rule)}
-                  </Typography>
-                </>
-              ) : (
-                <Typography>All applicable billing rules must pass.</Typography>
-              )}
+              <Typography variant="h6">Contractual billing obligation</Typography>
+              <Typography>{detail.contract_clause ?? "No clause was attached to this determination."}</Typography>
             </Box>
-            <Box className="comparison-panel determination">
-              <Typography className="eyebrow">Evidue determination</Typography>
-              <Chip
-                size="small"
-                color={statusTone(detail.status)}
-                label={detail.status.replace("_", " ")}
-              />
-              <Typography className="determination-reason">{detail.reason}</Typography>
-              <Box>
-                <Typography className="fact-label">Confirmed payable</Typography>
-                <Typography className="inspector-payable">
-                  {formatUsd(detail.confirmed_payable_amount)}
-                </Typography>
-              </Box>
+            <Box>
+              <Typography className="eyebrow">Approved deterministic rule</Typography>
+              {detail.rule ? <>
+                <Typography variant="h6">{detail.rule.id} · {detail.rule.title}</Typography>
+                <code>{detail.rule.operation}</code>
+                <Typography>{detail.rule.description}</Typography>
+                <Typography className="requirement">{ruleRequirement(detail.rule)}</Typography>
+              </> : <Typography>No rule metadata is available.</Typography>}
             </Box>
           </Box>
+
+          {detail.rule && (
+            <Paper className="evaluation-trace">
+              <Typography className="eyebrow">Rule inputs and evaluated result</Typography>
+              <Box><span>Rule</span><strong className="mono">{detail.rule.operation}</strong></Box>
+              <Box><span>Parameters</span><strong className="mono">{JSON.stringify(detail.rule.parameters)}</strong></Box>
+              <Box><span>Resolution timestamp</span><strong className="mono">{detail.conversation.closed_at}</strong></Box>
+              {detail.evidence.map((event) => (
+                <Box key={event.id}><span>Input · {readable(event.event_type)}</span><strong className="mono">{event.timestamp}</strong></Box>
+              ))}
+              <Box><span>Evaluation</span><strong>{detail.reason}</strong></Box>
+              <Box className="trace-result"><span>Result</span><strong>{readable(detail.status)}</strong></Box>
+            </Paper>
+          )}
 
           <Box className="timeline-heading">
             <Typography className="eyebrow">Evidence timeline</Typography>
@@ -659,29 +772,29 @@ function OutcomeInspector({
                     Source: {item.source} · Record:{" "}
                     <span className="mono">{item.record}</span>
                   </Typography>
-                  {item.provenance && (
-                    <details className="timeline-provenance">
-                      <summary>View source provenance</summary>
-                      <dl>
-                        <dt>Connector</dt><dd>{item.provenance.connector_name}</dd>
-                        <dt>Authority</dt><dd>{item.provenance.authority}</dd>
-                        <dt>Collected</dt><dd>{item.provenance.collection_method}</dd>
-                        <dt>Production path</dt><dd>{item.provenance.production_method}</dd>
-                        <dt>Match</dt><dd>{item.provenance.match_method} · {item.provenance.match_confidence}</dd>
-                        <dt>Payload hash</dt><dd className="mono">{item.provenance.payload_hash}</dd>
-                      </dl>
-                      {item.provenance.raw_payload && <pre>{JSON.stringify(item.provenance.raw_payload, null, 2)}</pre>}
-                    </details>
-                  )}
                 </Box>
               </Box>
             ))}
           </Box>
-          <Divider />
-          <Typography variant="caption" color="text.secondary">
-            Evaluated {new Date(detail.evaluated_at).toLocaleString()} · Engine{" "}
-            {detail.engine_version}
-          </Typography>
+
+          <Box className="provenance-section">
+            <Typography className="eyebrow">Evidence provenance</Typography>
+            <Typography variant="h5">Source records used by the determination</Typography>
+            {detail.claim_provenance && <details>
+              <summary>Vendor claim provenance · {detail.vendor_claim_id}</summary>
+              <pre>{JSON.stringify(detail.claim_provenance, null, 2)}</pre>
+            </details>}
+            {detail.evidence.map((event) => <details key={event.id}>
+              <summary>{event.provenance.connector_name} · {event.source_record_id}</summary>
+              <pre>{JSON.stringify(event.provenance, null, 2)}</pre>
+            </details>)}
+          </Box>
+
+          <Box className="inspector-audit-footer">
+            <Box><span>Reason code</span><strong>{detail.rule_id ?? "—"}</strong></Box>
+            <Box><span>Evaluated</span><strong>{new Date(detail.evaluated_at).toLocaleString()}</strong></Box>
+            <Box><span>Engine</span><strong>{detail.engine_version}</strong></Box>
+          </Box>
         </Box>
       )}
     </Drawer>
@@ -1118,6 +1231,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [readiness, setReadiness] = useState<DataReadiness | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [exampleOutcome, setExampleOutcome] = useState<OutcomeDetail | null>(null);
   const [selectedRule, setSelectedRule] = useState("");
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -1147,7 +1261,14 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
         setContract(contractResult);
         setInvoice(invoiceResult);
         setReadiness(readinessValue);
-        if (status.reconciled) setSummary(await api.current());
+        if (status.reconciled) {
+          const [summaryResult, exampleResult] = await Promise.all([
+            api.current(),
+            api.outcome(status.demo_outcome_id),
+          ]);
+          setSummary(summaryResult);
+          setExampleOutcome(exampleResult);
+        }
       } catch (requestError) {
         setError(requestError instanceof Error ? requestError.message : "Could not load demo");
       } finally {
@@ -1175,7 +1296,9 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
       if (resetFirst && demoStatus) {
         setDemoStatus(await api.reset(demoStatus.scenario_id));
       }
-      setSummary(await api.reconcile());
+      const summaryResult = await api.reconcile();
+      setSummary(summaryResult);
+      if (demoStatus) setExampleOutcome(await api.outcome(demoStatus.demo_outcome_id));
       setSelectedRule("");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Reconciliation failed");
@@ -1195,6 +1318,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
       setInvoice(invoiceResult);
       setReadiness(readinessResult);
       setSummary(null);
+      setExampleOutcome(null);
       setSelectedRule("");
     } catch (requestError) {
       setError(
@@ -1301,8 +1425,6 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
           </Paper>
         )}
 
-        {readiness && <EvidenceReadiness readiness={readiness} />}
-
         <PaymentRecommendation
           invoice={invoice}
           summary={summary}
@@ -1313,6 +1435,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
 
         {summary && (
           <>
+            <FeaturedDispute detail={scenarioLab ? null : exampleOutcome} />
             <ReconciliationBridge summary={summary} />
             <Box className="trust-strip">
               <Typography>
@@ -1334,9 +1457,14 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
               initialOutcomeId={initialOutcomeId}
             />
             <Exports summary={summary} />
+            <DemoInputs />
+            <Methodology contract={contract} />
+            <CurrentLimitations />
+            <ContactCta />
           </>
         )}
 
+        {readiness && <EvidenceReadiness readiness={readiness} />}
         <ContractSummary contract={contract} />
       </Container>
     </>

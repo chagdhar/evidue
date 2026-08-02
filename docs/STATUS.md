@@ -23,14 +23,18 @@ Delivered:
 - deterministic edge-case scenarios for contradictory evidence, failed-action recovery, and duplicate attribution;
 - fish-compatible setup, development, reset, and validation scripts;
 - production Docker image serving React through FastAPI.
+- HN-ready landing and Decision surfaces with API-derived financial messaging, a compact accounting bridge, and a featured evidence-backed dispute;
+- read-only downloads for the synthetic contract, invoice, operational events, approved rule proposal, and reconciliation package;
+- launch trust content covering the LLM boundary, rule-compilation metadata, current limitations, and a real invoice-review contact path;
+- reordered outcome inspection with claim, contract obligation, deterministic rule inputs, timeline, provenance, and audit metadata.
 
 ## Current validation
 
-- Backend: 42 tests passed.
-- Python compilation: passed.
-- Shell syntax: passed.
-- TypeScript/TSX syntax transpilation: passed.
-- Source-only TypeScript check: passed.
+- `./scripts/dev-check.sh full`: passed on 2026-08-02.
+- Backend: 61 tests passed.
+- Frontend: ESLint passed; 23 Vitest tests passed; production build passed.
+- Browser: all 5 Playwright journeys passed.
+- Docker: image built, health endpoint passed, and the in-container headline reconciliation reproduced 10,000 claimed, 8,320 payable, 1,680 disputed, $12,480 payable, and a $2,520 deduction.
 
 Run `./scripts/dev-check.sh full` after dependency installation to execute the repository's frontend lint, unit tests, production build, and live Playwright paths on the target machine.
 
