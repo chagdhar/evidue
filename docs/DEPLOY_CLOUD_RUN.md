@@ -22,12 +22,12 @@ service for customer data.
 Run these commands from a fish shell after replacing the example values:
 
 ```fish
-set -l PROJECT_ID your-gcp-project-id
-set -l BILLING_ACCOUNT 000000-000000-000000
-set -l REGION us-central1
-set -l SERVICE evidue-demo
-set -l REPOSITORY evidue
-set -l GEMINI_SECRET evidue-gemini-api-key
+set PROJECT_ID your-gcp-project-id
+set BILLING_ACCOUNT 000000-000000-000000
+set REGION us-central1
+set SERVICE evidue-demo
+set REPOSITORY evidue
+set GEMINI_SECRET evidue-gemini-api-key
 
 gcloud auth login
 gcloud projects create $PROJECT_ID --name="Evidue Demo"
@@ -53,8 +53,8 @@ Create the dedicated Cloud Run runtime identity and permit it to read this one
 secret:
 
 ```fish
-set -l PROJECT_NUMBER (gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-set -l RUNTIME_SERVICE_ACCOUNT evidue-runtime@$PROJECT_ID.iam.gserviceaccount.com
+set PROJECT_NUMBER (gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+set RUNTIME_SERVICE_ACCOUNT evidue-runtime@$PROJECT_ID.iam.gserviceaccount.com
 
 gcloud iam service-accounts create evidue-runtime --display-name="Evidue Cloud Run runtime"
 gcloud secrets add-iam-policy-binding $GEMINI_SECRET \
@@ -65,7 +65,7 @@ gcloud secrets add-iam-policy-binding $GEMINI_SECRET \
 Build, push, and deploy the existing Dockerfile:
 
 ```fish
-set -l IMAGE $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE:manual
+set IMAGE $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$SERVICE:manual
 
 gcloud auth configure-docker $REGION-docker.pkg.dev
 docker build --tag $IMAGE .
@@ -90,7 +90,7 @@ automatically. The startup probe verifies `/api/health`, and
 After the command returns, verify the public service:
 
 ```fish
-set -l SERVICE_URL (gcloud run services describe $SERVICE --region $REGION --format='value(status.url)')
+set SERVICE_URL (gcloud run services describe $SERVICE --region $REGION --format='value(status.url)')
 curl --fail $SERVICE_URL/api/health
 echo $SERVICE_URL/demo
 ```
@@ -109,11 +109,11 @@ account from the manual setup above, then create a deployer identity and WIF
 provider. Substitute your GitHub organization and repository:
 
 ```fish
-set -l GITHUB_ORG your-github-org
-set -l GITHUB_REPO evidue
-set -l POOL_ID github
-set -l PROVIDER_ID github
-set -l DEPLOYER_SERVICE_ACCOUNT evidue-github-deployer@$PROJECT_ID.iam.gserviceaccount.com
+set GITHUB_ORG your-github-org
+set GITHUB_REPO evidue
+set POOL_ID github
+set PROVIDER_ID github
+set DEPLOYER_SERVICE_ACCOUNT evidue-github-deployer@$PROJECT_ID.iam.gserviceaccount.com
 
 gcloud iam service-accounts create evidue-github-deployer --display-name="Evidue GitHub Actions deployer"
 gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$DEPLOYER_SERVICE_ACCOUNT" --role="roles/run.admin"
