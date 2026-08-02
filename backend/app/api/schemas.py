@@ -54,6 +54,11 @@ class PublicOutcomeEvaluationResponse(StrictModel):
     duration_ms: int
 
 
+class RepresentativeFinding(StrictModel):
+    rule_id: str
+    outcome_id: str
+
+
 class PublicReconciliationSampleResponse(StrictModel):
     sample_size: int
     payable_outcomes: int
@@ -62,7 +67,7 @@ class PublicReconciliationSampleResponse(StrictModel):
     submitted_amount: str
     confirmed_payable_amount: str
     recommended_deduction: str
-    representative_outcome_ids: list[str]
+    representative_findings: list[RepresentativeFinding]
     sampling_method: str
     compilation_id: str
     program_version: int

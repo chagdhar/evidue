@@ -155,6 +155,14 @@ def test_public_stateless_actions_use_the_bundled_program():
     )
     assert (sample["payable_outcomes"], sample["disputed_outcomes"]) == (83, 17)
     assert sample["compilation_id"] == "COMP-RECORDED-GEMINI-V1"
+    assert [finding["rule_id"] for finding in sample["representative_findings"]] == [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+    ]
+    assert sample["representative_findings"][2]["outcome_id"] == "OUT-004821"
 
 
 def test_public_http_routes_block_mutation_and_allow_safe_actions(monkeypatch):

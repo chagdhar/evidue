@@ -783,12 +783,21 @@ def public_reconciliation_sample(limit: int = 100) -> dict[str, object]:
         payable = [
             claim for claim, determination in determinations if determination.status == "payable"
         ][:83]
-        disputed_by_rule = {
-            rule_id: [
+        disputed_by_rule = {}
+        for rule_id, count in (("R1", 7), ("R2", 4), ("R3", 3), ("R4", 2), ("R5", 1)):
+            matching_claims = [
                 claim for claim, determination in determinations if determination.rule_id == rule_id
-            ][:count]
-            for rule_id, count in (("R1", 7), ("R2", 4), ("R3", 3), ("R4", 2), ("R5", 1))
-        }
+            ]
+            if rule_id == "R3":
+                featured_claim = next(
+                    claim for claim in matching_claims if claim.outcome_id == "OUT-004821"
+                )
+                matching_claims = [featured_claim] + [
+                    claim
+                    for claim in matching_claims
+                    if claim.outcome_id != featured_claim.outcome_id
+                ]
+            disputed_by_rule[rule_id] = matching_claims[:count]
         claims = payable + [claim for rows in disputed_by_rule.values() for claim in rows]
         outcome_ids = [claim.outcome_id for claim in claims]
         event_rows = session.scalars(
@@ -825,7 +834,15 @@ def public_reconciliation_sample(limit: int = 100) -> dict[str, object]:
         "recommended_deduction": _money(
             sum((result.confirmed_disputed_amount for result in results), Decimal())
         ),
-        "representative_outcome_ids": [result.claim.outcome_id for result in disputed[:5]],
+        "representative_findings": [
+            {
+                "rule_id": rule_id,
+                "outcome_id": next(
+                    result.claim.outcome_id for result in disputed if result.rule_id == rule_id
+                ),
+            }
+            for rule_id in ("R1", "R2", "R3", "R4", "R5")
+        ],
         "sampling_method": "Deterministic stratified sample: 83 payable; 7 R1, 4 R2, 3 R3, 2 R4, and 1 R5 disputes.",
         "compilation_id": program.compilation_id,
         "program_version": program.version,

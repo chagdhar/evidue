@@ -5,7 +5,10 @@ import { afterEach, expect, it, vi } from "vitest";
 import { track } from "./analytics";
 import LandingPage from "./LandingPage";
 
-vi.mock("./analytics", () => ({ track: vi.fn() }));
+vi.mock("./analytics", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./analytics")>()),
+  track: vi.fn(),
+}));
 
 const status = {
   public_demo: true,
@@ -77,7 +80,10 @@ it("states the product and financial result plainly with working launch calls to
   expect(screen.getByRole("button", { name: /Open the \$15,000 reconciliation/ })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Inspect one disputed outcome" })).toBeInTheDocument();
   const betaLink = await screen.findByRole("link", { name: "Apply for the Evidue beta" });
-  expect(betaLink).toHaveAttribute("href", "https://tally.so/r/test-form");
+  expect(betaLink).toHaveAttribute(
+    "href",
+    "https://tally.so/r/test-form?source=unknown&campaign=railway_beta&demo_version=hn_demo",
+  );
   expect(betaLink).toHaveAttribute("target", "_blank");
   expect(betaLink).toHaveAttribute("rel", "noopener noreferrer");
   await userEvent.click(betaLink);

@@ -11,7 +11,7 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, DemoStatus, Invoice, Summary } from "./api";
-import { BetaApplicationCTA } from "./BetaApplicationCTA";
+import { BetaApplicationCTA, PublicConfigProvider } from "./BetaApplicationCTA";
 import { disclosure, formatPercent, formatUsd } from "./presentation";
 import { TemplateIcon } from "./TemplateIcons";
 import { track } from "./analytics";
@@ -122,6 +122,7 @@ export default function LandingPage() {
   const categories = summary ? Object.entries(summary.categories) : [];
 
   return (
+    <PublicConfigProvider>
     <Box className="landing-page">
       <Box className="landing-hero-shell">
         <Container maxWidth="xl" className="landing-container">
@@ -275,5 +276,6 @@ export default function LandingPage() {
         </Container>
       </Box>
     </Box>
+    </PublicConfigProvider>
   );
 }

@@ -48,7 +48,7 @@ import {
   Summary,
 } from "./api";
 import { track } from "./analytics";
-import { BetaApplicationCTA } from "./BetaApplicationCTA";
+import { BetaApplicationCTA, PublicConfigProvider } from "./BetaApplicationCTA";
 import { disclosure, formatPercent, formatUsd } from "./presentation";
 
 const categoryOrder = ["R1", "R2", "R3", "R4", "R5"];
@@ -257,7 +257,6 @@ function FeaturedDispute({ detail }: { detail: OutcomeDetail | null }) {
       <Button variant="contained" href={`/demo/invoices/current?outcome=${encodeURIComponent(detail.outcome_id)}`}>
         Inspect contract rule and evidence
       </Button>
-      <BetaApplicationCTA compact />
     </Paper>
   );
 }
@@ -340,7 +339,6 @@ function CurrentLimitations() {
       <Typography className="eyebrow">Trust and scope</Typography>
       <Typography variant="h4" id="limitations-title">Current limitations</Typography>
       <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>
-      <BetaApplicationCTA />
     </section>
   );
 }
@@ -1431,7 +1429,8 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
   }
 
   return (
-    <>
+    <PublicConfigProvider>
+      <>
       {!embedded && <AppBar position="sticky" color="transparent" elevation={0} className="app-header">
         <Toolbar className="header-inner">
           <Typography className="wordmark">Evidue</Typography>
@@ -1553,6 +1552,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
         {readiness && <EvidenceReadiness readiness={readiness} />}
         <ContractSummary contract={contract} publicDemo={demoStatus?.public_demo === true} />
       </Container>
-    </>
+      </>
+    </PublicConfigProvider>
   );
 }

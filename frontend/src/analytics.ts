@@ -5,13 +5,24 @@ const environment = (import.meta as ImportMeta & { env: AnalyticsEnvironment }).
 const key = environment.VITE_POSTHOG_KEY?.trim();
 const host = environment.VITE_POSTHOG_HOST?.replace(/\/$/, "").trim();
 
-function source(): "hacker_news" | "yc_demo" | "direct_outreach" | "unknown" {
+type AttributionSource = "hacker_news" | "yc_demo" | "direct_outreach" | "unknown";
+
+function source(): AttributionSource {
   const storageKey = "evidue-attribution-source";
   const current = new URLSearchParams(window.location.search).get("source");
   const allowed = new Set(["hacker_news", "yc_demo", "direct_outreach"]);
   if (current && allowed.has(current)) sessionStorage.setItem(storageKey, current);
   const stored = sessionStorage.getItem(storageKey);
-  return stored && allowed.has(stored) ? (stored as "hacker_news" | "yc_demo" | "direct_outreach") : "unknown";
+  return stored && allowed.has(stored) ? (stored as Exclude<AttributionSource, "unknown">) : "unknown";
+}
+
+/** Adds only Evidue's fixed, non-sensitive attribution values to a Tally URL. */
+export function betaFormUrl(configuredUrl: string): string {
+  const url = new URL(configuredUrl);
+  url.searchParams.set("source", source());
+  url.searchParams.set("campaign", "railway_beta");
+  url.searchParams.set("demo_version", "hn_demo");
+  return url.toString();
 }
 
 function anonymousSessionId(): string {

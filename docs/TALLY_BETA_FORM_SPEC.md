@@ -59,5 +59,8 @@ beta participants.
 ## Recommended hidden fields
 
 Add these optional Tally hidden fields: `source`, `campaign`, and `demo_version`.
+The app sends only the fixed values `source` (`hacker_news`, `yc_demo`,
+`direct_outreach`, or `unknown`), `campaign=railway_beta`, and
+`demo_version=hn_demo`; no applicant-provided URL parameters are forwarded.
 Suggested source values are `hacker_news`, `yc_demo`, and `direct_outreach`.
 The form must work when no tracking parameters are present.

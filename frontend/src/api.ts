@@ -215,7 +215,7 @@ export type PublicReconciliationSample = {
   submitted_amount: string;
   confirmed_payable_amount: string;
   recommended_deduction: string;
-  representative_outcome_ids: string[];
+  representative_findings: Array<{ rule_id: string; outcome_id: string }>;
   sampling_method: string;
   compilation_id: string;
   program_version: number;
