@@ -41,9 +41,7 @@ PUBLIC_DEMO_MESSAGE = (
 
 
 def public_demo_enabled() -> bool:
-    return os.getenv("EVIDUE_PUBLIC_DEMO", "false").strip().lower() in {
-        "1", "true", "yes", "on"
-    }
+    return os.getenv("EVIDUE_PUBLIC_DEMO", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def ensure_mutation_allowed() -> None:
