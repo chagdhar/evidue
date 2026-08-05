@@ -1,6 +1,8 @@
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class StrictModel(BaseModel):
@@ -23,6 +25,46 @@ class HealthResponse(StrictModel):
 class PublicConfigResponse(StrictModel):
     beta_form_configured: bool
     beta_form_url: str | None
+    contact_form_configured: bool
+
+
+class ContactSubmissionRequest(StrictModel):
+    name: str = Field(min_length=2, max_length=100)
+    email: str = Field(min_length=5, max_length=254)
+    company: str = Field(min_length=2, max_length=120)
+    discussion_type: Literal["Product feedback", "Invoice review", "Partnership", "Other"]
+    message: str = Field(min_length=10, max_length=4_000)
+    confirmed_no_confidential_data: Literal[True]
+    attribution_source: Literal["hacker_news", "yc_demo", "direct_outreach", "unknown"]
+    campaign: Literal["railway_beta"]
+    demo_version: Literal["hn_demo"]
+    submission_id: UUID
+    browser_session_id: UUID
+    form_started_at: datetime
+    website: str = Field(default="", max_length=0)
+
+    @field_validator(
+        "name",
+        "email",
+        "company",
+        "message",
+        mode="before",
+    )
+    @classmethod
+    def strip_text(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_shape(cls, value: str) -> str:
+        local, separator, domain = value.rpartition("@")
+        if not separator or not local or "." not in domain or domain.startswith("."):
+            raise ValueError("Enter a valid email address")
+        return value
+
+
+class ContactSubmissionResponse(StrictModel):
+    accepted: bool
 
 
 class RecordedProposalValidationResponse(StrictModel):

@@ -5,7 +5,9 @@ const environment = (import.meta as ImportMeta & { env: AnalyticsEnvironment }).
 const key = environment.VITE_POSTHOG_KEY?.trim();
 const host = environment.VITE_POSTHOG_HOST?.replace(/\/$/, "").trim();
 
-type AttributionSource = "hacker_news" | "yc_demo" | "direct_outreach" | "unknown";
+export type AttributionSource = "hacker_news" | "yc_demo" | "direct_outreach" | "unknown";
+export const CONTACT_CAMPAIGN = "railway_beta" as const;
+export const DEMO_VERSION = "hn_demo" as const;
 
 function source(): AttributionSource {
   const storageKey = "evidue-attribution-source";
@@ -16,12 +18,29 @@ function source(): AttributionSource {
   return stored && allowed.has(stored) ? (stored as Exclude<AttributionSource, "unknown">) : "unknown";
 }
 
+export function contactAttribution() {
+  return {
+    attribution_source: source(),
+    campaign: CONTACT_CAMPAIGN,
+    demo_version: DEMO_VERSION,
+  };
+}
+
+export function browserSessionId(): string {
+  const storageKey = "evidue-contact-session-id";
+  const existing = sessionStorage.getItem(storageKey);
+  if (existing) return existing;
+  const identifier = crypto.randomUUID();
+  sessionStorage.setItem(storageKey, identifier);
+  return identifier;
+}
+
 /** Adds only Evidue's fixed, non-sensitive attribution values to a Tally URL. */
 export function betaFormUrl(configuredUrl: string): string {
   const url = new URL(configuredUrl);
   url.searchParams.set("source", source());
-  url.searchParams.set("campaign", "railway_beta");
-  url.searchParams.set("demo_version", "hn_demo");
+  url.searchParams.set("campaign", CONTACT_CAMPAIGN);
+  url.searchParams.set("demo_version", DEMO_VERSION);
   return url.toString();
 }
 
@@ -44,7 +63,12 @@ export function track(event: string, properties: EventProperties = {}): void {
     body: JSON.stringify({
       api_key: key,
       event,
-      properties: { distinct_id: anonymousSessionId(), source: source(), ...properties },
+      properties: {
+        distinct_id: anonymousSessionId(),
+        source: source(),
+        "$process_person_profile": false,
+        ...properties,
+      },
     }),
   }).catch(() => undefined);
 }

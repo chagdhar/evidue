@@ -8,6 +8,7 @@ fi
 UV_CACHE_DIR=/tmp/evidue-uv-cache uv run ruff format --check backend
 UV_CACHE_DIR=/tmp/evidue-uv-cache uv run ruff check backend
 python scripts/check-demo-branding.py
+node scripts/check-contact-apps-script.js
 PYTHONPATH=backend UV_CACHE_DIR=/tmp/evidue-uv-cache uv run pytest
 npm --prefix frontend run lint
 npm --prefix frontend run test

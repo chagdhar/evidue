@@ -48,7 +48,6 @@ import {
   Summary,
 } from "./api";
 import { track } from "./analytics";
-import { BetaApplicationCTA, PublicConfigProvider } from "./BetaApplicationCTA";
 import { disclosure, formatPercent, formatUsd } from "./presentation";
 
 const categoryOrder = ["R1", "R2", "R3", "R4", "R5"];
@@ -340,19 +339,6 @@ function CurrentLimitations() {
       <Typography variant="h4" id="limitations-title">Current limitations</Typography>
       <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>
     </section>
-  );
-}
-
-function ContactCta() {
-  return (
-    <Paper className="contact-cta" component="section" aria-labelledby="contact-title">
-      <Box>
-        <Typography className="eyebrow">Real invoice review</Typography>
-        <Typography variant="h4" id="contact-title">Reviewing an outcome-priced AI invoice?</Typography>
-        <Typography>Apply for the beta to share how your team verifies outcome-priced AI charges today.</Typography>
-      </Box>
-      <BetaApplicationCTA />
-    </Paper>
   );
 }
 
@@ -1429,8 +1415,7 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
   }
 
   return (
-    <PublicConfigProvider>
-      <>
+    <>
       {!embedded && <AppBar position="sticky" color="transparent" elevation={0} className="app-header">
         <Toolbar className="header-inner">
           <Typography className="wordmark">Evidue</Typography>
@@ -1519,7 +1504,6 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
           <>
             <FeaturedDispute detail={scenarioLab ? null : exampleOutcome} />
             <ReconciliationBridge summary={summary} />
-            <BetaApplicationCTA />
             {demoStatus?.public_demo && <LiveSample />}
             <Box className="trust-strip">
               <Typography>
@@ -1545,14 +1529,12 @@ export default function App({ scenarioLab = false, embedded = false }: { scenari
             <DemoInputs />
             <Methodology contract={contract} />
             <CurrentLimitations />
-            <ContactCta />
           </>
         )}
 
         {readiness && <EvidenceReadiness readiness={readiness} />}
         <ContractSummary contract={contract} publicDemo={demoStatus?.public_demo === true} />
       </Container>
-      </>
-    </PublicConfigProvider>
+    </>
   );
 }

@@ -188,12 +188,19 @@ def test_public_config_is_safe_without_google_credentials(monkeypatch):
     monkeypatch.delenv("EVIDUE_BETA_FORM_URL", raising=False)
     monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
     monkeypatch.delenv("EVIDUE_FIRESTORE_PROJECT_ID", raising=False)
-    assert public_config() == {"beta_form_configured": False, "beta_form_url": None}
+    monkeypatch.delenv("EVIDUE_CONTACT_SHEET_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("EVIDUE_CONTACT_SHEET_SECRET", raising=False)
+    assert public_config() == {
+        "beta_form_configured": False,
+        "beta_form_url": None,
+        "contact_form_configured": False,
+    }
     with TestClient(app) as client:
         assert client.get("/api/demo/status").json()["public_demo"] is True
         assert client.get("/api/public-config").json() == {
             "beta_form_configured": False,
             "beta_form_url": None,
+            "contact_form_configured": False,
         }
 
 
@@ -210,13 +217,25 @@ def test_public_config_is_safe_without_google_credentials(monkeypatch):
 )
 def test_public_config_rejects_unsafe_beta_urls(monkeypatch, configured_url):
     monkeypatch.setenv("EVIDUE_BETA_FORM_URL", configured_url)
-    assert public_config() == {"beta_form_configured": False, "beta_form_url": None}
+    monkeypatch.delenv("EVIDUE_CONTACT_SHEET_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("EVIDUE_CONTACT_SHEET_SECRET", raising=False)
+    assert public_config() == {
+        "beta_form_configured": False,
+        "beta_form_url": None,
+        "contact_form_configured": False,
+    }
 
 
 def test_public_config_allows_tally_https_url(monkeypatch):
     configured_url = "https://tally.so/r/test-form?source=hacker_news"
     monkeypatch.setenv("EVIDUE_BETA_FORM_URL", configured_url)
-    assert public_config() == {"beta_form_configured": True, "beta_form_url": configured_url}
+    monkeypatch.delenv("EVIDUE_CONTACT_SHEET_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("EVIDUE_CONTACT_SHEET_SECRET", raising=False)
+    assert public_config() == {
+        "beta_form_configured": True,
+        "beta_form_url": configured_url,
+        "contact_form_configured": False,
+    }
 
 
 def test_production_shaped_ingestion_readiness_and_source_samples():

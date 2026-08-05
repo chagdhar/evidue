@@ -35,6 +35,7 @@ import {
   Summary,
 } from "./api";
 import { DashboardShell } from "./DashboardShell";
+import { FeedbackCTA } from "./BetaApplicationCTA";
 import { disclosure, formatUsd } from "./presentation";
 
 export function ProductShell() {
@@ -334,7 +335,10 @@ export function OverviewPage() {
       </Box>
 
       <Alert severity="info" sx={{ mt: 2 }}>
-        Reviewing an outcome-priced AI invoice? Use the project contact listed with this technical preview.
+        <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }} justifyContent="space-between" spacing={1}>
+          <span>Have feedback on this technical preview or the invoice-review workflow?</span>
+          <FeedbackCTA />
+        </Stack>
       </Alert>
 
       <Box data-testid="product-story">

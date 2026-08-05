@@ -1,9 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import { ReactNode } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { track } from "./analytics";
 import LandingPage from "./LandingPage";
+import { PublicConfigProvider } from "./BetaApplicationCTA";
+
+function Wrapper({ children }: { children: ReactNode }) {
+  return <MemoryRouter><PublicConfigProvider>{children}</PublicConfigProvider></MemoryRouter>;
+}
 
 vi.mock("./analytics", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./analytics")>()),
@@ -64,12 +70,12 @@ it("states the product and financial result plainly with working launch calls to
       : url.endsWith("/api/invoices/current")
         ? invoice
         : url.endsWith("/api/public-config")
-          ? { beta_form_configured: true, beta_form_url: "https://tally.so/r/test-form" }
+          ? { beta_form_configured: true, beta_form_url: "https://tally.so/r/test-form", contact_form_configured: true }
           : summary;
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response);
   });
 
-  render(<LandingPage />, { wrapper: MemoryRouter });
+  render(<LandingPage />, { wrapper: Wrapper });
 
   expect(
     screen.getByText("Evidue checks outcome-priced AI vendor invoices against the contract and the customer’s own system evidence."),
@@ -90,6 +96,8 @@ it("states the product and financial result plainly with working launch calls to
   expect(track).toHaveBeenCalledWith("beta_form_opened");
   expect(screen.queryByText("Join the beta waitlist")).not.toBeInTheDocument();
   expect(screen.queryByText("Give feedback")).not.toBeInTheDocument();
+  expect(betaLink.closest("header")).not.toBeNull();
+  expect(document.querySelector(".landing-cta-band")).not.toBeInTheDocument();
 });
 
 it("falls back to direct contact when no beta form is configured", async () => {
@@ -100,14 +108,17 @@ it("falls back to direct contact when no beta form is configured", async () => {
       : url.endsWith("/api/invoices/current")
         ? invoice
         : url.endsWith("/api/public-config")
-          ? { beta_form_configured: false, beta_form_url: null }
+          ? { beta_form_configured: false, beta_form_url: null, contact_form_configured: true }
           : summary;
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response);
   });
 
-  render(<LandingPage />, { wrapper: MemoryRouter });
+  render(<LandingPage />, { wrapper: Wrapper });
 
-  const contact = await screen.findByRole("link", { name: "Contact Evidue" });
-  expect(contact).toHaveAttribute("href", expect.stringContaining("mailto:"));
+  const contacts = await screen.findAllByRole("link", { name: "Send product feedback" });
+  const contact = contacts.find((link) => link.closest("header"));
+  if (!contact) throw new Error("Expected feedback link in the persistent header");
+  expect(contact).toHaveAttribute("href", "/contact");
+  expect(contact.closest("header")).not.toBeNull();
   expect(screen.queryByRole("link", { name: "Apply for the Evidue beta" })).not.toBeInTheDocument();
 });

@@ -11,7 +11,7 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, DemoStatus, Invoice, Summary } from "./api";
-import { BetaApplicationCTA, PublicConfigProvider } from "./BetaApplicationCTA";
+import { BetaApplicationCTA, FeedbackCTA } from "./BetaApplicationCTA";
 import { disclosure, formatPercent, formatUsd } from "./presentation";
 import { TemplateIcon } from "./TemplateIcons";
 import { track } from "./analytics";
@@ -122,9 +122,8 @@ export default function LandingPage() {
   const categories = summary ? Object.entries(summary.categories) : [];
 
   return (
-    <PublicConfigProvider>
     <Box className="landing-page">
-      <Box className="landing-hero-shell">
+      <Box component="header" className="landing-header">
         <Container maxWidth="xl" className="landing-container">
           <Box component="nav" className="landing-nav" aria-label="Main navigation">
             <Brand />
@@ -135,12 +134,17 @@ export default function LandingPage() {
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center">
               {status?.public_demo && <Chip label="Public technical preview" size="small" className="landing-preview-chip" />}
-              <Button variant="contained" endIcon={<TemplateIcon name="arrow" size={16} />} onClick={() => navigate("/demo/invoices/current")}>
+              <BetaApplicationCTA compact />
+              <Button variant="text" endIcon={<TemplateIcon name="arrow" size={16} />} onClick={() => navigate("/demo/invoices/current")}>
                 Open workspace
               </Button>
             </Stack>
           </Box>
+        </Container>
+      </Box>
 
+      <Box className="landing-hero-shell">
+        <Container maxWidth="xl" className="landing-container">
           <Box className="landing-hero">
             <Box className="landing-hero-copy">
               <Typography className="landing-hero-eyebrow">Buyer-side control for outcome-priced AI</Typography>
@@ -257,25 +261,16 @@ export default function LandingPage() {
         </Box>
       </Container>
 
-      <Box className="landing-cta-band">
-        <Container maxWidth="xl" className="landing-container landing-cta-inner">
-          <Box>
-            <Typography>Private beta</Typography>
-            <Typography variant="h2">Apply with your current invoice-review workflow.</Typography>
-            <Typography className="landing-cta-copy">The beta form is for product research only. Do not submit confidential contract or invoice data.</Typography>
-          </Box>
-          <BetaApplicationCTA />
-        </Container>
-      </Box>
-
       <Box component="footer" className="landing-footer">
         <Container maxWidth="xl" className="landing-container">
           <Brand />
           <Typography>Independent control for outcome-priced AI invoices</Typography>
-          <Typography>Acme Commerce and Nova Support AI are fictional demonstration parties.</Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <FeedbackCTA />
+            <Typography>Acme Commerce and Nova Support AI are fictional demonstration parties.</Typography>
+          </Stack>
         </Container>
       </Box>
     </Box>
-    </PublicConfigProvider>
   );
 }

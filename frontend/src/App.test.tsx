@@ -595,7 +595,7 @@ describe("Evidue financial-decision demo", () => {
     );
     expect(screen.getByText("The LLM does not decide what gets paid.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Current limitations" })).toBeInTheDocument();
-    expect((await screen.findAllByRole("link", { name: "Apply for the Evidue beta" })).length).toBeGreaterThan(1);
+    expect(screen.queryByRole("link", { name: "Apply for the Evidue beta" })).not.toBeInTheDocument();
   });
 
   it("requests disputed claims by default after reconciliation", async () => {

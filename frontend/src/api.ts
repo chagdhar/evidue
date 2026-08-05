@@ -13,6 +13,23 @@ export type DemoStatus = {
 export type PublicConfig = {
   beta_form_configured: boolean;
   beta_form_url: string | null;
+  contact_form_configured: boolean;
+};
+
+export type ContactSubmissionPayload = {
+  name: string;
+  email: string;
+  company: string;
+  discussion_type: string;
+  message: string;
+  confirmed_no_confidential_data: true;
+  attribution_source: "hacker_news" | "yc_demo" | "direct_outreach" | "unknown";
+  campaign: "railway_beta";
+  demo_version: "hn_demo";
+  submission_id: string;
+  browser_session_id: string;
+  form_started_at: string;
+  website: string;
 };
 
 export type DemoScenario = {
@@ -309,6 +326,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   publicConfig: () => request<PublicConfig>("/public-config"),
+  createContactSubmission: (submission: ContactSubmissionPayload) =>
+    request<{ accepted: boolean }>("/contact-submissions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submission),
+    }),
   status: () => request<DemoStatus>("/demo/status"),
   scenarios: () => request<DemoScenario[]>("/demo/scenarios"),
   contract: () => request<Contract>("/contracts/current"),

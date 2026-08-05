@@ -29,6 +29,10 @@ Delivered:
 - HN-ready landing and Decision surfaces with API-derived financial messaging, a compact accounting bridge, and a featured evidence-backed dispute;
 - read-only downloads for the synthetic contract, invoice, operational events, approved rule proposal, and reconciliation package;
 - launch trust content covering the LLM boundary, rule-compilation metadata, current limitations, and a real invoice-review contact path;
+- Tally-first beta qualification plus a short native product-feedback form with configuration-aware fallback, attribution, server-enforced privacy confirmation, request limits, rate limits, minimum completion time, and duplicate protection;
+- optional private Google Sheet delivery through a TLS-verified, HMAC-signed server-only Apps Script webhook;
+- rollback-safe contact submission reservations so temporary storage failures do not consume visitor IP or browser-session allowances;
+- lazy generation and in-process caching of the complete public evidence export so startup no longer builds all 1,680 dispute details;
 - reordered outcome inspection with claim, contract obligation, deterministic rule inputs, timeline, provenance, and audit metadata.
 
 ## Current validation
@@ -41,6 +45,14 @@ Delivered:
 - Cloud Run deployment configuration: GitHub Actions YAML parsed; the Docker image built and returned a healthy `/api/health` response with `PORT=8080`.
 
 Run `./scripts/dev-check.sh full` after dependency installation to execute the repository's frontend lint, unit tests, production build, and live Playwright paths on the target machine.
+
+Launch-hardening validation (2026-08-05): the prior 89-test backend suite passed
+across the API, contact, domain, and compiler modules. The delivery-failure
+reservation fix subsequently passed its targeted backend regression; all 29
+frontend tests, ESLint, the production frontend build, demo branding, and local
+Apps Script signature, replay, timestamp, and formula-safety checks passed.
+`./scripts/dev-check.sh full` remains required on an unrestricted host to rerun
+the complete HTTP, live Playwright, and Docker checks.
 
 ## Data-retention disclosure
 

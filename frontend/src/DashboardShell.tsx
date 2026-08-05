@@ -18,6 +18,7 @@ import { ReactNode, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEvidueThemeMode } from "./templateTheme";
 import { api } from "./api";
+import { BetaApplicationCTA } from "./BetaApplicationCTA";
 
 const DRAWER_WIDTH = 252;
 
@@ -80,7 +81,9 @@ function Brand() {
 function NavigationContent({ onNavigate, publicDemo }: { onNavigate?: () => void; publicDemo: boolean }) {
   return (
     <Box className="evidue-sidebar-content">
-      <Box className="evidue-sidebar-brand"><Brand /></Box>
+      <NavLink to="/" className="evidue-home-link" aria-label="Evidue landing page" onClick={onNavigate}>
+        <Box className="evidue-sidebar-brand"><Brand /></Box>
+      </NavLink>
       <Box className="evidue-sidebar-rule" />
       <Box className="evidue-sidebar-nav">
         {navigation.filter((group) => !publicDemo || !group.secondary).map((group) => (
@@ -175,6 +178,12 @@ export function DashboardShell({ onOpenHowItWorks }: { onOpenHowItWorks: () => v
             <Box sx={{ flex: 1 }} />
             <Stack direction="row" spacing={0.75} alignItems="center">
               {publicDemo && <Chip label="Read-only preview" size="small" className="evidue-readonly-chip" />}
+              <BetaApplicationCTA compact />
+              <Tooltip title="Back to landing page">
+                <IconButton component={NavLink} to="/" aria-label="Back to landing page">
+                  <TemplateIcon name="home" />
+                </IconButton>
+              </Tooltip>
               <Tooltip title="How Evidue works">
                 <IconButton aria-label="How Evidue works" onClick={onOpenHowItWorks}>
                   <TemplateIcon name="help" />

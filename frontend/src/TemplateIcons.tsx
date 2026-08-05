@@ -3,7 +3,7 @@ import { SVGProps } from "react";
 export type TemplateIconName =
   | "dashboard" | "verify" | "preflight" | "receipt" | "shield" | "contract"
   | "ledger" | "data" | "lab" | "wallet" | "menu" | "sun" | "moon"
-  | "help" | "arrow" | "check" | "warning";
+  | "help" | "home" | "arrow" | "check" | "warning";
 
 const paths: Record<TemplateIconName, JSX.Element> = {
   dashboard: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="11" width="7" height="10" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></>,
@@ -20,6 +20,7 @@ const paths: Record<TemplateIconName, JSX.Element> = {
   sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></>,
   moon: <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>,
   help: <><circle cx="12" cy="12" r="10"/><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-.9.8-1.8 1.3-1.8 2.8M12 18h.01"/></>,
+  home: <><path d="M3 11l9-8 9 8"/><path d="M5 10v11h14V10M9 21v-7h6v7"/></>,
   arrow: <><path d="M5 12h14M13 6l6 6-6 6"/></>,
   check: <><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/></>,
   warning: <><path d="M12 3l10 18H2L12 3z"/><path d="M12 9v4M12 17h.01"/></>,

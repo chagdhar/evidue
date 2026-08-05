@@ -1,4 +1,5 @@
 import os
+import threading
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -53,6 +54,7 @@ DISCLOSURE = (
     "No real customer or vendor data is shown."
 )
 _public_evidence_package_cache: dict[str, object] | None = None
+_public_evidence_package_lock = threading.Lock()
 
 
 def initialize() -> None:
@@ -431,7 +433,6 @@ def prepare_public_demo() -> None:
         reset("headline")
     if not demo_status()["reconciled"]:
         run_reconciliation()
-    cache_public_evidence_package()
 
 
 def _source_summary(session, connector: ConnectorRow) -> dict[str, object]:
@@ -1399,16 +1400,15 @@ def all_disputes() -> list[dict[str, object]]:
 
 
 def evidence_package() -> dict[str, object]:
+    global _public_evidence_package_cache
     if _public_evidence_package_cache is not None:
         return _public_evidence_package_cache
-    disputes = all_disputes()
-    return {
-        "reconciliation": summary(),
-        "outcomes": [outcome_detail(str(row["outcome_id"])) for row in disputes],
-        "synthetic_disclosure": DISCLOSURE,
-    }
-
-
-def cache_public_evidence_package() -> None:
-    global _public_evidence_package_cache
-    _public_evidence_package_cache = evidence_package()
+    with _public_evidence_package_lock:
+        if _public_evidence_package_cache is None:
+            disputes = all_disputes()
+            _public_evidence_package_cache = {
+                "reconciliation": summary(),
+                "outcomes": [outcome_detail(str(row["outcome_id"])) for row in disputes],
+                "synthetic_disclosure": DISCLOSURE,
+            }
+    return _public_evidence_package_cache

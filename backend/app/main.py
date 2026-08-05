@@ -1,17 +1,21 @@
 import csv
 import io
+import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse, urlsplit
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
 from app.api.schemas import (
+    ContactSubmissionRequest,
+    ContactSubmissionResponse,
     ContractCompileRequest,
     DataReadinessResponse,
     DataSourceSamplesResponse,
@@ -26,7 +30,17 @@ from app.api.schemas import (
     ReconciliationSummary,
     RecordedProposalValidationResponse,
 )
+from app.contact.body_limit import ContactBodyLimitMiddleware
+from app.contact.google_sheets import contact_sheet_configured, deliver_contact_submission
+from app.contact.protection import enforce_contact_protection, release_contact_reservation
 from app.db import repository
+
+logger = logging.getLogger(__name__)
+MAX_CONTACT_REQUEST_BYTES = 24 * 1024
+PUBLIC_CONTACT_ERROR = (
+    "Your response could not be submitted right now. "
+    "Please try again or use the email contact option."
+)
 
 
 @asynccontextmanager
@@ -41,6 +55,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Evidue", version="0.1.0", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+app.add_middleware(ContactBodyLimitMiddleware, max_bytes=MAX_CONTACT_REQUEST_BYTES)
 
 DEMO_INPUTS = {
     "contract": (
@@ -101,6 +116,9 @@ async def security_and_cache_headers(request, call_next):
         + "; base-uri 'self'; frame-ancestors 'none'; form-action 'self' mailto:"
     )
     response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = (
         "accelerometer=(), camera=(), geolocation=(), microphone=(), payment=(), usb=()"
@@ -152,7 +170,25 @@ def public_config() -> dict[str, object]:
     return {
         "beta_form_configured": configured_url is not None,
         "beta_form_url": configured_url,
+        "contact_form_configured": contact_sheet_configured(),
     }
+
+
+@app.post("/api/contact-submissions", response_model=ContactSubmissionResponse, status_code=201)
+def create_contact_submission(
+    submission: ContactSubmissionRequest, request: Request
+) -> dict[str, bool]:
+    if not contact_sheet_configured():
+        raise HTTPException(status_code=503, detail=PUBLIC_CONTACT_ERROR)
+    reservation = enforce_contact_protection(request, submission)
+    try:
+        deliver_contact_submission(submission)
+    except RuntimeError as exc:
+        release_contact_reservation(reservation)
+        error_id = uuid.uuid4().hex
+        logger.warning("Contact delivery failed error_id=%s reason=%s", error_id, exc)
+        raise HTTPException(status_code=503, detail=PUBLIC_CONTACT_ERROR) from exc
+    return {"accepted": True}
 
 
 @app.get("/api/demo/scenarios", response_model=list[DemoScenarioResponse])
@@ -370,18 +406,25 @@ def summary_json() -> dict[str, object]:
 
 
 dist = Path(__file__).parents[2] / "frontend_dist"
+
+
+@app.head("/contact", include_in_schema=False)
+@app.get("/contact", include_in_schema=False)
+@app.get("/demo/lab", include_in_schema=False)
+@app.get("/demo/outcome-ledger", include_in_schema=False)
+@app.get("/demo/vendor-preflight", include_in_schema=False)
+@app.get("/demo/data-sources", include_in_schema=False)
+@app.get("/demo/disputes/current", include_in_schema=False)
+@app.get("/demo/contracts/current", include_in_schema=False)
+@app.get("/demo/invoices/current", include_in_schema=False)
+@app.get("/demo/invoices", include_in_schema=False)
+@app.get("/demo", include_in_schema=False)
+def frontend_page() -> FileResponse:
+    index_path = dist / "index.html"
+    if not index_path.is_file():
+        raise HTTPException(status_code=404, detail="Frontend build is unavailable")
+    return FileResponse(index_path)
+
+
 if dist.exists():
-
-    @app.get("/demo/lab", include_in_schema=False)
-    @app.get("/demo/outcome-ledger", include_in_schema=False)
-    @app.get("/demo/vendor-preflight", include_in_schema=False)
-    @app.get("/demo/data-sources", include_in_schema=False)
-    @app.get("/demo/disputes/current", include_in_schema=False)
-    @app.get("/demo/contracts/current", include_in_schema=False)
-    @app.get("/demo/invoices/current", include_in_schema=False)
-    @app.get("/demo/invoices", include_in_schema=False)
-    @app.get("/demo", include_in_schema=False)
-    def demo_page() -> FileResponse:
-        return FileResponse(dist / "index.html")
-
     app.mount("/", StaticFiles(directory=dist, html=True), name="frontend")

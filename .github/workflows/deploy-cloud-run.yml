@@ -27,7 +27,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: uv run ruff format --check backend
       - run: uv run ruff check backend
-      - run: uv run pytest backend/tests/test_api.py backend/tests/test_domain.py backend/tests/test_rule_compiler.py
+      - run: uv run pytest backend/tests
       - run: npm ci
         working-directory: frontend
       - run: npm run lint && npm run test && npm run build
@@ -78,7 +78,7 @@ jobs:
             --cpu-boost \
             --port 8080 \
             --service-account "evidue-runtime@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
-            --set-env-vars "EVIDUE_PUBLIC_DEMO=true,EVIDUE_DB_PATH=/app/data/evidue.db,EVIDUE_FIRESTORE_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},POSTHOG_HOST=${{ vars.VITE_POSTHOG_HOST }}" \
+            --set-env-vars "EVIDUE_PUBLIC_DEMO=true,EVIDUE_DB_PATH=/app/data/evidue.db,POSTHOG_HOST=${{ vars.VITE_POSTHOG_HOST }}" \
             --startup-probe "httpGet.path=/api/health,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=10,failureThreshold=10"
 
       - name: Smoke test deployed public demo
