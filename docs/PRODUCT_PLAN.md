@@ -8,6 +8,19 @@ The demo stays on `main`. Everything on `product` must work toward a
 single goal: **one real invoice, reconciled against real evidence, with a
 customer who confirms the output is valuable.**
 
+## Implementation invariants
+
+The demo and pilot share deterministic domain code only. They use separate
+persistence, and every `/api/pilot/*` route is disabled until a strong
+`EVIDUE_PILOT_TOKEN` is configured. Pilot uploads, contracts, invoices,
+evidence, matches, and reconciliation runs must never be read by demo queries
+or deleted by demo reset operations.
+
+Real-data lineage is preserved as: raw source record → versioned normalization
+→ accepted/manual match → deterministic determination. Heuristic composite
+matches are suggestions only and cannot affect money until an operator
+confirms them. Reconciliation runs are append-only.
+
 ---
 
 ## What we keep untouched
@@ -183,12 +196,12 @@ POST /api/pilot/identity-map   — upload identity mapping CSV
 GET  /api/pilot/status         — ingestion status and match summary
 ```
 
-These are `multipart/form-data` file uploads. Not authenticated API
-integrations. Not webhooks. Files.
+These are operator-assisted, token-authenticated `multipart/form-data`
+file uploads. They are not public endpoints, API integrations, or webhooks.
 
-The demo routes (`/api/demo/*`) remain untouched. The product routes
-are a parallel path that feeds into the same database tables and the
-same reconciliation endpoint.
+The demo routes (`/api/demo/*`) remain untouched. The product routes are a
+parallel path backed by a separate pilot database. They share the domain engine
+but not unscoped persisted data or the demo reconciliation function.
 
 ### 1.2 Parsers
 
@@ -263,11 +276,12 @@ after Gate A and can hardcode the mapping for that one system.
 
 ### 1.4 What changes in the database
 
-The existing `OutcomeClaimRow` and `OperationalEventRow` tables already
-have the right schema for the domain engine. The upload path writes to
-the same tables the fixture generator writes to.
+The pilot has dedicated `PilotClaimRow`, `PilotEventRow`, and related
+`pilot_*` tables in a separate database. Repository adapters convert these rows
+to the same immutable domain objects consumed by the engine. The fixture
+generator and demo tables are never used by the pilot path.
 
-New tables needed:
+Pilot tables include:
 
 ```
 UploadRow
@@ -713,9 +727,9 @@ backend/app/
 ```
 
 The demo path (`/api/demo/*`, fixtures, demo_pipeline) stays intact.
-The product path (`/api/pilot/*`, upload, normalize, match) is
-parallel. Both paths write to the same claim and event tables and
-use the same reconciliation endpoint.
+The product path (`/api/pilot/*`, upload, normalize, match) is parallel and
+uses a separate pilot database plus an invoice-scoped reconciliation service.
+Both paths reuse the deterministic domain engine only.
 
 ---
 

@@ -55,7 +55,9 @@ class MatchResult:
     reason: str
 
 
-def _try_direct(event: MatchCandidate, claims_by_outcome: dict[str, ClaimIdentity]) -> MatchResult | None:
+def _try_direct(
+    event: MatchCandidate, claims_by_outcome: dict[str, ClaimIdentity]
+) -> MatchResult | None:
     """Match by direct outcome_id on the event."""
     if event.event_outcome_id and event.event_outcome_id in claims_by_outcome:
         return MatchResult(
@@ -92,22 +94,35 @@ def _try_identity_map(
                     outcome_id=mapping.outcome_id,
                     method="identity_map_conversation",
                     confidence=Decimal("0.9500"),
-                    reason=f"Identity map resolved conversation {key} to outcome {mapping.outcome_id}",
+                    reason=(
+                        f"Identity map resolved conversation {key} to outcome {mapping.outcome_id}"
+                    ),
                 )
 
-    # Try customer_id + account_id via map
-    customer_mappings = identity_index.get(f"cust:{event.event_customer_id}", [])
-    for mapping in customer_mappings:
-        if mapping.outcome_id and mapping.outcome_id in claims_by_outcome:
-            claim = claims_by_outcome[mapping.outcome_id]
-            if claim.customer_id == event.event_customer_id:
-                return MatchResult(
-                    event_id=event.event_id,
-                    outcome_id=mapping.outcome_id,
-                    method="identity_map_customer",
-                    confidence=Decimal("0.8500"),
-                    reason=f"Identity map resolved customer {event.event_customer_id} to outcome {mapping.outcome_id}",
-                )
+    # Customer identity alone is not authoritative: one customer can have
+    # multiple billed outcomes.  Require an exact customer+account mapping.
+    account_id = event.event_values.get("account_id", "")
+    if account_id:
+        customer_account_mappings = identity_index.get(
+            f"custacct:{event.event_customer_id}:{account_id}", []
+        )
+        valid = [
+            mapping
+            for mapping in customer_account_mappings
+            if mapping.outcome_id and mapping.outcome_id in claims_by_outcome
+        ]
+        if len(valid) == 1:
+            mapping = valid[0]
+            return MatchResult(
+                event_id=event.event_id,
+                outcome_id=mapping.outcome_id,
+                method="identity_map_customer_account",
+                confidence=Decimal("0.9500"),
+                reason=(
+                    "Identity map resolved exact customer/account pair "
+                    f"{event.event_customer_id}/{account_id} to outcome {mapping.outcome_id}"
+                ),
+            )
 
     return None
 
@@ -164,8 +179,8 @@ def build_identity_index(
     for m in mappings:
         if m.conversation_id:
             index.setdefault(m.conversation_id, []).append(m)
-        if m.customer_id:
-            index.setdefault(f"cust:{m.customer_id}", []).append(m)
+        if m.customer_id and m.account_id:
+            index.setdefault(f"custacct:{m.customer_id}:{m.account_id}", []).append(m)
     return index
 
 
@@ -190,11 +205,7 @@ def run_matching(
     for c in claims:
         claims_by_customer.setdefault(c.customer_id, []).append(c)
 
-    identity_index = (
-        build_identity_index(identity_mappings)
-        if identity_mappings
-        else {}
-    )
+    identity_index = build_identity_index(identity_mappings) if identity_mappings else {}
 
     results: list[MatchResult] = []
     direct = 0

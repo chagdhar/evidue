@@ -289,9 +289,7 @@ class UploadRejectionRow(Base):
 class ManualMatchRow(Base):
     __tablename__ = "manual_matches"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    event_id: Mapped[str] = mapped_column(
-        ForeignKey("operational_events.id"), index=True
-    )
+    event_id: Mapped[str] = mapped_column(ForeignKey("operational_events.id"), index=True)
     outcome_id: Mapped[str] = mapped_column(String, index=True)
     confirmed_by: Mapped[str] = mapped_column(String)
     confirmed_at: Mapped[datetime] = mapped_column(DateTime)

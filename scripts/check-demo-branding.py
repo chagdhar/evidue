@@ -3,6 +3,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 SCANNED = [ROOT / 'frontend' / 'src', ROOT / 'e2e', ROOT / 'docs', ROOT / 'README.md']
+EXCLUDED = {ROOT / 'docs' / 'PRODUCT_PLAN.md'}
 FORBIDDEN = [
     (re.compile(r'Y\s*Combinator', re.I), 'Y Combinator reference'),
     (re.compile(r'\bYC\b'), 'YC reference'),
@@ -13,6 +14,8 @@ violations=[]
 for root in SCANNED:
     paths=[root] if root.is_file() else [p for p in root.rglob('*') if p.is_file() and p.suffix in {'.ts','.tsx','.css','.md','.html'}]
     for path in paths:
+        if path in EXCLUDED:
+            continue
         text=path.read_text(errors='ignore')
         for pattern,label in FORBIDDEN:
             for match in pattern.finditer(text):

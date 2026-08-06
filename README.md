@@ -125,3 +125,41 @@ The vendor workspace cannot modify customer-approved rules, customer-private evi
 The interface uses a structural adaptation of Material UI's official open-source Dashboard template. See `docs/UI_TEMPLATE.md` for the source, adopted components, and Evidue-specific changes.
 
 See `docs/FINAL_REPAIR_STATUS.md` for the final ingestion-demo repair and validation record.
+
+## Isolated real-data pilot API
+
+The real-data pilot is deliberately separate from the synthetic demo:
+
+- demo data uses `data/evidue.db`;
+- pilot data uses `data/evidue-pilot.db` by default;
+- every `/api/pilot/*` endpoint requires a bearer token;
+- pilot reconciliation is scoped to one invoice and one approved contract compilation;
+- raw uploads, normalized records, identity decisions, and every reconciliation run are retained.
+
+Before starting the backend, configure a long random token:
+
+```fish
+set -x EVIDUE_PILOT_TOKEN (openssl rand -hex 32)
+```
+
+Call pilot endpoints with:
+
+```text
+Authorization: Bearer <EVIDUE_PILOT_TOKEN>
+```
+
+The operator-assisted sequence is:
+
+1. `POST /api/pilot/contract`
+2. `POST /api/pilot/contracts/{contract_id}/compile`
+3. `POST /api/pilot/compilations/{compilation_id}/approve`
+4. `POST /api/pilot/invoice`
+5. `POST /api/pilot/evidence`
+6. `POST /api/pilot/match`
+7. Review suggested/unresolved matches and confirm only defensible links.
+8. `POST /api/pilot/reconcile`
+9. Download the summary, disputes CSV, and evidence package from the run-specific export routes.
+
+Custom contracts require `GEMINI_API_KEY`; the recorded compiler proposal is accepted only for the bundled demo contract. Text and Markdown contracts work without an extra PDF library. PDF extraction is enabled when `pypdf` is installed in the runtime.
+
+Each reconciliation run is append-only. Use the comparison endpoint to show what changed after new evidence, and record the customer's review with `/api/pilot/reconciliations/{run_id}/customer-review`. This keeps engine output separate from customer acceptance evidence instead of overwriting determinations.

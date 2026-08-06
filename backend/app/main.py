@@ -34,6 +34,7 @@ from app.contact.body_limit import ContactBodyLimitMiddleware
 from app.contact.google_sheets import contact_sheet_configured, deliver_contact_submission
 from app.contact.protection import enforce_contact_protection, release_contact_reservation
 from app.db import repository
+from app.upload.pilot_db import initialize_pilot_database
 from app.upload.router import router as pilot_router
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ PUBLIC_CONTACT_ERROR = (
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     repository.initialize()
+    initialize_pilot_database()
     if public_demo_enabled():
         repository.prepare_public_demo()
     elif not repository.demo_status()["seeded"]:
