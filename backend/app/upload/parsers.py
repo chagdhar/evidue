@@ -11,7 +11,7 @@ import hashlib
 import io
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -48,19 +48,29 @@ _TIMESTAMP_FORMATS = [
 ]
 
 
-def _parse_timestamp(value: str) -> datetime | None:
+def _parse_timestamp(value: str) -> datetime:
     value = value.strip()
-    if not value:
-        return None
-    for fmt in _TIMESTAMP_FORMATS:
-        try:
-            return datetime.strptime(value, fmt).replace(tzinfo=None)
-        except ValueError:
-            continue
+
     try:
-        return datetime.fromisoformat(value).replace(tzinfo=None)
-    except (ValueError, TypeError):
-        return None
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        parsed = None
+
+    if parsed is None:
+        for fmt in _TIMESTAMP_FORMATS:
+            try:
+                parsed = datetime.strptime(value, fmt).replace(tzinfo=UTC)
+                break
+            except ValueError:
+                continue
+
+    if parsed is None:
+        raise ValueError(f"Invalid timestamp: {value}")
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+
+    return parsed.astimezone(UTC).replace(tzinfo=None)
 
 
 def _parse_decimal(value: str) -> Decimal | None:
@@ -72,7 +82,7 @@ def _parse_decimal(value: str) -> Decimal | None:
 
 def _payload_hash(raw: dict[str, Any]) -> str:
     serialized = json.dumps(raw, sort_keys=True, default=str)
-    return f"sha256:{hashlib.sha256(serialized.encode()).hexdigest()[:32]}"
+    return f"sha256:{hashlib.sha256(serialized.encode()).hexdigest()}"
 
 
 def _normalize_key(key: str) -> str:
@@ -82,9 +92,7 @@ def _normalize_key(key: str) -> str:
     return key.strip().lower().replace(" ", "_").replace("-", "_")
 
 
-def _build_column_map(
-    headers: list[str], aliases: dict[str, list[str]]
-) -> dict[str, str | None]:
+def _build_column_map(headers: list[str], aliases: dict[str, list[str]]) -> dict[str, str | None]:
     """Map canonical field names to the actual CSV column headers.
 
     *aliases* maps canonical name → list of acceptable column names.
@@ -189,7 +197,13 @@ def parse_invoice_csv(content: str | bytes) -> ParseResult:
     if col_map["outcome_id"] is None:
         return ParseResult(
             [],
-            [RejectedRow(0, f"Missing required column 'outcome_id'. Found: {reader.fieldnames}", {})],
+            [
+                RejectedRow(
+                    0,
+                    f"Missing required column 'outcome_id'. Found: {reader.fieldnames}",
+                    {},
+                )
+            ],
         )
 
     accepted: list[ParsedRow] = []
@@ -210,10 +224,13 @@ def parse_invoice_csv(content: str | bytes) -> ParseResult:
             continue
 
         amount_str = raw.get(col_map["billed_amount"] or "", "").strip()
-        billed_amount = _parse_decimal(amount_str) if amount_str else Decimal("1.50")
-        if billed_amount is None:
+        if not amount_str:
+            rejected.append(RejectedRow(row_num, "Missing billed_amount", dict(raw)))
+            continue
+        billed_amount = _parse_decimal(amount_str)
+        if billed_amount is None or not billed_amount.is_finite() or billed_amount < 0:
             rejected.append(
-                RejectedRow(row_num, f"Unparseable amount: '{amount_str}'", dict(raw))
+                RejectedRow(row_num, f"Unparseable or negative amount: '{amount_str}'", dict(raw))
             )
             continue
 
@@ -224,9 +241,12 @@ def parse_invoice_csv(content: str | bytes) -> ParseResult:
 
         claim_id = raw.get(col_map["vendor_claim_id"] or "", "").strip() or f"CLM-{outcome_id}"
         account_id = raw.get(col_map["account_id"] or "", "").strip() or ""
-        intent = raw.get(col_map["intent"] or "", "").strip() or "unknown"
+        intent = raw.get(col_map["intent"] or "", "").strip()
+        if not intent:
+            rejected.append(RejectedRow(row_num, "Missing claimed outcome type/intent", dict(raw)))
+            continue
         expected_action = raw.get(col_map["expected_action"] or "", "").strip() or intent
-        vendor_claim = raw.get(col_map["vendor_claim"] or "", "").strip() or "resolved"
+        vendor_claim = raw.get(col_map["vendor_claim"] or "", "").strip() or "claimed"
         conversation_id = raw.get(col_map["conversation_id"] or "", "").strip() or ""
         agent_version = raw.get(col_map["agent_version"] or "", "").strip() or "unknown"
 
@@ -313,9 +333,9 @@ def _parse_evidence_record(
         # Direct field lookup for JSON sources
         for alias in EVIDENCE_COLUMN_ALIASES.get(canonical, [canonical]):
             key = _normalize_key(alias)
-            for raw_key in raw:
+            for raw_key, raw_value in raw.items():
                 if _normalize_key(raw_key) == key:
-                    return str(raw[raw_key]).strip()
+                    return str(raw_value).strip()
         return ""
 
     ts_str = _get("timestamp")
@@ -327,9 +347,11 @@ def _parse_evidence_record(
     if not customer_id:
         return RejectedRow(row_num, "Missing customer_id", dict(raw))
 
-    event_type = _get("event_type") or "unknown"
+    event_type = _get("event_type")
+    if not event_type:
+        return RejectedRow(row_num, "Missing event_type", dict(raw))
     outcome_id = _get("outcome_id") or None
-    event_id = _get("event_id") or f"{source_type}-{row_num}"
+    event_id = _get("event_id") or _payload_hash(dict(raw)).split(":", 1)[1]
     account_id = _get("account_id")
     action = _get("action")
 
@@ -485,11 +507,13 @@ def parse_identity_map_csv(content: str | bytes) -> ParseResult:
     if mapped_count < 2:
         return ParseResult(
             [],
-            [RejectedRow(
-                0,
-                f"Need at least 2 recognized identity columns. Found: {reader.fieldnames}",
-                {},
-            )],
+            [
+                RejectedRow(
+                    0,
+                    f"Need at least 2 recognized identity columns. Found: {reader.fieldnames}",
+                    {},
+                )
+            ],
         )
 
     accepted: list[ParsedRow] = []
