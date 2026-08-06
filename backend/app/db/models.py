@@ -242,3 +242,57 @@ class EvidenceReferenceRow(Base):
     )
     event_id: Mapped[str] = mapped_column(ForeignKey("operational_events.id"))
     purpose: Mapped[str] = mapped_column(String)
+
+
+# ---------------------------------------------------------------------------
+# Product-path models (pilot upload, matching, review)
+# ---------------------------------------------------------------------------
+
+
+class PilotStateRow(Base):
+    """Singleton row tracking whether the pilot path has been initialized."""
+
+    __tablename__ = "pilot_state"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    initialized: Mapped[bool] = mapped_column(Boolean, default=False)
+    invoice_uploaded: Mapped[bool] = mapped_column(Boolean, default=False)
+    evidence_uploaded: Mapped[bool] = mapped_column(Boolean, default=False)
+    matching_complete: Mapped[bool] = mapped_column(Boolean, default=False)
+    reconciled: Mapped[bool] = mapped_column(Boolean, default=False)
+    active_invoice_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    active_contract_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class UploadRow(Base):
+    __tablename__ = "uploads"
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    upload_type: Mapped[str] = mapped_column(String, index=True)
+    filename: Mapped[str] = mapped_column(String)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String, index=True)
+    rows_parsed: Mapped[int] = mapped_column(Integer, default=0)
+    rows_accepted: Mapped[int] = mapped_column(Integer, default=0)
+    rows_rejected: Mapped[int] = mapped_column(Integer, default=0)
+    error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_type: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class UploadRejectionRow(Base):
+    __tablename__ = "upload_rejections"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    upload_id: Mapped[str] = mapped_column(ForeignKey("uploads.id"), index=True)
+    row_number: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(Text)
+    raw_data: Mapped[dict] = mapped_column(JSON)
+
+
+class ManualMatchRow(Base):
+    __tablename__ = "manual_matches"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("operational_events.id"), index=True
+    )
+    outcome_id: Mapped[str] = mapped_column(String, index=True)
+    confirmed_by: Mapped[str] = mapped_column(String)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime)
+    rationale: Mapped[str] = mapped_column(Text)
