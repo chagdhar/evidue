@@ -1,0 +1,2 @@
+customer_id,event_id,event_type,ledger_record_id,normalized_intent,occurred_at,original_outcome_id,outcome_id,values
+CUST-001081,billing_export-OUT-001381-DUPLICATE,duplicate_attribution,billing_export-OUT-001381-DUPLICATE,order_support,2026-06-02T08:36:00,OUT-001081,OUT-001381,"{""original_outcome_id"": ""OUT-001081""}"

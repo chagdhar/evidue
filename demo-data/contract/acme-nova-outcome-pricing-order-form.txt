@@ -1,0 +1,8 @@
+Synthetic contract excerpt — demonstration only
+
+Customer: Acme Commerce
+Vendor: Nova Support AI
+Billing period: 2026-06-01 through 2026-06-30
+Price: $1.50 per supported outcome
+
+A promised downstream action must complete successfully within two hours. A resolution is not billable when a human completes or materially corrects the promised work within 24 hours, or when the customer recontacts support for the same intent within seven calendar days. Evidence must match the expected account and action. Only the earliest otherwise-payable outcome is billable for the same customer and normalized intent inside the 24-hour attribution window.

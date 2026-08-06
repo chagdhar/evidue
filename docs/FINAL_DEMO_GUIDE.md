@@ -1,0 +1,85 @@
+# Final Evidue demo guide
+
+## Product truth
+
+The working wedge is **Evidue**: deterministic reconciliation of an
+outcome-priced AI-agent invoice against approved contract rules and persisted
+customer operational evidence.
+
+**Evidue Prove** is a functional vendor-side preflight using the same synthetic
+evidence fixture in this demonstration. The interface states this limitation
+explicitly. Production deployments would separate vendor-visible evidence from
+customer-private evidence, so vendor preflight would normally be less complete
+than customer verification.
+
+The **Outcome Ledger** demonstrates the shared receipt schema and neutrality
+model. It is not yet an SDK, signed registry, or production permission system.
+
+## Product demo recording path (85–95 seconds)
+
+1. **Overview — 0–15 seconds**
+   - Show the current $15,000 invoice, 50,302 collected source records, 100% evidence coverage, and the four-stage decision path.
+   - Point to the OUT-004821 example charge path.
+   - Explain that Evidue determines what the vendor earned from customer-owned evidence and approved contract rules—not a quality score.
+
+2. **Vendor Preflight — 10–25 seconds**
+   - Open Vendor Preflight.
+   - Read the visible demonstration-evidence disclosure.
+   - Run preflight.
+   - Show $15,000 proposed, $12,480 preflight-supported, and $2,520 at risk.
+   - State: “This synthetic demo uses the same evidence on both sides so the
+     mechanism is inspectable. Production evidence stores are separate.”
+
+3. **Data collection — 25–42 seconds**
+   - Open Data Sources.
+   - Show eight source systems, 100% coverage, 9,975 direct matches, and 25 secondary-key matches.
+   - Click **Inspect Payment processor**. Confirm the right-side inspector opens.
+   - Show the original rejected payment payload, normalized event, match method, confidence, schema version, and hash.
+   - State: “The records are synthetic, but they enter through the same preserve, normalize, match, and evaluate stages planned for customer data.”
+
+4. **Outcome Ledger — 38–46 seconds**
+   - Show the outcome receipt and neutrality rule.
+   - State: “A receipt supports a claim; it never declares itself payable.”
+
+5. **Evidue reconciliation — 46–67 seconds**
+   - Open Evidue reconciliation.
+   - Run reconciliation when the demo is reset.
+   - Show $15,000 submitted, $12,480 supported, and $2,520 deducted.
+   - State that explicit rules, not a model, decide the financial result.
+
+6. **Evidence — 67–84 seconds**
+   - Open OUT-004821 through the example-dispute action.
+   - Show vendor claim, processor failure, computed deadline, later human
+     completion, and $0 payable.
+
+7. **Dispute package — 84–95 seconds**
+   - Download the evidence package.
+   - End on the corrected payable amount.
+
+## Founder video
+
+The founder video is a separate one-minute founder-only video. Do not use the
+product screen recording as the founder video.
+
+## Acceptance checks
+
+- No completed results appear before reconciliation.
+- Vendor Preflight visibly discloses the shared synthetic fixture.
+- Vendor labels are provisional: `Preflight-supported amount` and
+  `Likely non-billable`.
+- Evidue reconciliation uses definitive `payable`, `disputed`, and `needs review`
+  determinations.
+- Evidue reconciliation shows evidence coverage and identifier matching before the Run button.
+- Data Sources exposes original and normalized payloads without claiming live integrations.
+- Illustrative historical invoices do not appear on the primary Overview path.
+- Every production route loads directly after browser refresh.
+- All three exports download and reconcile to 1,680 disputes and $2,520.
+
+
+## Interaction regression checks
+
+- Every source-table **Inspect** button opens the right-side source inspector, including the already-selected Payment processor row.
+- The inspector shows an explicit loading state and an explicit error state.
+- Closing and reopening the inspector works.
+- Selecting a second source replaces the record list and source metadata.
+- The Overview never exposes a payable or deduction before reconciliation runs.
