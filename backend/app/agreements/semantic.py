@@ -53,7 +53,9 @@ class SemanticFactResult(BaseModel):
 
 
 class SemanticFactExtractor(Protocol):
-    def extract(self, request: SemanticFactRequest, artifacts: dict[str, str]) -> SemanticFactResult:
+    def extract(
+        self, request: SemanticFactRequest, artifacts: dict[str, str]
+    ) -> SemanticFactResult:
         """Extract one narrow semantic fact with source citations."""
         ...
 
@@ -126,7 +128,9 @@ class GeminiSemanticFactExtractor:
             raise ValueError("Semantic minimum confidence must be between 0 and 1")
         self.timeout_seconds = timeout_seconds
 
-    def extract(self, request: SemanticFactRequest, artifacts: dict[str, str]) -> SemanticFactResult:
+    def extract(
+        self, request: SemanticFactRequest, artifacts: dict[str, str]
+    ) -> SemanticFactResult:
         if not self.api_key:
             raise RuntimeError("GEMINI_API_KEY is not configured")
         missing = set(request.artifact_ids) - set(artifacts)

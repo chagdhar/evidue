@@ -213,7 +213,9 @@ def parse_invoice_csv(
             if canonical not in INVOICE_COLUMN_ALIASES:
                 return ParseResult([], [RejectedRow(0, f"Unknown Evidue field '{canonical}'", {})])
             if actual not in headers:
-                return ParseResult([], [RejectedRow(0, f"Mapped column '{actual}' is not in the CSV", {})])
+                return ParseResult(
+                    [], [RejectedRow(0, f"Mapped column '{actual}' is not in the CSV", {})]
+                )
             col_map[canonical] = actual
 
     required = ["outcome_id", "customer_id", "intent", "closed_at", "billed_amount"]

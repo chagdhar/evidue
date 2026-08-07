@@ -140,8 +140,7 @@ def bind_proposal_to_sources(
     for clause in proposal.clauses:
         if clause.source_document_id not in source_documents:
             raise ValueError(
-                f"Clause {clause.clause_id} references unknown document "
-                f"{clause.source_document_id}"
+                f"Clause {clause.clause_id} references unknown document {clause.source_document_id}"
             )
         _, source_text = source_documents[clause.source_document_id]
         start, end = _find_exact_span(source_text, clause.source_text)
@@ -151,7 +150,9 @@ def bind_proposal_to_sources(
             raise ValueError(f"Clause {clause.clause_id} source_end does not match source text")
         text_hash = sha256(clause.source_text.encode("utf-8")).hexdigest()
         if clause.source_text_hash is not None and clause.source_text_hash != text_hash:
-            raise ValueError(f"Clause {clause.clause_id} source_text_hash does not match source text")
+            raise ValueError(
+                f"Clause {clause.clause_id} source_text_hash does not match source text"
+            )
         bound_clauses.append(
             clause.model_copy(
                 update={
@@ -343,6 +344,29 @@ def _legacy_condition(operation: str, parameters: dict[str, Any]) -> ConditionPr
     raise ValueError(f"Recorded native fixture cannot translate operation {operation}")
 
 
+_EXTERNAL_EVIDENCE_CONDITION_TYPES = frozenset(
+    {
+        "event_exists",
+        "event_absent",
+        "event_within_window",
+        "terminal_outcome",
+        "field_mismatch",
+        "count_events_exceeds",
+    }
+)
+
+
+def _needs_external_evidence(candidate: ConditionProposal) -> bool:
+    if candidate.condition_type in _EXTERNAL_EVIDENCE_CONDITION_TYPES:
+        return True
+    if candidate.condition_type in {"all_of", "any_of", "none_of"}:
+        return any(
+            _needs_external_evidence(ConditionProposal.model_validate(item))
+            for item in candidate.parameters.get("conditions", [])
+        )
+    return False
+
+
 def _recorded_source_clause(rule_id: str, contract_text: str) -> str:
     exact_by_rule = {
         "R0": "Price: $1.50 per supported outcome",
@@ -367,7 +391,9 @@ def _recorded_source_clause(rule_id: str, contract_text: str) -> str:
     }
     clause = exact_by_rule[rule_id]
     if clause not in contract_text:
-        raise ValueError(f"Recorded native source clause for {rule_id} is missing from demo contract")
+        raise ValueError(
+            f"Recorded native source clause for {rule_id} is missing from demo contract"
+        )
     return clause
 
 
@@ -390,27 +416,8 @@ def recorded_native_proposal(
         consequence = rule.consequence
         norm_type = "prohibition" if rule.operation.startswith("prohibit_") else "obligation"
         condition = _legacy_condition(rule.operation, rule.parameters)
-        external_condition_types = {
-            "event_exists",
-            "event_absent",
-            "event_within_window",
-            "terminal_outcome",
-            "field_mismatch",
-            "count_events_exceeds",
-        }
-
-        def needs_external_evidence(candidate: ConditionProposal) -> bool:
-            if candidate.condition_type in external_condition_types:
-                return True
-            if candidate.condition_type in {"all_of", "any_of", "none_of"}:
-                return any(
-                    needs_external_evidence(ConditionProposal.model_validate(item))
-                    for item in candidate.parameters.get("conditions", [])
-                )
-            return False
-
         proofs: list[ProofRequirementProposal] = []
-        if needs_external_evidence(condition):
+        if _needs_external_evidence(condition):
             proofs.append(
                 ProofRequirementProposal(
                     description=f"Evidence needed to evaluate {rule.title}",

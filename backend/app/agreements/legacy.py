@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from hashlib import sha256
 import json
+from hashlib import sha256
 from typing import Any
 
 from app.domain.models import ExecutableRule, RuleProgram
@@ -292,13 +292,16 @@ def legacy_rule_program_to_agreement_ir(program: RuleProgram) -> AgreementIR:
         )
         predicate_id = f"PREDICATE-{rule.id}"
         predicate_expression = norms[-1].condition
-        predicate_hash = "sha256:" + sha256(
-            json.dumps(
-                predicate_expression.model_dump(mode="json"),
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
+        predicate_hash = (
+            "sha256:"
+            + sha256(
+                json.dumps(
+                    predicate_expression.model_dump(mode="json"),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+        )
         predicates.append(
             AtomicPredicate(
                 id=predicate_id,

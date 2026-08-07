@@ -554,9 +554,9 @@ def test_verification_plan_is_persisted_and_versioned(prepared_pilot):
 
     with sessions() as session:
         count = session.scalar(
-            select(func.count()).select_from(PilotVerificationPlanRow).where(
-                PilotVerificationPlanRow.air_version_id == air_id
-            )
+            select(func.count())
+            .select_from(PilotVerificationPlanRow)
+            .where(PilotVerificationPlanRow.air_version_id == air_id)
         )
         assert count == 2
 
@@ -645,7 +645,13 @@ def test_agreement_bundle_persists_documents_and_rejects_relation_cycles(prepare
             "effective_from": "2026-06-01T00:00:00Z",
             "precedence": 200,
         },
-        files={"file": ("amendment.txt", "This amendment modifies the agreement and updates the controlling commercial terms for the pilot period.", "text/plain")},
+        files={
+            "file": (
+                "amendment.txt",
+                "This amendment modifies the agreement and updates the controlling commercial terms for the pilot period.",
+                "text/plain",
+            )
+        },
         headers=AUTH,
     )
     assert amendment.status_code == 200, amendment.text
@@ -675,11 +681,15 @@ def test_agreement_bundle_persists_documents_and_rejects_relation_cycles(prepare
     assert cycle.status_code == 422
     assert "circular" in cycle.json()["detail"].lower()
 
+
 # Product workflow and usability hardening ----------------------------------
 
 
 def test_sample_workspace_is_one_click_end_to_end(pilot_client):
-    client, _, = pilot_client
+    (
+        client,
+        _,
+    ) = pilot_client
     response = client.post("/api/pilot/sample/seed", headers=AUTH)
     assert response.status_code == 200, response.text
     payload = response.json()
@@ -726,7 +736,9 @@ def test_sample_workspace_is_one_click_end_to_end(pilot_client):
 
     audit = client.get("/api/pilot/audit-log", headers=AUTH)
     assert audit.status_code == 200
-    export_events = [item for item in audit.json()["events"] if item["action"] == "export.generated"]
+    export_events = [
+        item for item in audit.json()["events"] if item["action"] == "export.generated"
+    ]
     assert {item["details"]["kind"] for item in export_events} >= {
         "corrected-invoice.csv",
         "review-report.html",
@@ -735,8 +747,8 @@ def test_sample_workspace_is_one_click_end_to_end(pilot_client):
 
 def test_reconciliation_never_calls_llm_after_air_approval(prepared_pilot, monkeypatch):
     client, _, _ = prepared_pilot
-    import app.agreements.native_compiler as native_compiler
     import app.contracts.compiler as legacy_compiler
+    from app.agreements import native_compiler
 
     def forbidden(*args, **kwargs):
         raise AssertionError("LLM compiler must not run during reconciliation")
@@ -752,7 +764,12 @@ def test_reconciliation_never_calls_llm_after_air_approval(prepared_pilot, monke
         headers=AUTH,
     )
     assert uploaded.status_code == 200, uploaded.text
-    assert client.post("/api/pilot/match", params={"invoice_id": "INV-TEST-001"}, headers=AUTH).status_code == 200
+    assert (
+        client.post(
+            "/api/pilot/match", params={"invoice_id": "INV-TEST-001"}, headers=AUTH
+        ).status_code
+        == 200
+    )
     reconciled = client.post(
         "/api/pilot/reconcile", params={"invoice_id": "INV-TEST-001"}, headers=AUTH
     )
@@ -761,7 +778,10 @@ def test_reconciliation_never_calls_llm_after_air_approval(prepared_pilot, monke
 
 
 def test_pasted_contract_and_invoice_mapping_preview_are_product_friendly(pilot_client):
-    client, _, = pilot_client
+    (
+        client,
+        _,
+    ) = pilot_client
     source = (
         "Vendor earns $2.00 for each eligible completed outcome. "
         "An outcome is not billable when a human completes the promised work within 24 hours."
@@ -816,7 +836,10 @@ def test_docx_contract_ingestion_without_office_runtime(pilot_client):
     import io
     import zipfile
 
-    client, _, = pilot_client
+    (
+        client,
+        _,
+    ) = pilot_client
     contract_text = (
         "Vendor earns $1.50 for each supported outcome. "
         "A human completion within 24 hours makes the outcome non-billable."
@@ -824,7 +847,7 @@ def test_docx_contract_ingestion_without_office_runtime(pilot_client):
     xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-        '<w:body><w:p><w:r><w:t>' + contract_text + '</w:t></w:r></w:p></w:body></w:document>'
+        "<w:body><w:p><w:r><w:t>" + contract_text + "</w:t></w:r></w:p></w:body></w:document>"
     )
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
@@ -853,8 +876,9 @@ def test_docx_contract_ingestion_without_office_runtime(pilot_client):
 
 def test_workspace_tokens_enforce_database_isolation(monkeypatch, tmp_path):
     import json
-    import app.upload.pilot_db as pilot_db
+
     from app.main import app
+    from app.upload import pilot_db
 
     alpha_token = "alpha-workspace-token-that-is-long-enough"
     beta_token = "beta-workspace-token-that-is-long-enough"

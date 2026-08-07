@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
+from hashlib import sha256
 from typing import Any
 
 from .models import AgreementIR, CommercialClaim, Fact, TruthValue
@@ -41,7 +41,9 @@ def derive_facts(
         if norm is None:
             continue
         predicate = predicate_by_id.get(requirement.predicate_id)
-        automation_class = predicate.automation_class if predicate is not None else norm.automation_class
+        automation_class = (
+            predicate.automation_class if predicate is not None else norm.automation_class
+        )
         if automation_class.value in {"model_assisted", "human_attestation_required"}:
             result_truth = TruthValue.UNKNOWN
             evidence_ids: list[str] = []

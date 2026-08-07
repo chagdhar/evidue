@@ -432,9 +432,7 @@ class AgreementIR(BaseModel):
                 )
             predicate = predicate_by_id.get(requirement.predicate_id)
             if predicate is not None and predicate.norm_id != requirement.norm_id:
-                raise ValueError(
-                    f"Proof requirement {requirement.id} predicate/norm mismatch"
-                )
+                raise ValueError(f"Proof requirement {requirement.id} predicate/norm mismatch")
         for item in self.coverage:
             if item.clause_id not in known_clauses:
                 raise ValueError(f"Coverage references unknown clause {item.clause_id}")

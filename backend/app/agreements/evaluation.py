@@ -231,7 +231,6 @@ def _r7_failure(
     return None, direct
 
 
-
 def _compat_rule_id(norm: Norm) -> str | None:
     """Compatibility identifier used only while dual-running legacy and native AIR."""
 
@@ -239,6 +238,7 @@ def _compat_rule_id(norm: Norm) -> str | None:
         return norm.legacy_rule_id
     code = norm.violation_reason_code
     return code if code and code.startswith("R") and code[1:].isdigit() else None
+
 
 def _exact_violation_reason(norm: Norm, claim: OutcomeClaim) -> str:
     if _compat_rule_id(norm) == "R0":

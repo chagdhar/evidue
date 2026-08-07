@@ -10,9 +10,9 @@ creates them.
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 from decimal import Decimal
+from hashlib import sha256
 from typing import Any
 
 from .compiler_models import (
@@ -147,11 +147,14 @@ def lower_to_agreement_ir(
             for i, proof in enumerate(norm_proposal.proof_requirements):
                 predicate_id = f"PRED-{norm_proposal.id}-{i}"
                 predicate_payload = condition_expr.model_dump(mode="json")
-                predicate_hash = "sha256:" + sha256(
-                    json.dumps(
-                        predicate_payload, sort_keys=True, separators=(",", ":")
-                    ).encode("utf-8")
-                ).hexdigest()
+                predicate_hash = (
+                    "sha256:"
+                    + sha256(
+                        json.dumps(predicate_payload, sort_keys=True, separators=(",", ":")).encode(
+                            "utf-8"
+                        )
+                    ).hexdigest()
+                )
                 predicates.append(
                     AtomicPredicate(
                         id=predicate_id,
@@ -159,9 +162,7 @@ def lower_to_agreement_ir(
                         description=proof.description,
                         expression=condition_expr,
                         source_clause_ids=[clause_id],
-                        automation_class=AutomationClass(
-                            clause_proposal.automation_classification
-                        ),
+                        automation_class=AutomationClass(clause_proposal.automation_classification),
                         canonical_hash=predicate_hash,
                     )
                 )
@@ -179,7 +180,8 @@ def lower_to_agreement_ir(
                             EvidenceAuthority.SIGNED_EXECUTION_LOG,
                             EvidenceAuthority.VENDOR_TOOL_TRACE,
                         ],
-                        identity_keys=proof.identity_keys or ["invoice_id", "outcome_id", "customer_id"],
+                        identity_keys=proof.identity_keys
+                        or ["invoice_id", "outcome_id", "customer_id"],
                         required_entity_type=proof.entity_type,
                         required_fields=proof.required_fields,
                         observation_window=proof.observation_window,
@@ -633,7 +635,7 @@ def _lower_settlement_expression(settlement: SettlementProposal) -> Expression:
         )
 
     if st == "percentage":
-        ratio = Decimal(str(p["percent"])) / Decimal("100")
+        ratio = Decimal(str(p["percent"])) / Decimal(100)
         base_field = str(p.get("base_field", "billed_amount"))
         return Expression(
             operator="multiply",

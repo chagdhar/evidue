@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import fields as dataclass_fields
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.domain.engine import EVALUATED_AT, attribute_evidence
@@ -23,8 +23,22 @@ from app.domain.models import (
     OutcomeDetermination,
 )
 
-from .models import AgreementIR, CommercialClaim, EvidenceAuthority, Fact, Norm, ObligationStatus, TruthValue
-from .runtime import EvaluationContext, calculate_settlement, evaluate_expression, evaluate_norm, normalize_text
+from .models import (
+    AgreementIR,
+    CommercialClaim,
+    EvidenceAuthority,
+    Fact,
+    Norm,
+    ObligationStatus,
+    TruthValue,
+)
+from .runtime import (
+    EvaluationContext,
+    calculate_settlement,
+    evaluate_expression,
+    evaluate_norm,
+    normalize_text,
+)
 
 ZERO = Decimal("0.00")
 
@@ -119,8 +133,14 @@ def _facts_for_attribution(
     }
 
 
-def _event_ids(expression_result: Any, event_index: dict[str, OperationalEvent]) -> list[OperationalEvent]:
-    return [event_index[event_id] for event_id in expression_result.evidence_ids if event_id in event_index]
+def _event_ids(
+    expression_result: Any, event_index: dict[str, OperationalEvent]
+) -> list[OperationalEvent]:
+    return [
+        event_index[event_id]
+        for event_id in expression_result.evidence_ids
+        if event_id in event_index
+    ]
 
 
 def evaluate_claim(
@@ -187,7 +207,9 @@ def evaluate_claim(
         )
 
     if air.settlement_policies:
-        policies = [policy for policy in air.settlement_policies if policy.claim_type in {"outcome", "*"}]
+        policies = [
+            policy for policy in air.settlement_policies if policy.claim_type in {"outcome", "*"}
+        ]
         policy = policies[0] if policies else air.settlement_policies[0]
         commercial_claim = CommercialClaim(
             id=claim.outcome_id,
@@ -203,7 +225,9 @@ def evaluate_claim(
             events=context.events,
             facts=context.facts,
         )
-        settlement = calculate_settlement(commercial_claim, policy.amount_expression, settlement_context)
+        settlement = calculate_settlement(
+            commercial_claim, policy.amount_expression, settlement_context
+        )
         if settlement.status == "needs_review":
             return _line(
                 claim,
@@ -250,7 +274,7 @@ def _window(norm: Norm) -> timedelta | None:
         return None
     try:
         value = Decimal(str(spec.get("value")))
-    except Exception:
+    except (InvalidOperation, TypeError, ValueError):
         return None
     unit = str(spec.get("unit", "hours"))
     multipliers = {
@@ -296,7 +320,9 @@ def _uniqueness_decisions(
 
     decisions: dict[str, DuplicateDecision] = {}
     for claims in groups.values():
-        ordered = sorted(claims, key=lambda claim: tuple(value(claim, path) for path in order_paths))
+        ordered = sorted(
+            claims, key=lambda claim: tuple(value(claim, path) for path in order_paths)
+        )
         winner = ordered[0]
         for candidate in ordered[1:]:
             within = True if window is None else candidate.closed_at <= winner.closed_at + window

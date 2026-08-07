@@ -6,6 +6,7 @@ import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -16,18 +17,22 @@ from app.agreements.bundle import (
     DocumentRelationType,
     applicable_documents,
 )
-from app.agreements.capabilities import EvidenceCapability, EvidenceSourceDescriptor, build_verification_plan
+from app.agreements.capabilities import (
+    EvidenceCapability,
+    EvidenceSourceDescriptor,
+    build_verification_plan,
+)
 from app.agreements.facts import FACT_DERIVER_VERSION, derive_facts
 from app.agreements.models import AgreementIR, CommercialClaim, EvidenceAuthority, Expression
 from app.upload.models import (
-    PilotAIRVersionRow,
     PilotAgreementBundleRow,
     PilotAgreementDocumentRelationRow,
     PilotAgreementDocumentRow,
+    PilotAIRVersionRow,
     PilotClaimRow,
     PilotContractRow,
-    PilotEvidenceSourceDescriptorRow,
     PilotEventRow,
+    PilotEvidenceSourceDescriptorRow,
     PilotFactRow,
     PilotInvoiceRow,
     PilotProvenanceEdgeRow,
@@ -132,7 +137,12 @@ def add_document_relation(
     bundle = ensure_contract_bundle(session, contract)
     source = session.get(PilotAgreementDocumentRow, source_document_id)
     target = session.get(PilotAgreementDocumentRow, target_document_id)
-    if source is None or target is None or source.bundle_id != bundle.id or target.bundle_id != bundle.id:
+    if (
+        source is None
+        or target is None
+        or source.bundle_id != bundle.id
+        or target.bundle_id != bundle.id
+    ):
         raise ValueError("Agreement relation documents must belong to the contract bundle")
     if source.id == target.id:
         raise ValueError("Agreement relation cannot reference the same document")
@@ -226,7 +236,9 @@ def agreement_bundle_view(session: Session, contract_id: str) -> dict[str, objec
                 "id": item.id,
                 "title": item.title,
                 "effective_from": item.effective_from.isoformat(),
-                "effective_until": item.effective_until.isoformat() if item.effective_until else None,
+                "effective_until": item.effective_until.isoformat()
+                if item.effective_until
+                else None,
                 "precedence": item.precedence,
                 "source_hash": item.source_hash,
                 "effective": item.id in effective_ids,
@@ -306,7 +318,9 @@ def verification_plan_view(row: PilotVerificationPlanRow) -> dict[str, object]:
     }
 
 
-def latest_verification_plan(session: Session, air_version_id: str) -> PilotVerificationPlanRow | None:
+def latest_verification_plan(
+    session: Session, air_version_id: str
+) -> PilotVerificationPlanRow | None:
     return session.scalar(
         select(PilotVerificationPlanRow)
         .where(PilotVerificationPlanRow.air_version_id == air_version_id)
@@ -314,14 +328,17 @@ def latest_verification_plan(session: Session, air_version_id: str) -> PilotVeri
     )
 
 
-
 def _expression_event_types(expression: Expression) -> set[str]:
     event_types: set[str] = set()
     if expression.operator in {"exists_event", "not_exists_event"}:
         event_types.update(str(item) for item in expression.parameters.get("event_types", []))
     elif expression.operator == "terminal_event_outcome":
-        event_types.update(str(item) for item in expression.parameters.get("success_event_types", []))
-        event_types.update(str(item) for item in expression.parameters.get("failure_event_types", []))
+        event_types.update(
+            str(item) for item in expression.parameters.get("success_event_types", [])
+        )
+        event_types.update(
+            str(item) for item in expression.parameters.get("failure_event_types", [])
+        )
     for operand in expression.operands:
         event_types.update(_expression_event_types(operand))
     return event_types
@@ -358,8 +375,15 @@ def infer_evidence_sources(
     # allows the planner to expose when the agreement demands independent or
     # customer-side corroboration rather than silently upgrading invoice data.
     claim_fields = {
-        "invoice_id", "outcome_id", "customer_id", "intent", "vendor_claim",
-        "closed_at", "expected_action", "account_id", "billed_amount",
+        "invoice_id",
+        "outcome_id",
+        "customer_id",
+        "intent",
+        "vendor_claim",
+        "closed_at",
+        "expected_action",
+        "account_id",
+        "billed_amount",
     }
     invoice_caps: list[EvidenceCapability] = []
     for requirement in agreement.proof_requirements:
@@ -408,9 +432,10 @@ def infer_evidence_sources(
             observed_types = {event.event_type for event in source_events}
             fields = {"id", "event_type", "timestamp", "customer_id", "outcome_id", "source_system"}
             for event in source_events:
-                fields.update(str(key) for key in (event.values or {}).keys())
+                fields.update(str(key) for key in (event.values or {}))
             identity_keys = [
-                key for key in ["outcome_id", "customer_id", "account_id", "conversation_id"]
+                key
+                for key in ["outcome_id", "customer_id", "account_id", "conversation_id"]
                 if key in fields
             ]
             caps: list[EvidenceCapability] = []
@@ -471,6 +496,7 @@ def persist_auto_verification_plan(
         invoice_id=invoice_id,
     )
     return persist_verification_plan(session, air_version_id=air_version_id, sources=sources)
+
 
 def derive_and_persist_facts(
     session: Session,
@@ -553,7 +579,9 @@ def derive_and_persist_facts(
                 evaluator_version=fact.evaluator_version or FACT_DERIVER_VERSION,
                 input_hash=fact.input_hash or _hash_payload(fact.model_dump(mode="json")),
                 created_at=_now(),
-                review_status="not_required" if fact.truth.value in {"true", "false"} else "pending",
+                review_status="not_required"
+                if fact.truth.value in {"true", "false"}
+                else "pending",
             )
             session.add(row)
             session.flush()

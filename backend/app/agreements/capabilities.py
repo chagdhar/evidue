@@ -68,11 +68,18 @@ class VerificationPlan(BaseModel):
 
 def _capability_matches(requirement: ProofRequirement, capability: EvidenceCapability) -> list[str]:
     missing: list[str] = []
-    if requirement.required_entity_type and capability.entity_type != requirement.required_entity_type:
+    if (
+        requirement.required_entity_type
+        and capability.entity_type != requirement.required_entity_type
+    ):
         missing.append(f"entity_type:{requirement.required_entity_type}")
-    if requirement.required_fields and not set(requirement.required_fields).issubset(capability.fields):
+    if requirement.required_fields and not set(requirement.required_fields).issubset(
+        capability.fields
+    ):
         missing.append("required_fields")
-    if requirement.identity_keys and not (set(requirement.identity_keys) & set(capability.identity_keys)):
+    if requirement.identity_keys and not (
+        set(requirement.identity_keys) & set(capability.identity_keys)
+    ):
         missing.append("identity_keys")
     if requirement.requires_absence_proof and not capability.absence_provable:
         missing.append("absence_proof")

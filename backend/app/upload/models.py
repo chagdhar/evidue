@@ -358,7 +358,9 @@ class PilotAgreementBundleRow(Base):
     __tablename__ = "pilot_agreement_bundles"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    contract_id: Mapped[str] = mapped_column(ForeignKey("pilot_contracts.id"), unique=True, index=True)
+    contract_id: Mapped[str] = mapped_column(
+        ForeignKey("pilot_contracts.id"), unique=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 

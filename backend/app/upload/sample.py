@@ -47,16 +47,76 @@ OUT-SAMPLE-003,CUST-SAMPLE-003,ACC-SAMPLE-003,refund,2026-06-04T10:00:00,1.50,CL
 """
 
 SAMPLE_EVIDENCE_ROWS = [
-    {"event_id": "EV-S1-CLOSE", "event_type": "ai_closed", "occurred_at": "2026-06-02T08:01:00Z", "customer_id": "CUST-SAMPLE-001", "outcome_id": "OUT-SAMPLE-001"},
-    {"event_id": "EV-S1-SUCCESS", "event_type": "downstream_succeeded", "occurred_at": "2026-06-02T08:31:00Z", "customer_id": "CUST-SAMPLE-001", "outcome_id": "OUT-SAMPLE-001", "account_id": "ACC-SAMPLE-001", "action": "order_support"},
-    {"event_id": "EV-S2-CLOSE", "event_type": "ai_closed", "occurred_at": "2026-06-03T09:00:00Z", "customer_id": "CUST-SAMPLE-002", "outcome_id": "OUT-SAMPLE-002"},
-    {"event_id": "EV-S2-RECONTACT", "event_type": "customer_recontact", "occurred_at": "2026-06-04T11:00:00Z", "customer_id": "CUST-SAMPLE-002", "outcome_id": "OUT-SAMPLE-002", "intent": "refund"},
-    {"event_id": "EV-S2-HUMAN", "event_type": "human_completion", "occurred_at": "2026-06-03T12:00:00Z", "customer_id": "CUST-SAMPLE-002", "outcome_id": "OUT-SAMPLE-002", "action": "refund"},
-    {"event_id": "EV-S2-SUCCESS", "event_type": "downstream_succeeded", "occurred_at": "2026-06-03T09:30:00Z", "customer_id": "CUST-SAMPLE-002", "outcome_id": "OUT-SAMPLE-002", "account_id": "ACC-SAMPLE-002", "action": "refund"},
-    {"event_id": "EV-S2-MATCH", "event_type": "account_action_mismatch", "occurred_at": "2026-06-03T09:31:00Z", "customer_id": "CUST-SAMPLE-002", "outcome_id": "OUT-SAMPLE-002", "account_id": "ACC-SAMPLE-002", "action": "refund", "observed_account_id": "ACC-SAMPLE-002", "observed_action": "refund"},
-    {"event_id": "EV-S3-CLOSE", "event_type": "ai_closed", "occurred_at": "2026-06-04T10:00:00Z", "customer_id": "CUST-SAMPLE-003", "outcome_id": "OUT-SAMPLE-003"},
+    {
+        "event_id": "EV-S1-CLOSE",
+        "event_type": "ai_closed",
+        "occurred_at": "2026-06-02T08:01:00Z",
+        "customer_id": "CUST-SAMPLE-001",
+        "outcome_id": "OUT-SAMPLE-001",
+    },
+    {
+        "event_id": "EV-S1-SUCCESS",
+        "event_type": "downstream_succeeded",
+        "occurred_at": "2026-06-02T08:31:00Z",
+        "customer_id": "CUST-SAMPLE-001",
+        "outcome_id": "OUT-SAMPLE-001",
+        "account_id": "ACC-SAMPLE-001",
+        "action": "order_support",
+    },
+    {
+        "event_id": "EV-S2-CLOSE",
+        "event_type": "ai_closed",
+        "occurred_at": "2026-06-03T09:00:00Z",
+        "customer_id": "CUST-SAMPLE-002",
+        "outcome_id": "OUT-SAMPLE-002",
+    },
+    {
+        "event_id": "EV-S2-RECONTACT",
+        "event_type": "customer_recontact",
+        "occurred_at": "2026-06-04T11:00:00Z",
+        "customer_id": "CUST-SAMPLE-002",
+        "outcome_id": "OUT-SAMPLE-002",
+        "intent": "refund",
+    },
+    {
+        "event_id": "EV-S2-HUMAN",
+        "event_type": "human_completion",
+        "occurred_at": "2026-06-03T12:00:00Z",
+        "customer_id": "CUST-SAMPLE-002",
+        "outcome_id": "OUT-SAMPLE-002",
+        "action": "refund",
+    },
+    {
+        "event_id": "EV-S2-SUCCESS",
+        "event_type": "downstream_succeeded",
+        "occurred_at": "2026-06-03T09:30:00Z",
+        "customer_id": "CUST-SAMPLE-002",
+        "outcome_id": "OUT-SAMPLE-002",
+        "account_id": "ACC-SAMPLE-002",
+        "action": "refund",
+    },
+    {
+        "event_id": "EV-S2-MATCH",
+        "event_type": "account_action_mismatch",
+        "occurred_at": "2026-06-03T09:31:00Z",
+        "customer_id": "CUST-SAMPLE-002",
+        "outcome_id": "OUT-SAMPLE-002",
+        "account_id": "ACC-SAMPLE-002",
+        "action": "refund",
+        "observed_account_id": "ACC-SAMPLE-002",
+        "observed_action": "refund",
+    },
+    {
+        "event_id": "EV-S3-CLOSE",
+        "event_type": "ai_closed",
+        "occurred_at": "2026-06-04T10:00:00Z",
+        "customer_id": "CUST-SAMPLE-003",
+        "outcome_id": "OUT-SAMPLE-003",
+    },
 ]
-SAMPLE_EVIDENCE = "\n".join(json.dumps(row, separators=(",", ":")) for row in SAMPLE_EVIDENCE_ROWS) + "\n"
+SAMPLE_EVIDENCE = (
+    "\n".join(json.dumps(row, separators=(",", ":")) for row in SAMPLE_EVIDENCE_ROWS) + "\n"
+)
 
 
 def _now() -> datetime:
@@ -115,7 +175,9 @@ def seed_sample_workspace(session: Session) -> dict[str, object]:
     source_bundle_hash = sha256_text(
         json.dumps(
             {
-                "documents": {doc_id: sha256_text(doc_text) for doc_id, (_, doc_text) in sources.items()},
+                "documents": {
+                    doc_id: sha256_text(doc_text) for doc_id, (_, doc_text) in sources.items()
+                },
                 "relations": bundle["relations"],
                 "effective_at": contract.period_start.isoformat(),
             },

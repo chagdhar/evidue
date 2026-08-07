@@ -162,7 +162,16 @@ class ConditionProposal(BaseModel):
     def validate_condition_parameters(self) -> ConditionProposal:
         p = self.parameters
         ct = self.condition_type
-        common_window = {"event_types", "anchor_field", "window_value", "window_unit", "start_exclusive", "end_exclusive", "compare_fields", "filters"}
+        common_window = {
+            "event_types",
+            "anchor_field",
+            "window_value",
+            "window_unit",
+            "start_exclusive",
+            "end_exclusive",
+            "compare_fields",
+            "filters",
+        }
         allowed: dict[str, set[str]] = {
             "field_present": {"field"},
             "field_equals": {"field", "expected_value", "normalizer"},
@@ -172,9 +181,25 @@ class ConditionProposal(BaseModel):
             "event_exists": {"event_types", "filters", "compare_fields"},
             "event_absent": {"event_types", "filters", "compare_fields", "absence_authoritative"},
             "event_within_window": common_window,
-            "terminal_outcome": {"success_types", "failure_types", "anchor_field", "window_value", "window_unit", "start_exclusive", "end_exclusive", "compare_fields", "filters"},
+            "terminal_outcome": {
+                "success_types",
+                "failure_types",
+                "anchor_field",
+                "window_value",
+                "window_unit",
+                "start_exclusive",
+                "end_exclusive",
+                "compare_fields",
+                "filters",
+            },
             "field_mismatch": {"event_type", "comparisons", "filters"},
-            "duplicate_in_window": {"group_by", "order_by", "window_value", "window_unit", "normalizers"},
+            "duplicate_in_window": {
+                "group_by",
+                "order_by",
+                "window_value",
+                "window_unit",
+                "normalizers",
+            },
             "count_events_exceeds": {"event_types", "threshold", "filters"},
             "all_of": {"conditions"},
             "any_of": {"conditions"},
@@ -214,7 +239,13 @@ class ConditionProposal(BaseModel):
                 raise ValueError("terminal_outcome requires non-empty 'success_types'")
             if not isinstance(p.get("failure_types"), list) or not p["failure_types"]:
                 raise ValueError("terminal_outcome requires non-empty 'failure_types'")
-            if "window_unit" in p and p["window_unit"] not in ("seconds", "minutes", "hours", "days", "calendar_days"):
+            if "window_unit" in p and p["window_unit"] not in (
+                "seconds",
+                "minutes",
+                "hours",
+                "days",
+                "calendar_days",
+            ):
                 raise ValueError(f"Unsupported window_unit: {p['window_unit']}")
         elif ct == "field_mismatch":
             if "event_type" not in p or "comparisons" not in p:
@@ -242,7 +273,6 @@ class ConditionProposal(BaseModel):
                     raise TypeError(f"{ct} condition {i} must be a dict")
                 ConditionProposal.model_validate(sub)
         return self
-
 
 
 class ExceptionProposal(BaseModel):
@@ -329,7 +359,10 @@ class SettlementProposal(BaseModel):
                 raise ValueError("rate_table requires 'lookup_field' and 'rates'")
             if not isinstance(p["rates"], dict) or not p["rates"]:
                 raise ValueError("rate_table 'rates' must be a non-empty dict")
-            p["rates"] = {str(key): _decimal_string(value, f"rate[{key}]") for key, value in p["rates"].items()}
+            p["rates"] = {
+                str(key): _decimal_string(value, f"rate[{key}]")
+                for key, value in p["rates"].items()
+            }
             if "default" in p:
                 p["default"] = _decimal_string(p["default"], "default")
         elif st == "tiered_rate":
@@ -341,17 +374,32 @@ class SettlementProposal(BaseModel):
             normalized: list[dict[str, str | None]] = []
             for index, tier in enumerate(p["tiers"]):
                 if not isinstance(tier, dict):
-                    raise ValueError(f"tiered_rate tier {index} must be an object")
+                    raise TypeError(f"tiered_rate tier {index} must be an object")
                 _reject_unknown_keys(tier, {"up_to", "unit_price"}, f"tiered_rate tier {index}")
                 if "unit_price" not in tier:
                     raise ValueError(f"tiered_rate tier {index} requires unit_price")
                 up_to = tier.get("up_to")
-                up_to_decimal = None if up_to is None else Decimal(_decimal_string(up_to, f"tier {index} up_to"))
+                up_to_decimal = (
+                    None
+                    if up_to is None
+                    else Decimal(_decimal_string(up_to, f"tier {index} up_to"))
+                )
                 if previous_up_to is None and index > 0:
                     raise ValueError("Only the final tier may be unbounded")
-                if up_to_decimal is not None and previous_up_to is not None and up_to_decimal <= previous_up_to:
+                if (
+                    up_to_decimal is not None
+                    and previous_up_to is not None
+                    and up_to_decimal <= previous_up_to
+                ):
                     raise ValueError("tiered_rate tiers must have increasing up_to values")
-                normalized.append({"up_to": None if up_to_decimal is None else format(up_to_decimal, "f"), "unit_price": _decimal_string(tier["unit_price"], f"tier {index} unit_price")})
+                normalized.append(
+                    {
+                        "up_to": None if up_to_decimal is None else format(up_to_decimal, "f"),
+                        "unit_price": _decimal_string(
+                            tier["unit_price"], f"tier {index} unit_price"
+                        ),
+                    }
+                )
                 previous_up_to = up_to_decimal
             p["tiers"] = normalized
         elif st == "percentage":
@@ -374,7 +422,6 @@ class SettlementProposal(BaseModel):
                 raise ValueError("deduction requires 'amount'")
             p["amount"] = _decimal_string(p["amount"], "amount")
         return self
-
 
 
 class SourceDocumentRef(BaseModel):

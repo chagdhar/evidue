@@ -101,9 +101,12 @@ def resolved_bundle_text(bundle: AgreementBundle, at: datetime) -> str:
     sections = []
     for document in documents:
         relations = relations_by_source.get(document.id, [])
-        relation_text = ", ".join(
-            f"{relation.relation.value}:{relation.target_document_id}" for relation in relations
-        ) or "none"
+        relation_text = (
+            ", ".join(
+                f"{relation.relation.value}:{relation.target_document_id}" for relation in relations
+            )
+            or "none"
+        )
         sections.append(
             f"DOCUMENT ID: {document.id}\n"
             f"TITLE: {document.title}\n"

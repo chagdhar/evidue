@@ -4,7 +4,7 @@ Status: Design baseline; core implemented in `product-complete`
 
 ## Goal
 
-Replace the legacy-domain-dependent reconciliation path with the verified contract runtime without destabilizing the current pilot or YC demo.
+Replace the legacy-domain-dependent reconciliation path with the verified contract runtime without destabilizing the current pilot or application demo.
 
 ## Migration rule
 

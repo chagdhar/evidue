@@ -8,13 +8,13 @@ workspace.
 
 from __future__ import annotations
 
-from contextvars import ContextVar, Token
-from dataclasses import dataclass
 import hmac
 import json
 import os
 import re
 from collections.abc import AsyncGenerator
+from contextvars import ContextVar, Token
+from dataclasses import dataclass
 
 from fastapi import Header, HTTPException
 
@@ -37,7 +37,9 @@ def current_actor() -> str:
     return _current_actor.get()
 
 
-def set_workspace_context(workspace_id: str, actor: str = "operator") -> tuple[Token[str], Token[str]]:
+def set_workspace_context(
+    workspace_id: str, actor: str = "operator"
+) -> tuple[Token[str], Token[str]]:
     return _current_workspace.set(workspace_id), _current_actor.set(actor)
 
 
@@ -97,7 +99,7 @@ def _resolve_principal(supplied: str) -> PilotPrincipal | None:
 async def require_pilot_access(
     authorization: str | None = Header(default=None),
     x_evidue_pilot_token: str | None = Header(default=None),
-) -> AsyncGenerator[PilotPrincipal, None]:
+) -> AsyncGenerator[PilotPrincipal]:
     supplied = x_evidue_pilot_token or ""
     if authorization and authorization.lower().startswith("bearer "):
         supplied = authorization[7:].strip()

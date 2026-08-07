@@ -9,9 +9,9 @@ review remains responsible for the semantic meaning of the source language.
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from hashlib import sha256
-import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -89,14 +89,16 @@ def _mutated_expression_payload(predicate: AtomicPredicate) -> dict[str, Any] | 
                 if isinstance(window, dict) and isinstance(window.get("value"), (int, float, str)):
                     value = window["value"]
                     try:
-                        window["value"] = str(float(value) + 1) if isinstance(value, str) else value + 1
+                        window["value"] = (
+                            str(float(value) + 1) if isinstance(value, str) else value + 1
+                        )
                     except (TypeError, ValueError):
                         pass
                     else:
                         return True
                 rates = params.get("rates")
                 if isinstance(rates, dict) and rates:
-                    key = sorted(rates)[0]
+                    key = min(rates)
                     try:
                         rates[key] = str(float(rates[key]) + 1)
                     except (TypeError, ValueError):
@@ -246,7 +248,7 @@ def assure_agreement(agreement: AgreementIR) -> CompilerAssuranceReport:
                     detail="Expression executes safely against an evidence-empty boundary context.",
                 )
             )
-        except Exception as exc:  # pragma: no cover - defensive gate
+        except (ArithmeticError, IndexError, KeyError, TypeError, ValueError) as exc:
             execution_probes.append(
                 ExecutionProbe(
                     id=f"EXEC-{predicate.id}",
@@ -324,9 +326,7 @@ def assure_agreement(agreement: AgreementIR) -> CompilerAssuranceReport:
         )
     )
 
-    hard_gate_passed = all(
-        check.status == "pass" for check in checks if check.hard_gate
-    )
+    hard_gate_passed = all(check.status == "pass" for check in checks if check.hard_gate)
     return CompilerAssuranceReport(
         agreement_id=agreement.agreement_id,
         source_hash=agreement.source_hash,

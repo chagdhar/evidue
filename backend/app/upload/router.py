@@ -10,11 +10,11 @@ import os
 import re
 import uuid
 import zipfile
-from xml.etree import ElementTree
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated, Literal
+from xml.etree import ElementTree
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
@@ -38,12 +38,12 @@ from app.upload.models import (
 )
 from app.upload.parsers import (
     ParseResult,
+    inspect_invoice_csv,
     parse_evidence_csv,
     parse_evidence_json,
     parse_evidence_jsonl,
     parse_identity_map_csv,
     parse_invoice_csv,
-    inspect_invoice_csv,
 )
 from app.upload.pilot_db import PilotSessionLocal
 from app.upload.store import (
@@ -203,9 +203,7 @@ def _extract_contract_text(filename: str, content: bytes) -> str:
             raise ValueError("PDF support requires the pypdf dependency") from exc
         try:
             reader = PdfReader(io.BytesIO(content))
-            text = "\n\n".join(
-                (page.extract_text() or "").strip() for page in reader.pages
-            ).strip()
+            text = "\n\n".join((page.extract_text() or "").strip() for page in reader.pages).strip()
         except Exception as exc:
             raise ValueError("PDF file is invalid or could not be read") from exc
         if not text:
@@ -475,8 +473,7 @@ async def upload_invoice(
         except json.JSONDecodeError as exc:
             raise HTTPException(422, "column_mapping must be a JSON object") from exc
         if not isinstance(raw_mapping, dict) or not all(
-            isinstance(key, str) and isinstance(value, str)
-            for key, value in raw_mapping.items()
+            isinstance(key, str) and isinstance(value, str) for key, value in raw_mapping.items()
         ):
             raise HTTPException(422, "column_mapping must map Evidue fields to CSV headers")
         mapping = raw_mapping
@@ -805,7 +802,9 @@ def export_evidence(run_id: str) -> Response:
     try:
         with PilotSessionLocal.begin() as session:
             payload = evidence_package(session, run_id)
-            record_audit(session, "export.generated", "reconciliation", run_id, kind="evidence.json")
+            record_audit(
+                session, "export.generated", "reconciliation", run_id, kind="evidence.json"
+            )
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     return Response(
@@ -918,17 +917,23 @@ def export_review_report(run_id: str) -> Response:
 
     cards: list[str] = []
     for row in rows:
-        clauses = "".join(
-            f"<blockquote><strong>{esc(item['id'])}</strong><br>{esc(item['text'])}</blockquote>"
-            for item in row.get("contract_clauses", [])
-        ) or "<p class='muted'>No source clause is attached to this decision.</p>"
-        events = "".join(
-            "<li>"
-            f"{esc(item['timestamp'])} · {esc(item['source_system'])} · "
-            f"{esc(item['event_type'])} · {esc(item['source_record_id'])}"
-            "</li>"
-            for item in row.get("evidence", [])
-        ) or "<li>No decisive evidence event was required or available.</li>"
+        clauses = (
+            "".join(
+                f"<blockquote><strong>{esc(item['id'])}</strong><br>{esc(item['text'])}</blockquote>"
+                for item in row.get("contract_clauses", [])
+            )
+            or "<p class='muted'>No source clause is attached to this decision.</p>"
+        )
+        events = (
+            "".join(
+                "<li>"
+                f"{esc(item['timestamp'])} · {esc(item['source_system'])} · "
+                f"{esc(item['event_type'])} · {esc(item['source_record_id'])}"
+                "</li>"
+                for item in row.get("evidence", [])
+            )
+            or "<li>No decisive evidence event was required or available.</li>"
+        )
         cards.append(
             "<section class='decision'>"
             f"<h2>{esc(row['outcome_id'])} <span class='pill'>{esc(row['status'])}</span></h2>"
@@ -951,15 +956,15 @@ h1,h2,h3{{line-height:1.2}} .summary{{display:grid;grid-template-columns:repeat(
 @media print{{body{{margin:0;max-width:none}} .decision{{break-inside:avoid}}}}
 </style></head><body>
 <h1>Evidue reconciliation review</h1>
-<p class="muted">Run {esc(run_id)} · Customer {esc(summary.get('customer'))} · Vendor {esc(summary.get('vendor'))}</p>
+<p class="muted">Run {esc(run_id)} · Customer {esc(summary.get("customer"))} · Vendor {esc(summary.get("vendor"))}</p>
 <div class="summary">
-<div class="metric">Vendor billed<b>${esc(summary['submitted_amount'])}</b></div>
-<div class="metric">Verified payable<b>${esc(summary['confirmed_payable_amount'])}</b></div>
-<div class="metric">Recommended deduction<b>${esc(summary['recommended_deduction'])}</b></div>
-<div class="metric">Needs review<b>${esc(summary['needs_review_amount'])}</b></div>
+<div class="metric">Vendor billed<b>${esc(summary["submitted_amount"])}</b></div>
+<div class="metric">Verified payable<b>${esc(summary["confirmed_payable_amount"])}</b></div>
+<div class="metric">Recommended deduction<b>${esc(summary["recommended_deduction"])}</b></div>
+<div class="metric">Needs review<b>${esc(summary["needs_review_amount"])}</b></div>
 </div>
-{''.join(cards)}
-<p class="muted">Generated from persisted reconciliation run {esc(run_id)} using approved AIR {esc(summary.get('air_version_id'))}. Needs-review lines are not financial deductions.</p>
+{"".join(cards)}
+<p class="muted">Generated from persisted reconciliation run {esc(run_id)} using approved AIR {esc(summary.get("air_version_id"))}. Needs-review lines are not financial deductions.</p>
 </body></html>"""
     return Response(
         document,
@@ -1004,9 +1009,7 @@ def seed_sample() -> dict[str, object]:
 def get_audit_log(limit: int = Query(100, ge=1, le=500)) -> dict[str, object]:
     with PilotSessionLocal() as session:
         rows = session.scalars(
-            select(PilotAuditLogRow)
-            .order_by(PilotAuditLogRow.occurred_at.desc())
-            .limit(limit)
+            select(PilotAuditLogRow).order_by(PilotAuditLogRow.occurred_at.desc()).limit(limit)
         ).all()
         return {
             "events": [
@@ -1121,7 +1124,9 @@ def compile_native_air(
                             "recorded mode is limited to the bundled demo contract"
                         )
                     if len(source_documents) != 1:
-                        raise ValueError("Recorded native mode supports only the bundled single document")
+                        raise ValueError(
+                            "Recorded native mode supports only the bundled single document"
+                        )
                     document_id, (title, text) = next(iter(source_documents.items()))
                     result = recorded_native_proposal(
                         contract_id=contract.id,
@@ -1152,8 +1157,7 @@ def compile_native_air(
             json.dumps(
                 {
                     "documents": {
-                        doc_id: sha256_text(text)
-                        for doc_id, (_, text) in source_documents.items()
+                        doc_id: sha256_text(text) for doc_id, (_, text) in source_documents.items()
                     },
                     "relations": bundle_view["relations"],
                     "effective_at": contract.period_start.isoformat(),
@@ -1364,7 +1368,9 @@ def persist_air_verification_plan(
 
     try:
         with PilotSessionLocal.begin() as session:
-            row = persist_verification_plan(session, air_version_id=version_id, sources=request.sources)
+            row = persist_verification_plan(
+                session, air_version_id=version_id, sources=request.sources
+            )
             return verification_plan_view(row)
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
@@ -1503,7 +1509,11 @@ def derive_invoice_facts(invoice_id: str, air_version_id: str = Query(...)) -> d
                 invoice_id=invoice_id,
                 air_version_id=air_version_id,
             )
-            return {"invoice_id": invoice_id, "air_version_id": air_version_id, "facts": facts_view(rows)}
+            return {
+                "invoice_id": invoice_id,
+                "air_version_id": air_version_id,
+                "facts": facts_view(rows),
+            }
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
 
@@ -1607,7 +1617,9 @@ def review_fact(fact_id: str, request: FactReviewRequest) -> dict[str, object]:
 
 
 @router.get("/invoices/{invoice_id}/facts")
-def get_invoice_facts(invoice_id: str, air_version_id: str | None = Query(None)) -> dict[str, object]:
+def get_invoice_facts(
+    invoice_id: str, air_version_id: str | None = Query(None)
+) -> dict[str, object]:
     from app.upload.agreement_store import facts_view
 
     with PilotSessionLocal() as session:
@@ -1634,4 +1646,3 @@ def get_conformance_report(contract_id: str) -> dict[str, object]:
         if raw is None:
             raise HTTPException(404, "No legacy conformance report available")
         return {"compiler_path": "legacy", "conformance": raw}
-

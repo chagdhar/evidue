@@ -7,7 +7,6 @@ import {
   CardContent,
   Checkbox,
   Chip,
-  CircularProgress,
   Collapse,
   Container,
   Divider,

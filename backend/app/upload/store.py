@@ -15,9 +15,9 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.agreements.adjudication import reconcile_agreement
+from app.agreements.assurance import assure_agreement
 from app.agreements.evaluation import dual_run
 from app.agreements.legacy import conformance_report
-from app.agreements.assurance import assure_agreement
 from app.agreements.models import AgreementIR
 from app.contracts.compiler import (
     DEFAULT_CONTRACT_PATH,
@@ -27,6 +27,7 @@ from app.contracts.compiler import (
     sha256_text,
 )
 from app.domain.models import ExecutableRule, OperationalEvent, OutcomeClaim, RuleProgram
+from app.upload.auth import current_actor, current_workspace_id
 from app.upload.match import (
     ClaimIdentity,
     IdentityMapping,
@@ -35,12 +36,12 @@ from app.upload.match import (
     run_matching,
 )
 from app.upload.models import (
-    PilotAgreementRuntimeComparisonRow,
-    PilotAuditLogRow,
-    PilotAIRVersionRow,
     PilotAgreementBundleRow,
     PilotAgreementDocumentRelationRow,
     PilotAgreementDocumentRow,
+    PilotAgreementRuntimeComparisonRow,
+    PilotAIRVersionRow,
+    PilotAuditLogRow,
     PilotClaimRow,
     PilotContractRow,
     PilotContractRuleRow,
@@ -53,8 +54,8 @@ from app.upload.models import (
     PilotIdentityMappingRow,
     PilotInvoiceRow,
     PilotManualMatchRow,
-    PilotRawRecordRow,
     PilotProvenanceEdgeRow,
+    PilotRawRecordRow,
     PilotReconciliationRunRow,
     PilotRuleCompilationRow,
     PilotStateRow,
@@ -62,7 +63,6 @@ from app.upload.models import (
     PilotUploadRow,
     PilotVerificationPlanRow,
 )
-from app.upload.auth import current_actor, current_workspace_id
 from app.upload.parsers import ParseResult
 
 PARSER_VERSION = "upload-v2"
@@ -1163,10 +1163,10 @@ def approve_air_version(
     assurance = assure_agreement(agreement)
     row.assurance_json = assurance.model_dump(mode="json")
     if not assurance.hard_gate_passed:
-        failed = [check.id for check in assurance.checks if check.hard_gate and check.status != "pass"]
-        raise ValueError(
-            "AIR compiler assurance failed: " + ", ".join(failed[:5])
-        )
+        failed = [
+            check.id for check in assurance.checks if check.hard_gate and check.status != "pass"
+        ]
+        raise ValueError("AIR compiler assurance failed: " + ", ".join(failed[:5]))
     if not report.approvable:
         raise ValueError(
             "AIR version is not approvable: "
@@ -1328,7 +1328,9 @@ def run_pilot_reconciliation(session: Session, invoice_id: str) -> dict[str, obj
         run_number=run_number,
         started_at=_now(),
         completed_at=_now(),
-        engine_version=(results[0].engine_version if results else f"air-generic-{approved_air.schema_version}"),
+        engine_version=(
+            results[0].engine_version if results else f"air-generic-{approved_air.schema_version}"
+        ),
         rule_program_version=air_row.version_number,
         normalizer_version=MAPPING_VERSION,
         matching_version=MATCHING_VERSION,
@@ -1555,34 +1557,36 @@ def reconciliation_details(session: Session, run_id: str) -> list[dict[str, obje
             for clause_id in source_clause_ids
             if clause_id in clause_by_id
         ]
-        result.append({
-            "outcome_id": row.external_outcome_id,
-            "status": row.status,
-            "rule_id": row.rule_id,
-            "reason": row.reason,
-            "billed_amount": _money(row.billed_amount),
-            "confirmed_payable_amount": _money(row.confirmed_payable_amount),
-            "confirmed_disputed_amount": _money(row.confirmed_disputed_amount),
-            "needs_review_amount": _money(row.needs_review_amount),
-            "engine_version": row.engine_version,
-            "rule_program_version": row.rule_program_version,
-            "normalizer_version": row.normalizer_version,
-            "matching_version": row.matching_version,
-            "contract_clauses": contract_clauses,
-            "evidence": [
-                {
-                    "event_id": event.id,
-                    "purpose": reference.purpose,
-                    "source_system": event.source_system,
-                    "source_record_id": event.source_record_id,
-                    "event_type": event.event_type,
-                    "timestamp": event.timestamp.isoformat(),
-                    "match_method": event.match_method,
-                    "match_confidence": f"{event.match_confidence:.4f}",
-                }
-                for reference, event in evidence_rows
-            ],
-        })
+        result.append(
+            {
+                "outcome_id": row.external_outcome_id,
+                "status": row.status,
+                "rule_id": row.rule_id,
+                "reason": row.reason,
+                "billed_amount": _money(row.billed_amount),
+                "confirmed_payable_amount": _money(row.confirmed_payable_amount),
+                "confirmed_disputed_amount": _money(row.confirmed_disputed_amount),
+                "needs_review_amount": _money(row.needs_review_amount),
+                "engine_version": row.engine_version,
+                "rule_program_version": row.rule_program_version,
+                "normalizer_version": row.normalizer_version,
+                "matching_version": row.matching_version,
+                "contract_clauses": contract_clauses,
+                "evidence": [
+                    {
+                        "event_id": event.id,
+                        "purpose": reference.purpose,
+                        "source_system": event.source_system,
+                        "source_record_id": event.source_record_id,
+                        "event_type": event.event_type,
+                        "timestamp": event.timestamp.isoformat(),
+                        "match_method": event.match_method,
+                        "match_confidence": f"{event.match_confidence:.4f}",
+                    }
+                    for reference, event in evidence_rows
+                ],
+            }
+        )
     return result
 
 

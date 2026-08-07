@@ -27,6 +27,8 @@ test("a first-time finance user can complete the protected product path", async 
   await expect(page.getByRole("button", { name: "Summary JSON" })).toBeEnabled();
 
   await page.getByRole("button", { name: "Show" }).click();
-  await expect(page.getByText("Compiler assurance")).toBeVisible();
+  await expect(
+  page.getByText("Compiler assurance", { exact: true }),
+).toBeVisible();
   await expect(page.getByText("Workspace audit history")).toBeVisible();
 });

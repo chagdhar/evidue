@@ -783,12 +783,8 @@ class TestAIRPersistence:
         proposal = _minimal_proposal()
         comp1 = f"COMP-V1X-{uuid4().hex}"
         comp2 = f"COMP-V2X-{uuid4().hex}"
-        air1, _ = lower_to_agreement_ir(
-            proposal, compilation_id=comp1, version=1, source_hash="h3"
-        )
-        air2, _ = lower_to_agreement_ir(
-            proposal, compilation_id=comp2, version=2, source_hash="h4"
-        )
+        air1, _ = lower_to_agreement_ir(proposal, compilation_id=comp1, version=1, source_hash="h3")
+        air2, _ = lower_to_agreement_ir(proposal, compilation_id=comp2, version=2, source_hash="h4")
 
         with PilotSessionLocal.begin() as session:
             contract = self._make_contract(session)
