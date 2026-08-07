@@ -1,0 +1,8 @@
+.git
+gha-creds-*.json
+.venv
+frontend/node_modules
+node_modules
+test-results
+playwright-report
+data
