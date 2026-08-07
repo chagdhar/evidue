@@ -48,6 +48,22 @@ class PilotStateRow(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class PilotWorkspaceConfigRow(Base):
+    __tablename__ = "pilot_workspace_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    company_name: Mapped[str] = mapped_column(String, default="")
+    default_vendor: Mapped[str] = mapped_column(String, default="")
+    default_currency: Mapped[str] = mapped_column(String, default="USD")
+    timezone: Mapped[str] = mapped_column(String, default="UTC")
+    date_locale: Mapped[str] = mapped_column(String, default="en-US")
+    default_contract_rate: Mapped[str] = mapped_column(String, default="")
+    preferred_support_system: Mapped[str] = mapped_column(String, default="")
+    preferred_payment_system: Mapped[str] = mapped_column(String, default="")
+    preferred_crm_system: Mapped[str] = mapped_column(String, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class PilotUploadRow(Base):
     __tablename__ = "pilot_uploads"
 

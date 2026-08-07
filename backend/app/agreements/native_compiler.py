@@ -98,7 +98,10 @@ Rules:
    Proof requirements are for facts that require external evidence, state, or
    authoritative absence/completeness guarantees.
 9. Prefer customer_system_of_record authority for operational outcome facts.
-10. Do not emit executable code, SQL, Python, Rego, JavaScript, or arbitrary AST.
+10. Respect document precedence, effective dates, amendments, supersession, and incorporation relationships supplied in METADATA. When commercial terms conflict, represent the controlling effective term rather than combining incompatible rates or conditions. If precedence is ambiguous, require human review instead of guessing.
+11. Subjective standards such as "reasonable", "material", "satisfactory", "good faith", or similar judgment language must not be silently converted into fully executable predicates unless the contract itself defines an objective measurable test.
+12. Preserve negation and exceptions exactly. "Unless", "except", "only if", "not payable", and similar language can reverse financial effect and must never be flattened into the opposite rule.
+13. Do not emit executable code, SQL, Python, Rego, JavaScript, or arbitrary AST.
 
 CONTRACT_ID: {contract_id}
 METADATA: {json.dumps(metadata, sort_keys=True)}

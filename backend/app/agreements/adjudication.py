@@ -161,6 +161,20 @@ def evaluate_claim(
     )
     event_index = {event.id: event for event in [*direct, *contradictory, *requires_review]}
 
+    settlement_currencies = {policy.currency for policy in air.settlement_policies}
+    if len(settlement_currencies) > 1:
+        return _line(
+            claim,
+            status="needs_review",
+            reason=(
+                "Approved pricing terms contain multiple currencies, but this invoice line does "
+                "not carry a contract-authorized FX conversion policy."
+            ),
+            rule_id=None,
+            evidence=direct,
+            air=air,
+        )
+
     # Identity conflicts are an evidence-layer uncertainty.  Norms can explicitly
     # reference these facts, but a contract must never silently convert ambiguous
     # attribution into a financial deduction.

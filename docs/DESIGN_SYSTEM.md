@@ -197,3 +197,39 @@ Use only short functional transitions for loading, disclosure, or selection. No 
 - Use meaningful table headings and field labels.
 - Format money consistently with tabular numerals.
 - Access keys use password inputs and are not placed in URLs.
+
+## Behavioral design principles for the pilot
+
+The protected pilot uses behavioral design to reduce hesitation and cognitive load without manipulating finance users.
+
+### 1. Make real progress visible
+
+Show the actual finance-control path persistently: agreement/rules, invoice, evidence, decision, and handoff. Progress is computed from backend state and must never award fictional completion. Completed controls recede visually; the active incomplete control receives the strongest attention.
+
+### 2. Put the financial consequence first
+
+After reconciliation, the verified payable amount is the dominant value. Charges identified for dispute and Needs review are visually distinct, because they imply different finance actions. Before reconciliation, use neutral language such as **Amount awaiting verification** rather than implying overbilling.
+
+### 3. One dominant next action
+
+Every workflow stage has one obvious action that advances the reconciliation. Secondary, destructive, and technical actions are visually subordinate. Labels describe the consequence of the action rather than using generic "Continue" copy.
+
+### 4. Use progressive disclosure for trust
+
+Finance-readable rule meaning, source clauses, decisive evidence, and dollar effects appear first. AIR identifiers, hashes, compiler checks, derived facts, and audit internals remain available behind explicit technical disclosure. Do not hide provenance; sequence it so users can form an accurate mental model before reading implementation detail.
+
+### 5. Use semantic color sparingly
+
+Deep navy frames the product and evidence blue indicates interaction. Green is reserved for supported payable/complete states, red for contract-backed disputes, and amber for unresolved review. Neutral/tinted surfaces separate work areas. Never use extra colors merely for decoration.
+
+### 6. Create completion without gamification
+
+A completed reconciliation should feel conclusively finished: show the amount finance can act on and the recommended AP/vendor handoff. Do not add streaks, points, celebratory confetti, fake urgency, or artificial scarcity to a financial-control product.
+
+### 7. Avoid dark patterns
+
+Do not use hidden defaults, confirmshaming, preselected financial approvals, fake social proof, deceptive countdowns, or exaggerated "savings" claims. Identified disputes become realized savings only after the vendor accepts or credits them.
+
+### Research basis
+
+These rules draw on established interaction-design and behavioral research, including GOV.UK task-list guidance, Baymard's research on literal progress paths and review steps, research on the endowed-progress/goal-gradient effect, business-dashboard color research showing that excessive color increases cognitive load, and human-AI trust research supporting calibrated transparency rather than either opacity or information overload.

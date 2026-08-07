@@ -26,6 +26,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/" element={<LandingPage />} />
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/pilot" element={<PilotApp />} />
+          <Route path="/pilot/config" element={<PilotApp />} />
           <Route path="/demo" element={<ProductShell />}>
             <Route index element={<OverviewPage />} />
             <Route path="invoices" element={<InvoicesPage />} />

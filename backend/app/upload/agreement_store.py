@@ -67,7 +67,7 @@ def ensure_contract_bundle(session: Session, contract: PilotContractRow) -> Pilo
         bundle_id=bundle.id,
         upload_id=contract.upload_id,
         title=contract.source_document,
-        document_type="order_form",
+        document_type="primary_agreement",
         filename=contract.source_document,
         effective_from=contract.period_start,
         effective_until=contract.period_end,
@@ -220,21 +220,105 @@ def effective_source_documents(
     return {document.id: (document.title, document.text) for document in docs}
 
 
+def agreement_bundle_internal_boundaries(
+    session: Session, contract_id: str
+) -> list[dict[str, str]]:
+    """Return governing-document effective boundaries inside the configured contract period.
+
+    The current pilot binds one approved AIR version to one configured contract period.
+    A governing document that starts or ends inside that period would require temporal
+    policy selection that this version does not silently approximate.
+    """
+    contract = session.get(PilotContractRow, contract_id)
+    if contract is None:
+        raise LookupError("Pilot contract not found")
+    bundle = ensure_contract_bundle(session, contract)
+    rows = session.scalars(
+        select(PilotAgreementDocumentRow).where(PilotAgreementDocumentRow.bundle_id == bundle.id)
+    ).all()
+    boundaries: list[dict[str, str]] = []
+    for row in rows:
+        if contract.period_start < row.effective_from < contract.period_end:
+            boundaries.append(
+                {
+                    "document_id": row.id,
+                    "title": row.title,
+                    "boundary": row.effective_from.isoformat(),
+                    "kind": "starts",
+                }
+            )
+        if (
+            row.effective_until is not None
+            and contract.period_start < row.effective_until < contract.period_end
+        ):
+            boundaries.append(
+                {
+                    "document_id": row.id,
+                    "title": row.title,
+                    "boundary": row.effective_until.isoformat(),
+                    "kind": "ends",
+                }
+            )
+    return sorted(boundaries, key=lambda item: (item["boundary"], item["title"]))
+
+
+def ensure_single_governing_period(session: Session, contract_id: str) -> None:
+    boundaries = agreement_bundle_internal_boundaries(session, contract_id)
+    if not boundaries:
+        return
+    first = boundaries[0]
+    raise ValueError(
+        "The governing agreement changes inside the configured agreement period "
+        f"({first['title']} {first['kind']} on {first['boundary'][:10]}). "
+        "This pilot intentionally fails closed rather than applying one rule set across a "
+        "mid-period contract change. Split the reconciliation into agreement periods that "
+        "each have one governing rule set, then analyze and approve each period separately."
+    )
+
+
+def agreement_bundle_source_hash(session: Session, contract_id: str) -> str:
+    """Hash the effective governing document set exactly as native compilation does."""
+    from app.contracts.compiler import sha256_text
+
+    contract = session.get(PilotContractRow, contract_id)
+    if contract is None:
+        raise LookupError("Pilot contract not found")
+    source_documents = effective_source_documents(session, contract_id, at=contract.period_start)
+    bundle = _load_bundle(session, contract_id)
+    payload = {
+        "documents": {doc_id: sha256_text(text) for doc_id, (_, text) in source_documents.items()},
+        "relations": [item.model_dump(mode="json") for item in bundle.relations],
+        "effective_at": contract.period_start.isoformat(),
+    }
+    return sha256_text(json.dumps(payload, sort_keys=True))
+
+
 def agreement_bundle_view(session: Session, contract_id: str) -> dict[str, object]:
     contract = session.get(PilotContractRow, contract_id)
     if contract is None:
         raise LookupError("Pilot contract not found")
     bundle = _load_bundle(session, contract_id)
     effective_ids = {item.id for item in applicable_documents(bundle, contract.period_start)}
+    rows = session.scalars(
+        select(PilotAgreementDocumentRow).where(PilotAgreementDocumentRow.bundle_id == bundle.id)
+    ).all()
+    metadata_by_id = {row.id: row for row in rows}
     return {
         "id": bundle.id,
         "contract_id": contract.id,
         "parties": bundle.parties,
         "effective_at": contract.period_start.isoformat(),
+        "internal_effective_boundaries": agreement_bundle_internal_boundaries(session, contract.id),
         "documents": [
             {
                 "id": item.id,
                 "title": item.title,
+                "document_type": metadata_by_id[item.id].document_type
+                if item.id in metadata_by_id
+                else "agreement",
+                "filename": metadata_by_id[item.id].filename
+                if item.id in metadata_by_id
+                else item.title,
                 "effective_from": item.effective_from.isoformat(),
                 "effective_until": item.effective_until.isoformat()
                 if item.effective_until

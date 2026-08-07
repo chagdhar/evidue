@@ -20,10 +20,12 @@ sed -i "s/^EVIDUE_PILOT_TOKEN=.*/EVIDUE_PILOT_TOKEN=$token/" .env
 ./scripts/dev.sh
 ```
 
-Open <http://localhost:5173/pilot>, enter the generated workspace access key,
-and choose **Try sample workspace** or **Use my own data**. For arbitrary
-customer contracts, also set `GEMINI_API_KEY` in `.env`; reconciliation itself
-does not require model access after an AIR version is approved.
+Open <http://localhost:5173/pilot>, enter the generated access key, and choose
+**Try sample workspace** or **Use my own data**. `/pilot/config` contains workspace
+defaults, preferred evidence systems, integration readiness, and the protected reset
+control. Secrets remain server-side and are never exposed by that page. For arbitrary
+customer contracts, also set `GEMINI_API_KEY` in `.env`; reconciliation itself does
+not require model access after an AIR version is approved.
 
 The normal-user workflow is:
 
@@ -32,10 +34,18 @@ Contract → Rules → Invoice → Evidence → Reconcile → Export
 ```
 
 Supported agreement inputs are pasted text, TXT/Markdown, DOCX, and text-based
-PDF. Invoice CSVs include a header-preview/mapping step, so customers do not
-have to rename their source columns before upload. Evidence accepts CSV, JSON,
-and JSONL. Finance exports include a corrected invoice CSV, dispute CSV,
-summary/evidence JSON, and a standalone HTML review report.
+PDF. A reconciliation can include multiple governing documents such as a master
+agreement, Order Form, SLA, additional terms, and amendments with explicit precedence
+and effective dates. If the governing document set changes after rule approval, Evidue
+invalidates the active rule version until the bundle is re-analyzed and re-approved. The
+current pilot deliberately fails closed on a governing-document change inside one configured
+reconciliation period instead of silently applying one policy across the boundary.
+
+Invoice CSVs include mapping plus finance control totals before import, so customers do not
+have to rename their source columns and can verify line count/billed total first. Evidence
+accepts CSV, JSON, and JSONL and is guided by the approved contract's proof requirements.
+Finance exports include corrected and disputed-line CSVs, a vendor-facing dispute report, a
+copyable vendor email, and advanced JSON evidence/provenance artifacts.
 
 See [docs/PRODUCT.md](docs/PRODUCT.md),
 [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md),
@@ -209,9 +219,34 @@ Each reconciliation run is append-only. Use the comparison endpoint to show what
 
 ### Product frontend
 
-Open `/pilot` to use the protected workflow without raw curl commands. The access key is stored in browser `sessionStorage` only and sent as a bearer header. The default UI is written for finance/operators: guided contract review, invoice mapping, evidence completeness, identity review, deterministic reconciliation, line-level contract/evidence provenance, and finance exports. AIR hashes, proof planning, derived facts, and audit history live under **Advanced details**.
+Open `/pilot` to use the protected workflow without raw curl commands. The access key is stored in browser `sessionStorage` only and sent as a bearer header. The default UI is written for finance/operators: guided multi-document contract review, deterministic plain-English contract rules, invoice control totals, a contract-driven evidence checklist, deterministic reconciliation, actionable line-level explanations, rerun deltas, and vendor-facing finance exports. AIR hashes, proof planning, derived facts, and audit history live under **Advanced details**. Workspace defaults and integration readiness live at `/pilot/config`; that page never reads server secrets.
 
 The compiler now treats the fixed contract rate as executable policy through `claim_amount_equals`. It also blocks approval when a material clause is ambiguous or unsupported rather than silently omitting it.
+
+
+## Real-contract compiler qualification
+
+The normal test suite proves deterministic behavior after an AIR exists. Real-contract
+qualification separately tests whether an unfamiliar commercial agreement is interpreted
+correctly before approval. The harness supports multi-document packs, reviewer-controlled
+gold financial terms, repeated live-model runs, material contract mutations, and optional
+reviewed synthetic claim/evidence scenarios that validate the complete path from real
+contract semantics to deterministic dollars.
+
+A run without reviewed, exhaustive gold can produce a structural/review report but is
+**never reported as qualified**. Likewise, provisional engineering labels cannot satisfy
+the release qualification gate. See [docs/CONTRACT_QUALIFICATION.md](docs/CONTRACT_QUALIFICATION.md).
+
+Public source definitions are catalogued under `qualification/public_sources.json`. Download
+them locally (third-party source files are ignored by Git), review/create gold labels, then
+run live qualification with a server/shell `GEMINI_API_KEY`.
+
+```bash
+python scripts/fetch_qualification_sources.py --pack sec-demandtec-target-2010
+GEMINI_API_KEY=... PYTHONPATH=backend python scripts/qualify_contract.py \
+  --pack qualification/downloaded/sec-demandtec-target-2010 \
+  --mode live --runs 3 --output /tmp/evidue-contract-qualification.json
+```
 
 
 ## Generalized agreement runtime

@@ -304,30 +304,80 @@ def parse_invoice_csv(
     return ParseResult(accepted, rejected)
 
 
-def inspect_invoice_csv(content: str | bytes) -> dict[str, Any]:
-    """Return headers, automatic field mapping, missing fields, and safe samples."""
+def inspect_invoice_csv(
+    content: str | bytes,
+    column_mapping: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Return mapping hints, safe samples, and finance control totals when mappable."""
     if isinstance(content, bytes):
         try:
-            content = content.decode("utf-8-sig")
+            decoded = content.decode("utf-8-sig")
         except UnicodeDecodeError:
             raise ValueError("Invoice CSV must be UTF-8 encoded") from None
-    reader = csv.DictReader(io.StringIO(content))
+    else:
+        decoded = content
+    reader = csv.DictReader(io.StringIO(decoded))
     if not reader.fieldnames:
         raise ValueError("Invoice CSV is empty or has no header row")
     headers = list(reader.fieldnames)
     mapping = _build_column_map(headers, INVOICE_COLUMN_ALIASES)
+    if column_mapping:
+        for canonical, actual in column_mapping.items():
+            if canonical not in INVOICE_COLUMN_ALIASES:
+                raise ValueError(f"Unknown Evidue field '{canonical}'")
+            if actual not in headers:
+                raise ValueError(f"Mapped column '{actual}' is not in the CSV")
+            mapping[canonical] = actual
     required = ["outcome_id", "customer_id", "intent", "closed_at", "billed_amount"]
     samples: list[dict[str, str]] = []
     for raw in reader:
         samples.append({str(key): str(value or "")[:200] for key, value in raw.items()})
         if len(samples) >= 5:
             break
+
+    missing = [field for field in required if mapping[field] is None]
+    control_totals: dict[str, Any] | None = None
+    if not missing:
+        parsed = parse_invoice_csv(decoded, {key: value for key, value in mapping.items() if value})
+        if parsed.accepted:
+            amounts = [Decimal(str(row.data["billed_amount"])) for row in parsed.accepted]
+            closed = [row.data["closed_at"] for row in parsed.accepted]
+            customers = {str(row.data["customer_id"]) for row in parsed.accepted}
+            outcome_counts: dict[str, int] = {}
+            for row in parsed.accepted:
+                intent = str(row.data["intent"])
+                outcome_counts[intent] = outcome_counts.get(intent, 0) + 1
+            total = len(parsed.accepted)
+            control_totals = {
+                "total_rows": total + len(parsed.rejected),
+                "accepted_rows": total,
+                "rejected_rows": len(parsed.rejected),
+                "total_billed": f"{sum(amounts, Decimal()):.2f}",
+                "unique_customers": len(customers),
+                "period_start": min(closed).isoformat(),
+                "period_end": max(closed).isoformat(),
+                "outcome_mix": [
+                    {
+                        "name": name,
+                        "count": count,
+                        "percent": round(count / total * 100, 1),
+                    }
+                    for name, count in sorted(
+                        outcome_counts.items(), key=lambda item: (-item[1], item[0])
+                    )
+                ],
+                "rejection_reasons": [
+                    {"row": item.row_number, "reason": item.reason} for item in parsed.rejected[:20]
+                ],
+            }
+
     return {
         "headers": headers,
         "auto_mapping": mapping,
         "required_fields": required,
-        "missing_required_fields": [field for field in required if mapping[field] is None],
+        "missing_required_fields": missing,
         "sample_rows": samples,
+        "control_totals": control_totals,
     }
 
 

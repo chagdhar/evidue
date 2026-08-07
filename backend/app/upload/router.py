@@ -24,6 +24,7 @@ from sqlalchemy import func, select
 from app.agreements.bundle import DocumentRelationType
 from app.agreements.capabilities import EvidenceSourceDescriptor, build_verification_plan
 from app.agreements.models import AgreementIR
+from app.agreements.presentation import agreement_finance_view
 from app.upload.auth import require_pilot_access
 from app.upload.models import (
     PilotAIRVersionRow,
@@ -75,6 +76,8 @@ from app.upload.store import (
     record_audit,
     run_identity_matching,
     run_pilot_reconciliation,
+    update_workspace_config,
+    workspace_config_view,
 )
 
 router = APIRouter(
@@ -127,6 +130,18 @@ class CustomerReviewRequest(BaseModel):
     willingness_to_pay: str = Field(default="", max_length=200)
     permission_to_quote: bool = False
     notes: str = Field(default="", max_length=4000)
+
+
+class WorkspaceConfigRequest(BaseModel):
+    company_name: str = Field(default="", max_length=200)
+    default_vendor: str = Field(default="", max_length=200)
+    default_currency: str = Field(default="USD", min_length=3, max_length=3)
+    timezone: str = Field(default="UTC", max_length=100)
+    date_locale: str = Field(default="en-US", max_length=50)
+    default_contract_rate: str = Field(default="", max_length=100)
+    preferred_support_system: str = Field(default="", max_length=200)
+    preferred_payment_system: str = Field(default="", max_length=200)
+    preferred_crm_system: str = Field(default="", max_length=200)
 
 
 class ContractTextRequest(BaseModel):
@@ -434,13 +449,27 @@ def create_verification_plan(
 
 
 @router.post("/invoice/preview")
-async def preview_invoice(file: Annotated[UploadFile, File(...)]) -> dict[str, object]:
+async def preview_invoice(
+    file: Annotated[UploadFile, File(...)],
+    column_mapping: str | None = Query(None),
+) -> dict[str, object]:
     content = await _read_upload(file)
     filename = _safe_filename(file.filename, "invoice.csv")
     if Path(filename).suffix.lower() != ".csv":
         raise HTTPException(422, "Invoice must be a CSV file")
+    mapping: dict[str, str] | None = None
+    if column_mapping:
+        try:
+            raw_mapping = json.loads(column_mapping)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(422, "column_mapping must be a JSON object") from exc
+        if not isinstance(raw_mapping, dict) or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in raw_mapping.items()
+        ):
+            raise HTTPException(422, "column_mapping must map Evidue fields to CSV headers")
+        mapping = raw_mapping
     try:
-        return inspect_invoice_csv(content)
+        return inspect_invoice_csv(content, mapping)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -940,7 +969,7 @@ def export_review_report(run_id: str) -> Response:
             f"<p><strong>Billed:</strong> ${esc(row['billed_amount'])} &nbsp; "
             f"<strong>Payable:</strong> ${esc(row['confirmed_payable_amount'])} &nbsp; "
             f"<strong>Disputed:</strong> ${esc(row['confirmed_disputed_amount'])}</p>"
-            f"<p>{esc(row['reason'])}</p>"
+            f"<p>{esc(row.get('rule_description') or row['reason'])}</p>"
             f"<p class='muted'>Approved rule: {esc(row['rule_id'] or 'settlement default')}</p>"
             "<h3>Contract source</h3>"
             f"{clauses}<h3>Evidence timeline</h3><ul>{events}</ul></section>"
@@ -960,7 +989,7 @@ h1,h2,h3{{line-height:1.2}} .summary{{display:grid;grid-template-columns:repeat(
 <div class="summary">
 <div class="metric">Vendor billed<b>${esc(summary["submitted_amount"])}</b></div>
 <div class="metric">Verified payable<b>${esc(summary["confirmed_payable_amount"])}</b></div>
-<div class="metric">Recommended deduction<b>${esc(summary["recommended_deduction"])}</b></div>
+<div class="metric">Charges identified for dispute<b>${esc(summary["recommended_deduction"])}</b></div>
 <div class="metric">Needs review<b>${esc(summary["needs_review_amount"])}</b></div>
 </div>
 {"".join(cards)}
@@ -970,6 +999,163 @@ h1,h2,h3{{line-height:1.2}} .summary{{display:grid;grid-template-columns:repeat(
         document,
         media_type="text/html",
         headers={"Content-Disposition": f'attachment; filename="{run_id}-review-report.html"'},
+    )
+
+
+@router.get("/reconciliations/{run_id}/exports/vendor-email.txt")
+def export_vendor_email(run_id: str) -> Response:
+    with PilotSessionLocal.begin() as session:
+        try:
+            summary = reconciliation_summary(session, run_id)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        record_audit(
+            session,
+            "export.generated",
+            "reconciliation",
+            run_id,
+            kind="vendor-email.txt",
+        )
+    categories = list((summary.get("categories") or {}).values())
+    subject = (
+        f"Dispute on invoice {summary['invoice_id']} — "
+        f"${summary['recommended_deduction']} of ${summary['submitted_amount']}"
+    )
+    lines = [
+        f"Subject: {subject}",
+        "",
+        f"Hello {summary.get('vendor') or 'vendor team'},",
+        "",
+        (
+            "We reconciled this invoice against the payment terms in our agreement and "
+            "the corresponding records in our systems."
+        ),
+        "",
+        f"Invoice: {summary['invoice_id']}",
+        f"Vendor billed: ${summary['submitted_amount']}",
+        f"Verified payable: ${summary['confirmed_payable_amount']}",
+        f"Charges identified for dispute: ${summary['recommended_deduction']}",
+        f"Needs review: ${summary['needs_review_amount']}",
+        "",
+        "Dispute summary:",
+    ]
+    if categories:
+        for item in categories:
+            lines.append(f"- {item['count']} claim(s), ${item['amount']}: {item['label']}")
+    else:
+        lines.append("- No disputed claims were identified.")
+    lines.extend(
+        [
+            "",
+            (
+                "Detailed disputed line items and contract/evidence references are included "
+                "in the accompanying Evidue dispute report."
+            ),
+            "",
+            "Regards,",
+            str(summary.get("customer") or "Finance team"),
+        ]
+    )
+    return Response(
+        "\n".join(lines),
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}-vendor-email.txt"'},
+    )
+
+
+@router.get("/reconciliations/{run_id}/exports/vendor-dispute.html")
+def export_vendor_dispute_report(run_id: str) -> Response:
+    with PilotSessionLocal.begin() as session:
+        try:
+            summary = reconciliation_summary(session, run_id)
+            rows = [
+                row
+                for row in reconciliation_details(session, run_id)
+                if row["status"] == "disputed"
+            ]
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        record_audit(
+            session,
+            "export.generated",
+            "reconciliation",
+            run_id,
+            kind="vendor-dispute.html",
+        )
+
+    def esc(value: object) -> str:
+        return html.escape(str(value if value is not None else ""))
+
+    grouped = (
+        "".join(
+            "<tr>"
+            f"<td>{esc(item['label'])}</td>"
+            f"<td>{esc(item['count'])}</td>"
+            f"<td>${esc(item['amount'])}</td>"
+            "</tr>"
+            for item in (summary.get("categories") or {}).values()
+        )
+        or "<tr><td colspan='3'>No disputed claims.</td></tr>"
+    )
+    detail_rows: list[str] = []
+    for row in rows:
+        source = (
+            "<br>".join(esc(item["text"]) for item in row.get("contract_clauses", []))
+            or "No source clause attached"
+        )
+        evidence = (
+            "<br>".join(
+                f"{esc(item['timestamp'])} · {esc(item['source_system'])} · "
+                f"{esc(item['event_type'])} · {esc(item['source_record_id'])}"
+                for item in row.get("evidence", [])
+            )
+            or "No decisive event required or available"
+        )
+        detail_rows.append(
+            "<tr>"
+            f"<td>{esc(row['outcome_id'])}</td>"
+            f"<td>${esc(row['billed_amount'])}</td>"
+            f"<td>${esc(row['confirmed_disputed_amount'])}</td>"
+            f"<td>{esc(row.get('rule_description') or row['reason'])}</td>"
+            f"<td>{source}</td>"
+            f"<td>{evidence}</td>"
+            "</tr>"
+        )
+    period = ""
+    if summary.get("billing_period_start") and summary.get("billing_period_end"):
+        period = (
+            f" · Billing period {esc(summary['billing_period_start'])} through "
+            f"{esc(summary['billing_period_end'])}"
+        )
+    document = f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Evidue dispute report {esc(summary["invoice_id"])}</title>
+<style>
+body{{font:14px/1.45 system-ui,sans-serif;margin:36px auto;max-width:1200px;color:#172033;padding:0 20px}}
+h1,h2{{line-height:1.2}} .muted{{color:#64748b}} .summary{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}}
+.metric{{border:1px solid #d9e0e8;border-radius:10px;padding:14px}} .metric b{{display:block;font-size:21px;margin-top:4px}}
+table{{width:100%;border-collapse:collapse;margin:14px 0 28px}} th,td{{border:1px solid #d9e0e8;padding:8px;vertical-align:top;text-align:left}} th{{background:#f8fafc}}
+.notice{{padding:12px 16px;background:#f8fafc;border-left:4px solid #0f766e}}
+@media print{{body{{margin:0;max-width:none}} .summary{{break-inside:avoid}} tr{{break-inside:avoid}}}}
+</style></head><body>
+<h1>Invoice dispute report</h1>
+<p class="muted">{esc(summary.get("customer"))} · {esc(summary.get("vendor"))} · Invoice {esc(summary["invoice_id"])}{period}</p>
+<div class="summary">
+<div class="metric">Vendor billed<b>${esc(summary["submitted_amount"])}</b></div>
+<div class="metric">Verified payable<b>${esc(summary["confirmed_payable_amount"])}</b></div>
+<div class="metric">Charges identified for dispute<b>${esc(summary["recommended_deduction"])}</b></div>
+<div class="metric">Needs review<b>${esc(summary["needs_review_amount"])}</b></div>
+</div>
+<p class="notice">We reconciled this invoice against the payment terms in the approved agreement and the corresponding records in the customer's systems. Needs-review amounts are excluded from both payable and disputed totals.</p>
+<h2>Dispute summary</h2>
+<table><thead><tr><th>Contract rule</th><th>Claims</th><th>Amount</th></tr></thead><tbody>{grouped}</tbody></table>
+<h2>Disputed line items</h2>
+<table><thead><tr><th>Outcome</th><th>Billed</th><th>Disputed</th><th>Reason</th><th>Contract source</th><th>Evidence</th></tr></thead><tbody>{"".join(detail_rows)}</tbody></table>
+<p class="muted">Generated from persisted reconciliation run {esc(run_id)} using approved rule version {esc(summary.get("air_version_id"))}. Engine {esc(summary.get("engine_version"))}.</p>
+</body></html>"""
+    return Response(
+        document,
+        media_type="text/html",
+        headers={"Content-Disposition": f'attachment; filename="{run_id}-vendor-dispute.html"'},
     )
 
 
@@ -995,6 +1181,21 @@ def get_raw_record(raw_record_id: str) -> dict[str, object]:
             "mapping_version": row.mapping_version,
             "normalization_warnings": row.normalization_warnings,
         }
+
+
+@router.get("/config")
+def get_workspace_config() -> dict[str, object]:
+    with PilotSessionLocal.begin() as session:
+        return workspace_config_view(session)
+
+
+@router.put("/config")
+def put_workspace_config(request: WorkspaceConfigRequest) -> dict[str, object]:
+    try:
+        with PilotSessionLocal.begin() as session:
+            return update_workspace_config(session, request.model_dump())
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.post("/sample/seed")
@@ -1066,7 +1267,11 @@ def compile_native_air(
         recorded_native_proposal,
     )
     from app.contracts.compiler import DEFAULT_CONTRACT_PATH, sha256_text
-    from app.upload.agreement_store import agreement_bundle_view, effective_source_documents
+    from app.upload.agreement_store import (
+        agreement_bundle_view,
+        effective_source_documents,
+        ensure_single_governing_period,
+    )
     from app.upload.store import persist_air_version
 
     with PilotSessionLocal.begin() as session:
@@ -1074,6 +1279,7 @@ def compile_native_air(
         if contract is None:
             raise HTTPException(404, "Contract not found")
         try:
+            ensure_single_governing_period(session, contract.id)
             source_documents = effective_source_documents(
                 session,
                 contract.id,
@@ -1280,6 +1486,7 @@ def get_air_version(version_id: str) -> dict[str, object]:
             "lifecycle_status": _air_lifecycle(row),
             "assurance": row.assurance_json,
             "agreement_ir": row.air_json,
+            "finance_view": agreement_finance_view(AgreementIR.model_validate(row.air_json)),
         }
 
 

@@ -82,6 +82,8 @@ export type PilotStatus = {
   initialized: boolean;
   active_contract_id: string | null;
   contract_approved: boolean;
+  approved_rules_current?: boolean;
+  approved_rules_stale?: boolean;
   active_air_version_id?: string | null;
   active_invoice_id: string | null;
   claims: number;
@@ -152,6 +154,7 @@ export type Determination = {
   status: "payable" | "disputed" | "needs_review";
   rule_id: string | null;
   reason: string;
+  rule_description?: string | null;
   billed_amount: string;
   confirmed_payable_amount: string;
   confirmed_disputed_amount: string;
@@ -189,6 +192,12 @@ export type Reconciliation = {
   confirmed_payable_amount: string;
   recommended_deduction: string;
   needs_review_amount: string;
+  currency?: string;
+  currency_consistent?: boolean;
+  identified_dispute_percent?: string;
+  billing_period_start?: string | null;
+  billing_period_end?: string | null;
+  categories?: Record<string, { label: string; count: number; amount: string }>;
   claimed_outcomes: number;
   payable_outcomes: number;
   disputed_outcomes: number;
@@ -217,9 +226,68 @@ export type CustomerReviewRequest = {
 export type InvoicePreview = {
   headers: string[];
   auto_mapping: Record<string, string | null>;
-  required: string[];
+  required_fields: string[];
   missing_required_fields: string[];
   sample_rows: Record<string, string>[];
+  control_totals?: {
+    total_rows: number;
+    accepted_rows: number;
+    rejected_rows: number;
+    total_billed: string;
+    unique_customers: number;
+    period_start: string;
+    period_end: string;
+    outcome_mix: Array<{ name: string; count: number; percent: number }>;
+    rejection_reasons: Array<{ row: number; reason: string }>;
+  } | null;
+};
+
+export type FinanceRuleView = {
+  id: string;
+  title: string;
+  description: string;
+  rule_type: string;
+  verification_method: string;
+  consequence: string;
+  source_clause_ids: string[];
+  source_clauses: Array<{ id: string; document_id: string; text: string }>;
+  evidence_needed: string[];
+  proof_requirement_ids: string[];
+  technical: Record<string, unknown>;
+};
+
+export type FinanceView = {
+  contract_rules: FinanceRuleView[];
+  pricing_terms: Array<{ id: string; description: string; currency: string; source_clause_ids: string[]; source_clauses: Array<{ id: string; document_id: string; text: string }>; technical: Record<string, unknown> }>;
+  evidence_needed: Array<{ id: string; rule_id: string; rule_description: string; description: string; fact_types: string[]; preferred_authority: string; identity_keys: string[]; required_fields: string[]; requires_complete_export: boolean; missing_evidence_effect: string }>;
+};
+
+export type WorkspaceConfig = {
+  workspace_id: string;
+  company_name: string;
+  default_vendor: string;
+  default_currency: string;
+  timezone: string;
+  date_locale: string;
+  default_contract_rate: string;
+  preferred_support_system: string;
+  preferred_payment_system: string;
+  preferred_crm_system: string;
+  updated_at: string;
+  integrations: {
+    contract_ai: { configured: boolean; provider: string; model: string; secret_location: string };
+    workspace_access: { configured: boolean; mode: string; secret_location: string };
+  };
+};
+
+export type ReconciliationDelta = {
+  invoice_id: string;
+  run_id: string;
+  prior_run_id: string;
+  changed_outcomes: number;
+  recommended_deduction_before: string;
+  recommended_deduction_after: string;
+  changes: Array<{ outcome_id: string; status_before: string | null; status_after: string | null; disputed_amount_before: string; disputed_amount_after: string; reason_before?: string | null; reason_after?: string | null }>;
 };
 
 export type CompilerAssurance = {
@@ -309,6 +377,9 @@ function query(values: Record<string, string | number | boolean | undefined>): s
 
 export const pilotApi = {
   status: () => request<PilotStatus>("/status"),
+  config: () => request<WorkspaceConfig>("/config"),
+  updateConfig: (payload: Omit<WorkspaceConfig, "workspace_id" | "updated_at" | "integrations">) =>
+    request<WorkspaceConfig>("/config", { method: "PUT", body: JSON.stringify(payload) }),
   contract: (contractId: string) => request<PilotContract>(`/contracts/${contractId}`),
   uploadContract: async (input: {
     file: File;
@@ -338,9 +409,10 @@ export const pilotApi = {
       price_per_outcome: input.pricePerOutcome, source_document: input.sourceDocument ?? "pasted-contract.txt", source_text: input.sourceText,
     }),
   }),
-  previewInvoice: async (file: File) => {
+  previewInvoice: async (file: File, columnMapping?: Record<string, string>) => {
     const body = new FormData(); body.append("file", file);
-    return request<InvoicePreview>("/invoice/preview", { method: "POST", body });
+    const suffix = columnMapping ? `?${query({ column_mapping: JSON.stringify(columnMapping) })}` : "";
+    return request<InvoicePreview>(`/invoice/preview${suffix}`, { method: "POST", body });
   },
   compile: (contractId: string, mode: "auto" | "live" | "recorded") =>
     request<PilotCompilation>(`/contracts/${contractId}/compile?${query({ mode })}`, {
@@ -415,7 +487,7 @@ export const pilotApi = {
   reconciliation: (runId?: string) =>
     request<Reconciliation>(`/reconciliation${runId ? `?${query({ run_id: runId })}` : ""}`),
   compare: (runId: string, priorRunId: string) =>
-    request<Record<string, unknown>>(`/reconciliations/${runId}/compare/${priorRunId}`),
+    request<ReconciliationDelta>(`/reconciliations/${runId}/compare/${priorRunId}`),
   recordCustomerReview: (runId: string, payload: CustomerReviewRequest) =>
     request<Record<string, unknown>>(`/reconciliations/${runId}/customer-review`, {
       method: "POST",
@@ -424,11 +496,12 @@ export const pilotApi = {
   clear: () => request<{ cleared: boolean }>("/clear", { method: "POST" }),
   seedSample: () => request<{ sample: boolean; contract_id: string; invoice_id: string; air_version_id: string; verification_plan_id: string; reconciliation: Reconciliation }>("/sample/seed", { method: "POST" }),
   auditLog: (limit = 100) => request<{ events: AuditEvent[] }>(`/audit-log?${query({ limit })}`),
-  exportUrl: (runId: string, kind: "summary.json" | "evidence.json" | "disputes.csv" | "corrected-invoice.csv" | "review-report.html") =>
+  exportUrl: (runId: string, kind: "summary.json" | "evidence.json" | "disputes.csv" | "corrected-invoice.csv" | "review-report.html" | "vendor-dispute.html" | "vendor-email.txt") =>
     `${PILOT_ROOT}/reconciliations/${runId}/exports/${kind}`,
+  vendorEmail: (runId: string) => request<string>(`/reconciliations/${runId}/exports/vendor-email.txt`),
   downloadExport: async (
     runId: string,
-    kind: "summary.json" | "evidence.json" | "disputes.csv" | "corrected-invoice.csv" | "review-report.html",
+    kind: "summary.json" | "evidence.json" | "disputes.csv" | "corrected-invoice.csv" | "review-report.html" | "vendor-dispute.html" | "vendor-email.txt",
   ) => {
     const token = loadPilotToken();
     const response = await fetch(
@@ -451,7 +524,7 @@ export const pilotApi = {
       `/air-versions?${query({ contract_id: contractId })}`,
     ),
   getAIRVersion: (versionId: string) =>
-    request<AIRVersion & { agreement_ir: AgreementIRView }>(`/air-versions/${versionId}`),
+    request<AIRVersion & { agreement_ir: AgreementIRView; finance_view: FinanceView }>(`/air-versions/${versionId}`),
   approveAIR: (versionId: string) =>
     request<{ id: string; approved_at: string; approved_by: string }>(
       `/air-versions/${versionId}/approve`,
@@ -569,6 +642,7 @@ export interface AgreementIRView {
   schema_version: string;
   clauses: Array<{ id: string; document_id: string; text: string; material: boolean; source_start?: number | null; source_end?: number | null; text_hash?: string | null }>;
   norms: Array<{ id: string; norm_type: string; subject: string; consequence: string; source_clause_ids: string[]; automation_class: string; violation_reason_code?: string | null }>;
+  predicates?: Array<{ id: string; norm_id: string; description: string; source_clause_ids: string[]; automation_class: string; expression: Record<string, unknown> }>;
   proof_requirements: Array<{ id: string; norm_id: string; description: string; acceptable_fact_types: string[]; preferred_authority: string; requires_absence_proof?: boolean }>;
   settlement_policies: Array<{ id: string; claim_type: string; source_clause_ids: string[]; currency: string; amount_expression: Record<string, unknown> }>;
   diagnostics: Array<{ code: string; severity: string; message: string; clause_ids?: string[] }>;
@@ -616,7 +690,8 @@ export interface AgreementBundleView {
   contract_id: string;
   effective_at: string;
   parties: Record<string, string>;
-  documents: Array<{ id: string; title: string; effective_from: string; effective_until: string | null; precedence: number; source_hash: string; effective: boolean }>;
+  internal_effective_boundaries?: Array<{ document_id: string; title: string; boundary: string; kind: string }>;
+  documents: Array<{ id: string; title: string; document_type?: string; filename?: string; effective_from: string; effective_until: string | null; precedence: number; source_hash: string; effective: boolean }>;
   relations: Array<{ source_document_id: string; target_document_id: string; relation: string }>;
 }
 

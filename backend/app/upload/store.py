@@ -8,8 +8,9 @@ import os
 import re
 import uuid
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
@@ -19,6 +20,7 @@ from app.agreements.assurance import assure_agreement
 from app.agreements.evaluation import dual_run
 from app.agreements.legacy import conformance_report
 from app.agreements.models import AgreementIR
+from app.agreements.presentation import rule_description_for_id
 from app.contracts.compiler import (
     DEFAULT_CONTRACT_PATH,
     agreement_artifacts_for_proposal,
@@ -62,6 +64,7 @@ from app.upload.models import (
     PilotUploadRejectionRow,
     PilotUploadRow,
     PilotVerificationPlanRow,
+    PilotWorkspaceConfigRow,
 )
 from app.upload.parsers import ParseResult
 
@@ -125,6 +128,101 @@ def ensure_pilot_state(session: Session) -> PilotStateRow:
         session.add(state)
         session.flush()
     return state
+
+
+def ensure_workspace_config(session: Session) -> PilotWorkspaceConfigRow:
+    row = session.get(PilotWorkspaceConfigRow, 1)
+    if row is None:
+        row = PilotWorkspaceConfigRow(id=1, updated_at=_now())
+        session.add(row)
+        session.flush()
+    return row
+
+
+def workspace_config_view(session: Session) -> dict[str, object]:
+    row = ensure_workspace_config(session)
+    return {
+        "workspace_id": current_workspace_id(),
+        "company_name": row.company_name,
+        "default_vendor": row.default_vendor,
+        "default_currency": row.default_currency,
+        "timezone": row.timezone,
+        "date_locale": row.date_locale,
+        "default_contract_rate": row.default_contract_rate,
+        "preferred_support_system": row.preferred_support_system,
+        "preferred_payment_system": row.preferred_payment_system,
+        "preferred_crm_system": row.preferred_crm_system,
+        "updated_at": row.updated_at.isoformat(),
+        "integrations": {
+            "contract_ai": {
+                "configured": bool(os.getenv("GEMINI_API_KEY")),
+                "provider": "Google Gemini",
+                "model": os.getenv("GEMINI_MODEL", "default"),
+                "secret_location": "server_environment",
+            },
+            "workspace_access": {
+                "configured": bool(
+                    os.getenv("EVIDUE_WORKSPACE_TOKENS") or os.getenv("EVIDUE_PILOT_TOKEN")
+                ),
+                "mode": "multi_workspace"
+                if os.getenv("EVIDUE_WORKSPACE_TOKENS")
+                else "single_workspace",
+                "secret_location": "server_environment",
+            },
+        },
+    }
+
+
+def update_workspace_config(session: Session, values: dict[str, str]) -> dict[str, object]:
+    row = ensure_workspace_config(session)
+    allowed = {
+        "company_name",
+        "default_vendor",
+        "default_currency",
+        "timezone",
+        "date_locale",
+        "default_contract_rate",
+        "preferred_support_system",
+        "preferred_payment_system",
+        "preferred_crm_system",
+    }
+    unknown = set(values) - allowed
+    if unknown:
+        raise ValueError(f"Unsupported configuration fields: {sorted(unknown)}")
+    for key, value in values.items():
+        clean = value.strip()
+        if key == "default_currency":
+            clean = clean.upper()
+            if len(clean) != 3 or not clean.isalpha():
+                raise ValueError("Default currency must be a three-letter ISO currency code")
+        if key == "timezone" and clean:
+            try:
+                ZoneInfo(clean)
+            except ZoneInfoNotFoundError as exc:
+                raise ValueError(
+                    "Timezone must be a valid IANA timezone, such as UTC or America/New_York"
+                ) from exc
+        if key == "default_contract_rate" and clean:
+            try:
+                rate = Decimal(clean)
+            except InvalidOperation as exc:
+                raise ValueError("Default contract rate must be a non-negative number") from exc
+            if rate < 0:
+                raise ValueError("Default contract rate must be a non-negative number")
+            clean = format(rate, "f")
+        if len(clean) > 200:
+            raise ValueError(f"{key} is too long")
+        setattr(row, key, clean)
+    row.updated_at = _now()
+    record_audit(
+        session,
+        "workspace.configuration_updated",
+        "workspace",
+        current_workspace_id(),
+        fields=sorted(values),
+    )
+    session.flush()
+    return workspace_config_view(session)
 
 
 def create_upload(
@@ -1259,6 +1357,19 @@ def run_pilot_reconciliation(session: Session, invoice_id: str) -> dict[str, obj
             "Reconciliation requires a human-approved Agreement IR version. "
             "Compile, review, and approve the contract rules first."
         )
+    from app.upload.agreement_store import (
+        agreement_bundle_source_hash,
+        ensure_single_governing_period,
+    )
+
+    ensure_single_governing_period(session, contract.id)
+    current_source_hash = agreement_bundle_source_hash(session, contract.id)
+    if air_row.source_bundle_hash != current_source_hash:
+        raise ValueError(
+            "The governing agreement documents changed after these contract rules were approved. "
+            "Analyze the current agreement bundle and approve a new rule version before "
+            "reconciling."
+        )
     approved_air = AgreementIR.model_validate(air_row.air_json)
     assurance = assure_agreement(approved_air)
     if not assurance.hard_gate_passed:
@@ -1464,6 +1575,15 @@ def reconciliation_summary(session: Session, run_id: str | None = None) -> dict[
         .where(PilotDeterminationRow.run_id == run.id)
         .order_by(PilotDeterminationRow.external_outcome_id)
     ).all()
+    agreement: AgreementIR | None = None
+    if run.air_version_id:
+        air_row = session.get(PilotAIRVersionRow, run.air_version_id)
+        if air_row is not None:
+            agreement = AgreementIR.model_validate(air_row.air_json)
+    currencies = (
+        sorted({policy.currency for policy in agreement.settlement_policies}) if agreement else []
+    )
+    currency = currencies[0] if len(currencies) == 1 else ("MULTI" if currencies else "USD")
     categories: dict[str, dict[str, object]] = {}
     for row in determinations:
         if row.status == "disputed" and row.rule_id:
@@ -1483,6 +1603,8 @@ def reconciliation_summary(session: Session, run_id: str | None = None) -> dict[
         "contract_id": contract.id if contract else None,
         "customer": contract.customer if contract else None,
         "vendor": contract.vendor if contract else None,
+        "billing_period_start": invoice.billing_period_start.isoformat() if invoice else None,
+        "billing_period_end": invoice.billing_period_end.isoformat() if invoice else None,
         "status": "completed",
         "claimed_outcomes": run.claimed_outcomes,
         "payable_outcomes": run.payable_outcomes,
@@ -1492,6 +1614,13 @@ def reconciliation_summary(session: Session, run_id: str | None = None) -> dict[
         "confirmed_payable_amount": _money(run.confirmed_payable_amount),
         "recommended_deduction": _money(run.recommended_deduction),
         "needs_review_amount": _money(run.needs_review_amount),
+        "currency": currency,
+        "currency_consistent": len(currencies) <= 1,
+        "identified_dispute_percent": (
+            f"{(run.recommended_deduction / run.submitted_amount * Decimal(100)):.1f}"
+            if run.submitted_amount
+            else "0.0"
+        ),
         "categories": categories,
         "engine_version": run.engine_version,
         "rule_program_version": run.rule_program_version,
@@ -1563,6 +1692,7 @@ def reconciliation_details(session: Session, run_id: str) -> list[dict[str, obje
                 "status": row.status,
                 "rule_id": row.rule_id,
                 "reason": row.reason,
+                "rule_description": rule_description_for_id(agreement, row.rule_id),
                 "billed_amount": _money(row.billed_amount),
                 "confirmed_payable_amount": _money(row.confirmed_payable_amount),
                 "confirmed_disputed_amount": _money(row.confirmed_disputed_amount),
@@ -1850,12 +1980,23 @@ def pilot_status(session: Session) -> dict[str, object]:
         if state.active_contract_id
         else None
     )
+    approved_rules_current = False
+    if approved_air is not None and state.active_contract_id:
+        from app.upload.agreement_store import agreement_bundle_source_hash
+
+        approved_rules_current = approved_air.source_bundle_hash == agreement_bundle_source_hash(
+            session, state.active_contract_id
+        )
     return {
         "workspace_id": current_workspace_id(),
         "initialized": state.initialized,
         "active_contract_id": state.active_contract_id,
-        "contract_approved": bool(approved_air),
-        "active_air_version_id": approved_air.id if approved_air else None,
+        "contract_approved": bool(approved_air and approved_rules_current),
+        "approved_rules_current": approved_rules_current,
+        "approved_rules_stale": bool(approved_air and not approved_rules_current),
+        "active_air_version_id": (
+            approved_air.id if approved_air and approved_rules_current else None
+        ),
         "active_invoice_id": invoice_id,
         "claims": int(claim_count or 0),
         "events": int(event_count or 0),

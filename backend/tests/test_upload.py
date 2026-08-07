@@ -635,7 +635,10 @@ def test_agreement_bundle_persists_documents_and_rejects_relation_cycles(prepare
         headers=AUTH,
     )
     assert initial.status_code == 200, initial.text
-    original_id = initial.json()["documents"][0]["id"]
+    original_document = initial.json()["documents"][0]
+    original_id = original_document["id"]
+    assert original_document["document_type"] == "primary_agreement"
+    assert original_document["filename"]
 
     amendment = client.post(
         f"/api/pilot/contracts/{contract_id}/agreement-bundle/documents",
@@ -680,6 +683,88 @@ def test_agreement_bundle_persists_documents_and_rejects_relation_cycles(prepare
     )
     assert cycle.status_code == 422
     assert "circular" in cycle.json()["detail"].lower()
+
+
+def test_approved_rules_become_stale_when_governing_documents_change(prepared_pilot):
+    client, _, contract_id = prepared_pilot
+
+    before = client.get("/api/pilot/status", headers=AUTH)
+    assert before.status_code == 200
+    assert before.json()["contract_approved"] is True
+    assert before.json()["approved_rules_current"] is True
+
+    changed = client.post(
+        f"/api/pilot/contracts/{contract_id}/agreement-bundle/documents",
+        params={
+            "title": "Commercial Amendment",
+            "document_type": "amendment",
+            "effective_from": "2026-06-01T00:00:00Z",
+            "precedence": 400,
+        },
+        files={
+            "file": (
+                "commercial-amendment.txt",
+                "Effective June 15, 2026, the charge for each verified outcome is $1.75 and this amendment controls over conflicting pricing terms.",
+                "text/plain",
+            )
+        },
+        headers=AUTH,
+    )
+    assert changed.status_code == 200, changed.text
+
+    after = client.get("/api/pilot/status", headers=AUTH)
+    assert after.status_code == 200
+    assert after.json()["contract_approved"] is False
+    assert after.json()["approved_rules_current"] is False
+    assert after.json()["approved_rules_stale"] is True
+    assert after.json()["active_air_version_id"] is None
+
+    reconciliation = client.post(
+        "/api/pilot/reconcile",
+        params={"invoice_id": "INV-TEST-001"},
+        headers=AUTH,
+    )
+    assert reconciliation.status_code == 422
+    assert "governing agreement documents changed" in reconciliation.json()["detail"].lower()
+
+
+def test_mid_period_governing_change_fails_closed(prepared_pilot):
+    client, _, contract_id = prepared_pilot
+    changed = client.post(
+        f"/api/pilot/contracts/{contract_id}/agreement-bundle/documents",
+        params={
+            "title": "Mid-month Amendment",
+            "document_type": "amendment",
+            "effective_from": "2026-06-15T00:00:00Z",
+            "precedence": 400,
+        },
+        files={
+            "file": (
+                "mid-month-amendment.txt",
+                "Effective June 15, 2026, the verified-outcome rate changes to $1.75 per outcome.",
+                "text/plain",
+            )
+        },
+        headers=AUTH,
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["internal_effective_boundaries"][0]["boundary"].startswith("2026-06-15")
+
+    compiled = client.post(
+        f"/api/pilot/contracts/{contract_id}/compile-native",
+        params={"mode": "recorded"},
+        headers=AUTH,
+    )
+    assert compiled.status_code == 409
+    assert "changes inside the configured agreement period" in compiled.json()["detail"].lower()
+
+    reconciliation = client.post(
+        "/api/pilot/reconcile",
+        params={"invoice_id": "INV-TEST-001"},
+        headers=AUTH,
+    )
+    assert reconciliation.status_code == 422
+    assert "fails closed" in reconciliation.json()["detail"].lower()
 
 
 # Product workflow and usability hardening ----------------------------------
@@ -944,3 +1029,134 @@ def test_invalid_contract_documents_return_recoverable_422(pilot_client):
     )
     assert invalid_docx.status_code == 422
     assert "DOCX file is invalid" in invalid_docx.text
+
+
+def test_workspace_configuration_is_persisted_without_exposing_secrets(pilot_client):
+    client, _ = pilot_client
+    initial = client.get("/api/pilot/config", headers=AUTH)
+    assert initial.status_code == 200, initial.text
+    assert "GEMINI_API_KEY" not in initial.text
+    assert "EVIDUE_PILOT_TOKEN" not in initial.text
+
+    payload = {
+        "company_name": "Acme Finance",
+        "default_vendor": "Zendesk",
+        "default_currency": "USD",
+        "timezone": "America/New_York",
+        "date_locale": "en-US",
+        "default_contract_rate": "1.50",
+        "preferred_support_system": "Zendesk",
+        "preferred_payment_system": "Stripe",
+        "preferred_crm_system": "Salesforce",
+    }
+    saved = client.put("/api/pilot/config", headers=AUTH, json=payload)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["company_name"] == "Acme Finance"
+    assert saved.json()["preferred_support_system"] == "Zendesk"
+    assert saved.json()["integrations"]["contract_ai"]["secret_location"] == "server_environment"
+
+    # Clearing transactional pilot data intentionally preserves workspace preferences.
+    cleared = client.post("/api/pilot/clear", headers=AUTH)
+    assert cleared.status_code == 200, cleared.text
+    again = client.get("/api/pilot/config", headers=AUTH)
+    assert again.status_code == 200
+    assert again.json()["company_name"] == "Acme Finance"
+
+
+def test_workspace_configuration_rejects_invalid_finance_defaults(pilot_client):
+    client, _ = pilot_client
+    invalid_timezone = client.put(
+        "/api/pilot/config",
+        headers=AUTH,
+        json={"timezone": "Not/A-Timezone"},
+    )
+    assert invalid_timezone.status_code == 422
+    assert "valid IANA timezone" in invalid_timezone.json()["detail"]
+
+    invalid_rate = client.put(
+        "/api/pilot/config",
+        headers=AUTH,
+        json={"default_contract_rate": "-1.00"},
+    )
+    assert invalid_rate.status_code == 422
+    assert "non-negative number" in invalid_rate.json()["detail"]
+
+
+def test_invoice_preview_provides_finance_control_totals(pilot_client):
+    client, _ = pilot_client
+    csv = (
+        "Outcome,Customer,Intent,Closed,Amount\n"
+        "OUT-1,CUST-1,order_support,2026-06-02T08:00:00Z,1.50\n"
+        "OUT-2,CUST-2,refund,2026-06-03T09:00:00Z,2.50\n"
+        "OUT-3,CUST-1,order_support,2026-06-04T10:00:00Z,3.00\n"
+    )
+    mapping = {
+        "outcome_id": "Outcome",
+        "customer_id": "Customer",
+        "intent": "Intent",
+        "closed_at": "Closed",
+        "billed_amount": "Amount",
+    }
+    response = client.post(
+        "/api/pilot/invoice/preview",
+        params={"column_mapping": __import__("json").dumps(mapping)},
+        files={"file": ("vendor.csv", csv, "text/csv")},
+        headers=AUTH,
+    )
+    assert response.status_code == 200, response.text
+    totals = response.json()["control_totals"]
+    assert totals["total_rows"] == 3
+    assert totals["accepted_rows"] == 3
+    assert totals["rejected_rows"] == 0
+    assert totals["total_billed"] == "7.00"
+    assert totals["unique_customers"] == 2
+    assert totals["period_start"].startswith("2026-06-02")
+    assert totals["period_end"].startswith("2026-06-04")
+    mix = {item["name"]: item for item in totals["outcome_mix"]}
+    assert mix["order_support"]["count"] == 2
+    assert mix["refund"]["count"] == 1
+
+
+def test_sample_air_and_exports_have_finance_facing_language(pilot_client):
+    client, _ = pilot_client
+    seeded = client.post("/api/pilot/sample/seed", headers=AUTH)
+    assert seeded.status_code == 200, seeded.text
+    payload = seeded.json()
+    air_id = payload["air_version_id"]
+    run_id = payload["reconciliation"]["reconciliation_id"]
+
+    version = client.get(f"/api/pilot/air-versions/{air_id}", headers=AUTH)
+    assert version.status_code == 200, version.text
+    finance = version.json()["finance_view"]
+    assert finance["contract_rules"]
+    assert all(item["description"] for item in finance["contract_rules"])
+    assert any(
+        item["description"].startswith("Not payable if") for item in finance["contract_rules"]
+    )
+    assert finance["evidence_needed"]
+    assert all(item["rule_description"] for item in finance["evidence_needed"])
+
+    detail = client.get("/api/pilot/reconciliation", headers=AUTH)
+    assert detail.status_code == 200, detail.text
+    disputed = next(
+        item for item in detail.json()["determinations"] if item["status"] == "disputed"
+    )
+    assert disputed["rule_description"]
+    assert disputed["rule_description"].startswith("Not payable if")
+
+    email = client.get(
+        f"/api/pilot/reconciliations/{run_id}/exports/vendor-email.txt",
+        headers=AUTH,
+    )
+    assert email.status_code == 200, email.text
+    assert "Charges identified for dispute" in email.text
+    assert "We reconciled" in email.text
+
+    vendor_report = client.get(
+        f"/api/pilot/reconciliations/{run_id}/exports/vendor-dispute.html",
+        headers=AUTH,
+    )
+    assert vendor_report.status_code == 200, vendor_report.text
+    assert "Invoice dispute report" in vendor_report.text
+    assert "Charges identified for dispute" in vendor_report.text
+    assert disputed["rule_description"] in vendor_report.text

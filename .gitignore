@@ -48,3 +48,5 @@ coverage/
 # Local/editor/runtime noise
 *.log
 .DS_Store
+qualification/downloaded/
+contract-qualification-report.json
