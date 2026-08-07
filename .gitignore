@@ -17,3 +17,34 @@ frontend/dist/
 playwright-report/
 test-results/
 *.log
+
+# ----------------------------------------------------------------------
+# Local environment
+# ----------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# JavaScript
+node_modules/
+
+# Build output
+dist/
+frontend/dist/
+
+# Test output
+playwright-report/
+test-results/
+coverage/
+
+# Local/editor/runtime noise
+*.log
+.DS_Store
