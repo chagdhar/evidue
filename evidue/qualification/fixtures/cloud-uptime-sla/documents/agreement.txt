@@ -1,0 +1,28 @@
+Cloud Platform Service Level Agreement
+
+Customer: Apex Manufacturing
+Provider: CloudCore Infrastructure
+Effective: 2026-01-01 through 2026-12-31
+Monthly service fee: $8,500.00
+
+1. UPTIME COMMITMENT
+CloudCore guarantees 99.9% monthly uptime for all production services. Uptime is measured as the percentage of total minutes in the calendar month during which the service was available.
+
+2. DOWNTIME EXCLUSIONS
+Scheduled maintenance windows (communicated at least 72 hours in advance), force majeure events, and downtime caused by Customer's own systems are excluded from the uptime calculation.
+
+3. SERVICE CREDITS
+If monthly uptime falls below 99.9%, Customer is entitled to a service credit:
+- 99.0% to 99.9%: 10% of monthly fee
+- 95.0% to 99.0%: 25% of monthly fee
+- Below 95.0%: 50% of monthly fee
+Service credits are applied against the next invoice and do not exceed 50% of the monthly fee in any single month.
+
+4. CREDIT REQUEST PROCEDURE
+Customer must submit a credit request within 30 calendar days of the end of the affected month. The request must include the dates and times of observed downtime and any supporting evidence.
+
+5. RESPONSE TIME
+CloudCore will respond to severity-1 incidents within 15 minutes. Severity-2 incidents within 1 hour. Severity-3 incidents within 4 hours.
+
+6. INVOICE AND PAYMENT
+CloudCore will invoice Customer monthly in advance. Payment is due within 30 calendar days of invoice date.
