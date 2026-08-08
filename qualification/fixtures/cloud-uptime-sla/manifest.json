@@ -1,0 +1,39 @@
+{
+  "id": "cloud-uptime-sla",
+  "title": "Cloud Platform SLA with tiered service credits",
+  "contract_id": "QUAL-CLOUD-SLA",
+  "customer": "Apex Manufacturing",
+  "vendor": "CloudCore Infrastructure",
+  "documents": [
+    {
+      "id": "CLOUD-SLA-AGREEMENT",
+      "title": "Cloud Platform Service Level Agreement",
+      "path": "documents/agreement.txt",
+      "precedence": 100
+    }
+  ],
+  "relations": [],
+  "gold_file": "gold.json",
+  "scenario_file": "scenarios.json",
+  "mutations": [
+    {
+      "id": "MUTATION-SLA-THRESHOLD",
+      "document_id": "CLOUD-SLA-AGREEMENT",
+      "find": "99.9% monthly uptime",
+      "replace": "99.95% monthly uptime",
+      "financially_material": true,
+      "expected_changed_sections": ["rules"],
+      "expected_unchanged_sections": ["pricing"]
+    },
+    {
+      "id": "MUTATION-CREDIT-CAP",
+      "document_id": "CLOUD-SLA-AGREEMENT",
+      "find": "do not exceed 50% of the monthly fee in any single month",
+      "replace": "are not subject to any per-month maximum",
+      "financially_material": true,
+      "expected_changed_sections": ["pricing"],
+      "expected_unchanged_sections": ["rules"]
+    }
+  ],
+  "source_class": "synthetic_qualification"
+}

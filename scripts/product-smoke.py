@@ -53,22 +53,94 @@ def main() -> None:
                 response.raise_for_status()
                 assert response.content
 
+            overview = client.get("/api/pilot/product/overview", headers=headers)
+            overview.raise_for_status()
+            assert overview.json()["counts"]["vendors"] == 1
+
+            reviews = client.get(
+                "/api/pilot/product/review-cases",
+                params={"run_id": run_id},
+                headers=headers,
+            )
+            reviews.raise_for_status()
+            review_items = reviews.json()["items"]
+            assert len(review_items) == 1
+
+            blocked = client.post(
+                f"/api/pilot/product/reconciliations/{run_id}/approve",
+                json={"approved_by": "smoke-finance"},
+                headers=headers,
+            )
+            assert blocked.status_code == 409
+
+            decision = client.post(
+                f"/api/pilot/product/review-cases/{review_items[0]['id']}/decision",
+                json={
+                    "decision": "disputed",
+                    "rationale": "Smoke test: unsupported evidence remains after review.",
+                    "decided_by": "smoke-finance",
+                },
+                headers=headers,
+            )
+            decision.raise_for_status()
+
+            approved = client.post(
+                f"/api/pilot/product/reconciliations/{run_id}/approve",
+                json={"approved_by": "smoke-finance", "note": "smoke approval"},
+                headers=headers,
+            )
+            approved.raise_for_status()
+            statement = approved.json()["statement"]
+            assert statement["status"] == "approved"
+            assert statement["kernel_input_manifest_hash"]
+            assert statement["kernel_calculation_hash"]
+            assert statement["calculation_hash"]
+
+            dispute = client.post(
+                f"/api/pilot/product/reconciliations/{run_id}/disputes",
+                json={"created_by": "smoke-finance"},
+                headers=headers,
+            )
+            dispute.raise_for_status()
+            dispute_id = dispute.json()["id"]
+            assert dispute.json()["item_count"] == 2
+
+            ready = client.post(
+                f"/api/pilot/product/disputes/{dispute_id}/transition",
+                json={"status": "ready"},
+                headers=headers,
+            )
+            ready.raise_for_status()
+            pdf = client.get(
+                f"/api/pilot/product/disputes/{dispute_id}/package.pdf",
+                headers=headers,
+            )
+            pdf.raise_for_status()
+            assert pdf.content.startswith(b"%PDF-1.4")
+
             audit = client.get("/api/pilot/audit-log", headers=headers)
             audit.raise_for_status()
-            assert any(
-                event["action"] == "reconciliation.completed" for event in audit.json()["events"]
-            )
+            actions = {event["action"] for event in audit.json()["events"]}
+            assert "reconciliation.completed" in actions
+            assert "review_case.decided" in actions
+            assert "reconciliation.approved" in actions
+            assert "dispute_case.created" in actions
 
         print(
             json.dumps(
                 {
                     "status": "ok",
                     "billed": reconciliation["submitted_amount"],
-                    "payable": reconciliation["confirmed_payable_amount"],
-                    "disputed": reconciliation["recommended_deduction"],
-                    "needs_review": reconciliation["needs_review_amount"],
+                    "machine_payable": reconciliation["confirmed_payable_amount"],
+                    "machine_disputed": reconciliation["recommended_deduction"],
+                    "machine_needs_review": reconciliation["needs_review_amount"],
+                    "approved_payable": statement["recommended_final_payable_amount"],
+                    "approved_disputed": statement["recommended_final_disputed_amount"],
                     "financial_authority": "approved_air",
                     "llm_required_for_reconciliation": False,
+                    "finance_workflow": "review -> approval -> dispute",
+                    "input_manifest_hash": reconciliation["input_manifest_hash"],
+                    "kernel_calculation_hash": reconciliation["calculation_hash"],
                 },
                 indent=2,
             )

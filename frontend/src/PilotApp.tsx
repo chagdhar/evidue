@@ -709,6 +709,7 @@ export default function PilotApp() {
           {status?.workspace_id && <Chip size="small" label={status.workspace_id} sx={{ display: { xs: "none", md: "inline-flex" }, bgcolor: "#1E293B", color: "#E2E8F0", border: "1px solid #334155" }} />}
           <Button color="inherit" variant={!configPage ? "outlined" : "text"} sx={{ borderColor: !configPage ? "#64748B" : "transparent" }} onClick={() => navigate("/pilot")}>Workspace</Button>
           <Button color="inherit" variant={configPage ? "outlined" : "text"} sx={{ borderColor: configPage ? "#64748B" : "transparent" }} onClick={() => navigate("/pilot/config")}>Configuration</Button>
+          <Button color="inherit" onClick={() => navigate("/pilot/finance")}>Finance operations</Button>
           <Button color="inherit" onClick={() => void refresh()} disabled={Boolean(busy)} sx={{ display: { xs: "none", sm: "inline-flex" } }}>Refresh</Button>
           <Button color="inherit" onClick={signOut}>Sign out</Button>
         </Toolbar>

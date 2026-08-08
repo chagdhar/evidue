@@ -21,9 +21,12 @@ sed -i "s/^EVIDUE_PILOT_TOKEN=.*/EVIDUE_PILOT_TOKEN=$token/" .env
 ```
 
 Open <http://localhost:5173/pilot>, enter the generated access key, and choose
-**Try sample workspace** or **Use my own data**. `/pilot/config` contains workspace
-defaults, preferred evidence systems, integration readiness, and the protected reset
-control. Secrets remain server-side and are never exposed by that page. For arbitrary
+**Try sample workspace** or **Use my own data**. After reconciliation, open
+<http://localhost:5173/pilot/finance> for recurring vendor operations, exception review,
+settlement approval, reproducibility fingerprints, and stateful vendor disputes.
+`/pilot/config` contains workspace defaults, preferred evidence systems, integration
+readiness, and the protected reset control. Secrets remain server-side and are never
+exposed by that page. For arbitrary
 customer contracts, configure an Evidue-owned backend compiler provider (for example Gemini
 or OpenAI) in the server environment. Customers never provide an LLM key; reconciliation
 itself does not require model access after an AIR version is approved.
@@ -31,7 +34,8 @@ itself does not require model access after an AIR version is approved.
 The normal-user workflow is:
 
 ```text
-Contract → Rules → Invoice → Evidence → Reconcile → Export
+Vendor → Agreement → Approved AIR → Invoice → Evidence → Reconcile
+       → Review exceptions → Approve payable → Vendor dispute
 ```
 
 Supported agreement inputs are pasted text, TXT/Markdown, DOCX, and text-based
@@ -45,10 +49,14 @@ reconciliation period instead of silently applying one policy across the boundar
 Invoice CSVs include mapping plus finance control totals before import, so customers do not
 have to rename their source columns and can verify line count/billed total first. Evidence
 accepts CSV, JSON, and JSONL and is guided by the approved contract's proof requirements.
-Finance exports include corrected and disputed-line CSVs, a vendor-facing dispute report, a
-copyable vendor email, and advanced JSON evidence/provenance artifacts.
+Finance operations preserve machine determinations and record human review as an append-only
+overlay. Approval is blocked until review exposure is dispositioned. Approved settlements can
+open stateful dispute cases and export a real PDF vendor dispute package. Reconciliation runs
+persist input-manifest and deterministic calculation hashes so identical inputs are
+reproducible.
 
-See [docs/PRODUCT.md](docs/PRODUCT.md),
+The current Product v1 source of truth is [docs/product-v1/PRODUCT_REQUIREMENTS.md](docs/product-v1/PRODUCT_REQUIREMENTS.md)
+and [docs/product-v1/SYSTEM_ARCHITECTURE.md](docs/product-v1/SYSTEM_ARCHITECTURE.md). See also [docs/PRODUCT.md](docs/PRODUCT.md),
 [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md),
 [docs/NORMAL_USER_ACCEPTANCE.md](docs/NORMAL_USER_ACCEPTANCE.md), and
 [docs/IMPLEMENTATION_MATRIX.md](docs/IMPLEMENTATION_MATRIX.md).
@@ -141,6 +149,9 @@ Railway deployment.
 
 ## Product surfaces
 
+- `/pilot` — protected agreement/invoice/evidence and verification workbench
+- `/pilot/finance` — protected vendor, review, settlement approval, trust, and dispute operations
+- `/pilot/config` — protected workspace configuration
 - `/demo` — finance control overview
 - `/demo/invoices` — recurring invoice operations
 - `/demo/invoices/current` — complete working June reconciliation
@@ -198,8 +209,11 @@ The real-data pilot is deliberately separate from the synthetic demo:
 - demo data uses `data/evidue.db`;
 - pilot data uses `data/evidue-pilot.db` by default;
 - every `/api/pilot/*` endpoint requires a bearer token;
-- pilot reconciliation is scoped to one invoice and one approved contract compilation;
-- raw uploads, normalized records, identity decisions, and every reconciliation run are retained.
+- the qualified kernel reconciles one invoice against one approved AIR version per run;
+- the product layer manages multiple vendor engagements, invoices, reconciliation statements,
+  review cases, approvals, and disputes across runs;
+- raw uploads, normalized records, identity decisions, machine determinations, human review
+  overlays, approvals, and every reconciliation run are retained.
 
 For one workspace, configure a long random token:
 

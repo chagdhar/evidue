@@ -15,6 +15,7 @@ import { EvidueThemeProvider } from "./templateTheme";
 import LandingPage from "./LandingPage";
 import ContactPage from "./ContactPage";
 import PilotApp from "./PilotApp";
+import FinanceWorkspace from "./FinanceWorkspace";
 import { PublicConfigProvider } from "./BetaApplicationCTA";
 import "./style.css";
 
@@ -27,6 +28,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/pilot" element={<PilotApp />} />
           <Route path="/pilot/config" element={<PilotApp />} />
+          <Route path="/pilot/finance" element={<FinanceWorkspace />} />
           <Route path="/demo" element={<ProductShell />}>
             <Route index element={<OverviewPage />} />
             <Route path="invoices" element={<InvoicesPage />} />

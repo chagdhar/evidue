@@ -34,6 +34,7 @@ from app.contact.body_limit import ContactBodyLimitMiddleware
 from app.contact.google_sheets import contact_sheet_configured, deliver_contact_submission
 from app.contact.protection import enforce_contact_protection, release_contact_reservation
 from app.db import repository
+from app.product.router import router as product_router
 from app.upload.pilot_db import initialize_pilot_database
 from app.upload.router import router as pilot_router
 
@@ -60,6 +61,7 @@ app = FastAPI(title="Evidue", version="0.1.0", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(ContactBodyLimitMiddleware, max_bytes=MAX_CONTACT_REQUEST_BYTES)
 app.include_router(pilot_router)
+app.include_router(product_router)
 
 DEMO_INPUTS = {
     "contract": (

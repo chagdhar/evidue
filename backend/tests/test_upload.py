@@ -54,6 +54,7 @@ PAYABLE_EVIDENCE = (
 
 @pytest.fixture()
 def pilot_client(monkeypatch):
+    import app.product.router as product_router_module
     import app.upload.router as router_module
 
     engine = create_engine(
@@ -65,6 +66,7 @@ def pilot_client(monkeypatch):
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(router_module, "PilotSessionLocal", session_factory)
+    monkeypatch.setattr(product_router_module, "PilotSessionLocal", session_factory)
     monkeypatch.setenv("EVIDUE_PILOT_TOKEN", TOKEN)
 
     from app.main import app
@@ -1325,3 +1327,167 @@ def test_independent_compiler_disagreement_blocks_air_approval(
     )
     assert approved.status_code == 409
     assert "assurance" in approved.text.lower() or "approvable" in approved.text.lower()
+
+
+# Finance product layer ------------------------------------------------------
+
+
+def test_product_bootstrap_creates_vendor_invoice_and_fingerprinted_statement(pilot_client):
+    client, _ = pilot_client
+    seeded = client.post("/api/pilot/sample/seed", headers=AUTH)
+    assert seeded.status_code == 200, seeded.text
+    run = seeded.json()["reconciliation"]
+    assert run["input_manifest_hash"]
+    assert run["calculation_hash"]
+
+    bootstrap = client.post("/api/pilot/product/bootstrap", headers=AUTH)
+    assert bootstrap.status_code == 200, bootstrap.text
+    assert bootstrap.json()["vendors"] == 1
+    assert bootstrap.json()["invoices"] == 1
+
+    overview = client.get("/api/pilot/product/overview", headers=AUTH)
+    assert overview.status_code == 200, overview.text
+    assert overview.json()["vendors"][0]["name"] == "Nova AI (Sample)"
+
+    statement = client.get(
+        f"/api/pilot/product/reconciliations/{run['reconciliation_id']}/statement",
+        headers=AUTH,
+    )
+    assert statement.status_code == 200, statement.text
+    payload = statement.json()
+    assert payload["kernel_input_manifest_hash"] == run["input_manifest_hash"]
+    assert payload["kernel_calculation_hash"] == run["calculation_hash"]
+    assert payload["calculation_hash"]
+
+
+def test_review_decision_is_overlay_and_blocks_approval_until_resolved(pilot_client):
+    client, sessions = pilot_client
+    seeded = client.post("/api/pilot/sample/seed", headers=AUTH)
+    assert seeded.status_code == 200, seeded.text
+    run_id = seeded.json()["reconciliation"]["reconciliation_id"]
+
+    reviews = client.get("/api/pilot/product/review-cases", params={"run_id": run_id}, headers=AUTH)
+    assert reviews.status_code == 200, reviews.text
+    items = reviews.json()["items"]
+    assert items, "sample workspace should contain at least one needs-review case"
+
+    blocked = client.post(
+        f"/api/pilot/product/reconciliations/{run_id}/approve",
+        json={"approved_by": "finance@example.com", "note": "monthly close"},
+        headers=AUTH,
+    )
+    assert blocked.status_code == 409
+
+    for item in items:
+        decided = client.post(
+            f"/api/pilot/product/review-cases/{item['id']}/decision",
+            json={
+                "decision": "disputed",
+                "rationale": "Customer evidence is insufficient to support payment.",
+                "decided_by": "finance@example.com",
+            },
+            headers=AUTH,
+        )
+        assert decided.status_code == 200, decided.text
+
+    approved = client.post(
+        f"/api/pilot/product/reconciliations/{run_id}/approve",
+        json={"approved_by": "finance@example.com", "note": "monthly close"},
+        headers=AUTH,
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["statement"]["status"] == "approved"
+
+    # The machine determination remains immutable; the human decision is an overlay.
+    from app.upload.models import PilotDeterminationRow
+
+    with sessions() as session:
+        machine = session.get(PilotDeterminationRow, items[0]["determination_id"])
+        assert machine is not None
+        assert machine.status == "needs_review"
+
+
+def test_approved_reconciliation_can_open_and_progress_vendor_dispute(pilot_client):
+    client, _ = pilot_client
+    seeded = client.post("/api/pilot/sample/seed", headers=AUTH)
+    run_id = seeded.json()["reconciliation"]["reconciliation_id"]
+    reviews = client.get(
+        "/api/pilot/product/review-cases", params={"run_id": run_id}, headers=AUTH
+    ).json()["items"]
+    for item in reviews:
+        response = client.post(
+            f"/api/pilot/product/review-cases/{item['id']}/decision",
+            json={
+                "decision": "disputed",
+                "rationale": "Unsupported after finance review.",
+                "decided_by": "finance@example.com",
+            },
+            headers=AUTH,
+        )
+        assert response.status_code == 200, response.text
+    approval = client.post(
+        f"/api/pilot/product/reconciliations/{run_id}/approve",
+        json={"approved_by": "finance@example.com"},
+        headers=AUTH,
+    )
+    assert approval.status_code == 200, approval.text
+
+    dispute = client.post(
+        f"/api/pilot/product/reconciliations/{run_id}/disputes",
+        json={"created_by": "finance@example.com"},
+        headers=AUTH,
+    )
+    assert dispute.status_code == 200, dispute.text
+    case = dispute.json()
+    assert case["case_number"].startswith("D-")
+    assert case["item_count"] >= 1
+    assert Decimal(case["disputed_amount"]) > Decimal(0)
+
+    ready = client.post(
+        f"/api/pilot/product/disputes/{case['id']}/transition",
+        json={"status": "ready"},
+        headers=AUTH,
+    )
+    assert ready.status_code == 200, ready.text
+    sent = client.post(
+        f"/api/pilot/product/disputes/{case['id']}/transition",
+        json={"status": "sent"},
+        headers=AUTH,
+    )
+    assert sent.status_code == 200, sent.text
+    responded = client.post(
+        f"/api/pilot/product/disputes/{case['id']}/transition",
+        json={"status": "vendor_responded", "vendor_response": "We are reviewing the cited lines."},
+        headers=AUTH,
+    )
+    assert responded.status_code == 200, responded.text
+    assert responded.json()["vendor_response_at"]
+
+    printable = client.get(f"/api/pilot/product/disputes/{case['id']}/print.html", headers=AUTH)
+    assert printable.status_code == 200
+    assert "Evidue vendor dispute package" in printable.text
+
+    pdf = client.get(f"/api/pilot/product/disputes/{case['id']}/package.pdf", headers=AUTH)
+    assert pdf.status_code == 200
+    assert pdf.headers["content-type"].startswith("application/pdf")
+    assert pdf.content.startswith(b"%PDF-1.4")
+
+
+def test_reconciliation_fingerprint_is_stable_for_identical_inputs(prepared_pilot):
+    client, _, _ = prepared_pilot
+    uploaded = client.post(
+        "/api/pilot/evidence",
+        params={"invoice_id": "INV-TEST-001", "source_type": "support"},
+        files={"file": ("evidence.jsonl", PAYABLE_EVIDENCE, "application/x-ndjson")},
+        headers=AUTH,
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    matched = client.post("/api/pilot/match", params={"invoice_id": "INV-TEST-001"}, headers=AUTH)
+    assert matched.status_code == 200, matched.text
+    first = client.post("/api/pilot/reconcile", params={"invoice_id": "INV-TEST-001"}, headers=AUTH)
+    second = client.post(
+        "/api/pilot/reconcile", params={"invoice_id": "INV-TEST-001"}, headers=AUTH
+    )
+    assert first.status_code == 200 and second.status_code == 200
+    assert first.json()["input_manifest_hash"] == second.json()["input_manifest_hash"]
+    assert first.json()["calculation_hash"] == second.json()["calculation_hash"]

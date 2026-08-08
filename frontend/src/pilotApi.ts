@@ -204,6 +204,8 @@ export type Reconciliation = {
   needs_review_outcomes: number;
   rule_program_version: number;
   engine_version: string;
+  input_manifest_hash?: string | null;
+  calculation_hash?: string | null;
   real_data_disclosure?: string;
   determinations?: Determination[];
   [key: string]: unknown;
@@ -644,7 +646,268 @@ export const pilotApi = {
       `/invoices/${invoiceId}/facts?${query({ air_version_id: versionId })}`,
     ),
 
+  // Finance product layer
+  productBootstrap: () =>
+    request<ProductBootstrap>("/product/bootstrap", { method: "POST" }),
+  productOverview: () => request<ProductOverview>("/product/overview"),
+  productVendors: () => request<{ total: number; items: ProductVendor[] }>("/product/vendors"),
+  productInvoices: (engagementId?: string) =>
+    request<{ total: number; items: ProductInvoice[] }>(
+      `/product/invoices${engagementId ? `?${query({ engagement_id: engagementId })}` : ""}`,
+    ),
+  productReviewCases: (input: { status?: string; runId?: string } = {}) =>
+    request<{ total: number; items: ProductReviewCase[] }>(
+      `/product/review-cases?${query({ status: input.status, run_id: input.runId })}`,
+    ),
+  productAssignReview: (reviewCaseId: string, assignedTo?: string) =>
+    request<ProductReviewCase>(`/product/review-cases/${reviewCaseId}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ assigned_to: assignedTo ?? null }),
+    }),
+  productDecideReview: (
+    reviewCaseId: string,
+    payload: { decision: "payable" | "disputed" | "escalated"; rationale: string; decided_by?: string },
+  ) =>
+    request<{ review_case: ProductReviewCase; statement: ProductStatement }>(
+      `/product/review-cases/${reviewCaseId}/decision`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  productStatement: (runId: string) =>
+    request<ProductStatement>(`/product/reconciliations/${runId}/statement`),
+  productTrust: (runId: string) =>
+    request<ProductTrust>(`/product/reconciliations/${runId}/trust`),
+  productApprove: (runId: string, payload: { approved_by?: string; note?: string }) =>
+    request<{ approval: ProductApproval; statement: ProductStatement }>(
+      `/product/reconciliations/${runId}/approve`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  productDisputes: () =>
+    request<{ total: number; items: ProductDisputeCase[] }>("/product/disputes"),
+  productDispute: (caseId: string) =>
+    request<ProductDisputeCase>(`/product/disputes/${caseId}`),
+  productCreateDispute: (
+    runId: string,
+    payload: { created_by?: string; subject?: string },
+  ) =>
+    request<ProductDisputeCase>(`/product/reconciliations/${runId}/disputes`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  productTransitionDispute: (
+    caseId: string,
+    payload: { status: ProductDisputeStatus; vendor_response?: string },
+  ) =>
+    request<ProductDisputeCase>(`/product/disputes/${caseId}/transition`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  downloadProductDispute: async (caseId: string) => {
+    const token = loadPilotToken();
+    const response = await fetch(`${PILOT_ROOT}/product/disputes/${caseId}/package.pdf`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new PilotApiError(`Dispute package failed with HTTP ${response.status}`, response.status);
+    }
+    const blob = await response.blob();
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = `${caseId}-vendor-dispute.pdf`;
+    anchor.click();
+    URL.revokeObjectURL(href);
+  },
+
 };
+
+// ---------------------------------------------------------------------------
+// Finance product types
+// ---------------------------------------------------------------------------
+
+export interface ProductBootstrap {
+  productized: boolean;
+  organization_id: string;
+  vendors: number;
+  engagements: number;
+  invoices: number;
+  reconciliations: number;
+  review_cases: number;
+}
+
+export interface ProductVendor {
+  id: string;
+  vendor_id: string;
+  name: string;
+  status: string;
+  contracts: number;
+  invoices: number;
+  latest_reconciliations: number;
+  submitted_amount: string;
+  machine_payable_amount: string;
+  machine_disputed_amount: string;
+  open_review_cases: number;
+}
+
+export interface ProductInvoice {
+  invoice_id: string;
+  engagement_id: string;
+  vendor: string;
+  billing_period_start: string;
+  billing_period_end: string;
+  submitted_at: string;
+  latest_run_id: string | null;
+  run_number: number | null;
+  submitted_amount: string | null;
+  recommended_payable_amount: string | null;
+  disputed_amount: string | null;
+  open_review_amount: string | null;
+  statement_status: "not_reconciled" | "draft" | "ready" | "approved";
+}
+
+export interface ProductReviewDecision {
+  id: string;
+  decision: "payable" | "disputed" | "escalated";
+  rationale: string;
+  decided_by: string;
+  decided_at: string;
+  sequence: number;
+}
+
+export interface ProductReviewCase {
+  id: string;
+  run_id: string;
+  determination_id: string;
+  outcome_id: string;
+  reason_code: string;
+  reason: string;
+  exposure_amount: string;
+  priority: "low" | "normal" | "high" | "critical";
+  status: string;
+  assigned_to: string | null;
+  machine_status: string;
+  machine_rule_id: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  latest_decision: ProductReviewDecision | null;
+}
+
+export interface ProductApproval {
+  id: string;
+  run_id: string;
+  statement_id: string;
+  approved_payable_amount: string;
+  approved_disputed_amount: string;
+  approved_by: string;
+  approved_at: string;
+  calculation_hash: string;
+  note: string;
+}
+
+export interface ProductStatement {
+  id: string;
+  run_id: string;
+  invoice_id: string | null;
+  status: "draft" | "ready" | "approved";
+  submitted_amount: string;
+  machine_payable_amount: string;
+  machine_disputed_amount: string;
+  review_amount: string;
+  review_resolved_payable_amount: string;
+  review_resolved_disputed_amount: string;
+  open_review_amount: string;
+  recommended_final_payable_amount: string;
+  recommended_final_disputed_amount: string;
+  calculation_hash: string;
+  kernel_input_manifest_hash: string | null;
+  kernel_calculation_hash: string | null;
+  created_at: string;
+  updated_at: string;
+  approval: ProductApproval | null;
+}
+
+export type ProductDisputeStatus =
+  | "draft"
+  | "ready"
+  | "sent"
+  | "vendor_responded"
+  | "under_review"
+  | "accepted"
+  | "partially_accepted"
+  | "rejected"
+  | "closed";
+
+export interface ProductDisputeCase {
+  id: string;
+  case_number: string;
+  run_id: string;
+  approval_id: string;
+  status: ProductDisputeStatus;
+  subject: string;
+  disputed_amount: string;
+  item_count: number;
+  vendor_response: string;
+  vendor_response_at: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  items: Array<{
+    id: string;
+    determination_id: string;
+    outcome_id: string;
+    amount: string;
+    reason_code: string;
+    reason: string;
+    source: "machine" | "review";
+    accepted_by_vendor: boolean | null;
+  }>;
+}
+
+export interface ProductTrust {
+  run_id: string;
+  agreement: {
+    id: string;
+    version_number: number;
+    payload_hash: string;
+    approved_at: string | null;
+    approved_by: string | null;
+  } | null;
+  input_manifest_hash: string | null;
+  kernel_calculation_hash: string | null;
+  settlement_calculation_hash: string;
+  invariant: string;
+}
+
+export interface ProductOverview {
+  organization: {
+    id: string;
+    name: string;
+    currency: string;
+    timezone: string;
+    created_at: string;
+    updated_at: string;
+  };
+  counts: {
+    organization_id: string;
+    vendors: number;
+    engagements: number;
+    invoices: number;
+    reconciliations: number;
+    review_cases: number;
+    open_review_cases: number;
+    active_disputes: number;
+    approvals: number;
+  };
+  latest_invoice_totals: {
+    submitted_amount: string;
+    recommended_payable_amount: string;
+    disputed_amount: string;
+    open_review_amount: string;
+  };
+  vendors: ProductVendor[];
+  invoices: ProductInvoice[];
+}
 
 // ---------------------------------------------------------------------------
 // AIR / agreement verification types

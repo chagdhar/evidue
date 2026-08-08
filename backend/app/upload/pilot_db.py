@@ -13,6 +13,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.models import Base
+from app.product import models as _product_models  # noqa: F401  (register metadata)
 from app.upload import models as _pilot_models  # noqa: F401  (register metadata)
 from app.upload.auth import current_workspace_id
 
@@ -73,6 +74,8 @@ def initialize_workspace_database(workspace_id: str) -> None:
     _ensure_column(engine, "pilot_contracts", "agreement_bundle_id", "VARCHAR")
     _ensure_column(engine, "pilot_reconciliation_runs", "air_version_id", "VARCHAR")
     _ensure_column(engine, "pilot_reconciliation_runs", "verification_plan_id", "VARCHAR")
+    _ensure_column(engine, "pilot_reconciliation_runs", "input_manifest_hash", "VARCHAR")
+    _ensure_column(engine, "pilot_reconciliation_runs", "calculation_hash", "VARCHAR")
     _ensure_column(engine, "pilot_air_versions", "assurance_json", "JSON")
     _ensure_column(engine, "pilot_facts", "predicate_id", "VARCHAR")
     _ensure_column(engine, "pilot_facts", "model_name", "VARCHAR")

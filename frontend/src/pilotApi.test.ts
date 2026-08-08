@@ -64,4 +64,24 @@ describe("pilot API client", () => {
       "Compilation cannot be approved",
     );
   });
+  it("routes finance product calls through the protected pilot boundary", async () => {
+    savePilotToken("token-that-is-long-enough-for-pilot");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ total: 0, items: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await pilotApi.productReviewCases({ status: "open", runId: "PRUN-1" });
+
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/api/pilot/product/review-cases?");
+    expect(String(url)).toContain("status=open");
+    expect(String(url)).toContain("run_id=PRUN-1");
+    expect(new Headers(options?.headers).get("Authorization")).toBe(
+      "Bearer token-that-is-long-enough-for-pilot",
+    );
+  });
+
 });

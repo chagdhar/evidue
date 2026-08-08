@@ -296,6 +296,8 @@ class PilotReconciliationRunRow(Base):
     supersedes_run_id: Mapped[str | None] = mapped_column(String, nullable=True)
     air_version_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     verification_plan_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    input_manifest_hash: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    calculation_hash: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 
 
 class PilotAgreementRuntimeComparisonRow(Base):

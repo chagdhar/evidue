@@ -32,6 +32,7 @@ from app.contracts.compiler import (
     sha256_text,
 )
 from app.domain.models import ExecutableRule, OperationalEvent, OutcomeClaim, RuleProgram
+from app.product import models as _product_models  # noqa: F401  (register product metadata)
 from app.upload.auth import current_actor, current_workspace_id
 from app.upload.match import (
     ClaimIdentity,
@@ -339,6 +340,9 @@ def create_contract(
         vendor=contract.vendor,
         source_hash=contract.source_hash,
     )
+    from app.product.store import ensure_vendor_engagement_for_contract
+
+    ensure_vendor_engagement_for_contract(session, contract)
     return contract
 
 
@@ -645,6 +649,9 @@ def create_invoice(
         billing_period_start=billing_period_start.isoformat(),
         billing_period_end=billing_period_end.isoformat(),
     )
+    from app.product.store import ensure_invoice_link
+
+    ensure_invoice_link(session, invoice)
     return invoice
 
 
@@ -1183,6 +1190,98 @@ def _runtime_flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _canonical_hash(payload: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(_jsonable(payload), sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _reconciliation_input_manifest_hash(
+    session: Session,
+    invoice: PilotInvoiceRow,
+    air_row: PilotAIRVersionRow,
+    verification_plan_id: str | None,
+) -> str:
+    raw_hashes = sorted(
+        session.scalars(
+            select(PilotRawRecordRow.payload_hash).where(PilotRawRecordRow.invoice_id == invoice.id)
+        ).all()
+    )
+    identity_mappings = session.scalars(
+        select(PilotIdentityMappingRow)
+        .where(PilotIdentityMappingRow.invoice_id == invoice.id)
+        .order_by(PilotIdentityMappingRow.id)
+    ).all()
+    manual_matches = session.scalars(
+        select(PilotManualMatchRow)
+        .where(PilotManualMatchRow.invoice_id == invoice.id, PilotManualMatchRow.active.is_(True))
+        .order_by(PilotManualMatchRow.id)
+    ).all()
+    facts = session.scalars(
+        select(PilotFactRow)
+        .where(PilotFactRow.invoice_id == invoice.id, PilotFactRow.air_version_id == air_row.id)
+        .order_by(PilotFactRow.id)
+    ).all()
+    verification_plan_hash = None
+    if verification_plan_id:
+        plan = session.get(PilotVerificationPlanRow, verification_plan_id)
+        verification_plan_hash = plan.payload_hash if plan else None
+    return _canonical_hash(
+        {
+            "invoice_id": invoice.id,
+            "air_payload_hash": air_row.payload_hash,
+            "air_source_bundle_hash": air_row.source_bundle_hash,
+            "verification_plan_hash": verification_plan_hash,
+            "raw_record_hashes": raw_hashes,
+            "identity_mappings": [
+                {
+                    "conversation_id": row.conversation_id,
+                    "customer_id": row.customer_id,
+                    "account_id": row.account_id,
+                    "outcome_id": row.outcome_id,
+                    "mapping_version": row.mapping_version,
+                }
+                for row in identity_mappings
+            ],
+            "manual_matches": [
+                {"event_id": row.event_id, "claim_id": row.claim_id, "rationale": row.rationale}
+                for row in manual_matches
+            ],
+            "facts": [
+                {
+                    "fact_type": row.fact_type,
+                    "predicate_id": row.predicate_id,
+                    "truth": row.reviewed_truth or row.truth,
+                    "input_hash": row.input_hash,
+                }
+                for row in facts
+            ],
+            "normalizer_version": MAPPING_VERSION,
+            "matching_version": MATCHING_VERSION,
+        }
+    )
+
+
+def _reconciliation_calculation_hash(input_manifest_hash: str, results: list[Any]) -> str:
+    return _canonical_hash(
+        {
+            "input_manifest_hash": input_manifest_hash,
+            "determinations": [
+                {
+                    "outcome_id": result.claim.outcome_id,
+                    "status": result.status,
+                    "rule_id": result.rule_id,
+                    "payable": _money(result.confirmed_payable_amount),
+                    "disputed": _money(result.confirmed_disputed_amount),
+                    "needs_review": _money(result.needs_review_amount),
+                    "engine_version": result.engine_version,
+                }
+                for result in sorted(results, key=lambda item: item.claim.outcome_id)
+            ],
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # M5: Persisted Agreement IR versions
 # ---------------------------------------------------------------------------
@@ -1695,6 +1794,10 @@ def run_pilot_reconciliation(session: Session, invoice_id: str) -> dict[str, obj
 
     plan = latest_verification_plan(session, air_version_id)
     verification_plan_id = plan.id if plan is not None else None
+    input_manifest_hash = _reconciliation_input_manifest_hash(
+        session, invoice, air_row, verification_plan_id
+    )
+    calculation_hash = _reconciliation_calculation_hash(input_manifest_hash, results)
 
     # Optional migration observability.  This can never override AIR decisions.
     comparison_report: dict[str, Any] | None = None
@@ -1743,6 +1846,8 @@ def run_pilot_reconciliation(session: Session, invoice_id: str) -> dict[str, obj
         supersedes_run_id=latest.id if latest else None,
         air_version_id=air_version_id,
         verification_plan_id=verification_plan_id,
+        input_manifest_hash=input_manifest_hash,
+        calculation_hash=calculation_hash,
     )
     session.add(run)
     session.flush()
@@ -1815,6 +1920,10 @@ def run_pilot_reconciliation(session: Session, invoice_id: str) -> dict[str, obj
         needs_review_amount=_money(review),
     )
     session.flush()
+    from app.product.store import ensure_review_cases_for_run, refresh_statement
+
+    ensure_review_cases_for_run(session, run.id)
+    refresh_statement(session, run.id)
     return reconciliation_summary(session, run.id)
 
 
@@ -1916,6 +2025,8 @@ def reconciliation_summary(session: Session, run_id: str | None = None) -> dict[
         "matching_version": run.matching_version,
         "air_version_id": run.air_version_id,
         "verification_plan_id": run.verification_plan_id,
+        "input_manifest_hash": run.input_manifest_hash,
+        "calculation_hash": run.calculation_hash,
         "real_data_disclosure": (
             "Pilot output generated from operator-uploaded data. Verify source permissions, "
             "identity matches, approved rules, and needs-review items before acting on money."
@@ -2330,7 +2441,36 @@ def pilot_status(session: Session) -> dict[str, object]:
 
 
 def clear_pilot_data(session: Session) -> None:
-    """Clear only the isolated pilot database. Demo state is unreachable here."""
+    """Clear isolated workspace data while preserving workspace configuration."""
+    from app.product.models import (
+        ProductApprovalRow,
+        ProductDisputeCaseRow,
+        ProductDisputeItemRow,
+        ProductEngagementContractRow,
+        ProductEngagementInvoiceRow,
+        ProductOrganizationRow,
+        ProductReconciliationStatementRow,
+        ProductReviewCaseRow,
+        ProductReviewDecisionRow,
+        ProductVendorEngagementRow,
+        ProductVendorRow,
+    )
+
+    for model in (
+        ProductDisputeItemRow,
+        ProductDisputeCaseRow,
+        ProductApprovalRow,
+        ProductReconciliationStatementRow,
+        ProductReviewDecisionRow,
+        ProductReviewCaseRow,
+        ProductEngagementInvoiceRow,
+        ProductEngagementContractRow,
+        ProductVendorEngagementRow,
+        ProductVendorRow,
+        ProductOrganizationRow,
+    ):
+        session.execute(delete(model))
+
     for model in (
         PilotAuditLogRow,
         PilotProvenanceEdgeRow,
