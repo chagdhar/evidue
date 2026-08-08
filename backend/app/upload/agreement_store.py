@@ -20,7 +20,9 @@ from app.agreements.bundle import (
 from app.agreements.capabilities import (
     EvidenceCapability,
     EvidenceSourceDescriptor,
+    VerificationPlan,
     build_verification_plan,
+    verification_readiness_summary,
 )
 from app.agreements.facts import FACT_DERIVER_VERSION, derive_facts
 from app.agreements.models import AgreementIR, CommercialClaim, EvidenceAuthority, Expression
@@ -391,6 +393,7 @@ def persist_verification_plan(
 
 
 def verification_plan_view(row: PilotVerificationPlanRow) -> dict[str, object]:
+    plan = VerificationPlan.model_validate(row.plan_json)
     return {
         "id": row.id,
         "contract_id": row.contract_id,
@@ -399,6 +402,7 @@ def verification_plan_view(row: PilotVerificationPlanRow) -> dict[str, object]:
         "created_at": row.created_at.isoformat(),
         "payload_hash": row.payload_hash,
         "plan": row.plan_json,
+        "readiness": verification_readiness_summary(plan),
     }
 
 

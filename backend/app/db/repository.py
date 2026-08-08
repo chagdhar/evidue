@@ -1034,11 +1034,11 @@ def compile_contract_rules(
     if mode == "recorded" and custom_source:
         raise ValueError(
             "The recorded Gemini proposal is tied to the bundled demo contract. "
-            "Restore the demo contract or configure GEMINI_API_KEY for custom text."
+            "Restore the demo contract or configure the demo server-side Gemini provider."
         )
     if mode == "auto" and custom_source and not os.getenv("GEMINI_API_KEY"):
         raise ValueError(
-            "Custom contract text requires a live Gemini compilation. Configure GEMINI_API_KEY, "
+            "Custom contract text requires server-side live compiler configuration; "
             "or replay the recorded proposal using the bundled demo contract."
         )
     fallback_reason = None

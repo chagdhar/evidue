@@ -119,7 +119,7 @@ class GeminiSemanticFactExtractor:
         timeout_seconds: int = 60,
     ) -> None:
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.model = model or os.getenv("EVIDUE_SEMANTIC_MODEL", "gemini-2.5-flash-lite")
+        self.model = model or os.getenv("EVIDUE_SEMANTIC_MODEL", "gemini-3.6-flash")
         configured_threshold = os.getenv("EVIDUE_SEMANTIC_FACT_MIN_CONFIDENCE", "0.85")
         self.minimum_confidence = (
             float(configured_threshold) if minimum_confidence is None else minimum_confidence
@@ -159,9 +159,8 @@ EVIDENCE:
         body = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {
-                "temperature": 0,
                 "responseMimeType": "application/json",
-                "responseSchema": response_schema,
+                "responseJsonSchema": response_schema,
             },
         }
         request_obj = urllib.request.Request(

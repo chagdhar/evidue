@@ -18,8 +18,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.fixtures.demo import scenario_fixture  # noqa: E402
-from app.ingestion.demo_pipeline import build_ingestion_bundle  # noqa: E402
+from app.fixtures.demo import scenario_fixture
+from app.ingestion.demo_pipeline import build_ingestion_bundle
 
 OUTPUT = ROOT / "demo-data"
 

@@ -1,0 +1,545 @@
+{
+  "compiler_version": "native-air-0.3",
+  "contract_id": "QUAL-SYNTHETIC-OUTCOME-PRICING-E2E",
+  "model": "recorded-fixture",
+  "provider": "recorded-fixture",
+  "source_documents": [
+    {
+      "document_id": "SYNTHETIC-ORDER-FORM",
+      "title": "Synthetic Outcome Pricing Order Form",
+      "document_type": "agreement"
+    }
+  ],
+  "definitions": [],
+  "clauses": [
+    {
+      "clause_id": "R7",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "Evidence must match the expected account and action.",
+      "source_start": 451,
+      "source_end": 503,
+      "source_text_hash": "ad0e0e1792ad96aa31615f48781736880d4725fbaccd541dbeaa1ed75a473ea7",
+      "material": true,
+      "clause_type": "performance",
+      "parties": [],
+      "defined_terms_used": [],
+      "references": [],
+      "norms": [
+        {
+          "id": "R7",
+          "norm_type": "obligation",
+          "subject": "vendor",
+          "beneficiary": null,
+          "trigger": null,
+          "condition": {
+            "condition_type": "all_of",
+            "parameters": {
+              "conditions": [
+                {
+                  "condition_type": "field_present",
+                  "parameters": {
+                    "field": "outcome_id"
+                  },
+                  "description": "Required claim field outcome_id is present"
+                },
+                {
+                  "condition_type": "field_present",
+                  "parameters": {
+                    "field": "customer_id"
+                  },
+                  "description": "Required claim field customer_id is present"
+                },
+                {
+                  "condition_type": "field_present",
+                  "parameters": {
+                    "field": "account_id"
+                  },
+                  "description": "Required claim field account_id is present"
+                },
+                {
+                  "condition_type": "event_exists",
+                  "parameters": {
+                    "event_types": [
+                      "ai_closed"
+                    ]
+                  },
+                  "description": "Direct closure evidence exists"
+                }
+              ]
+            },
+            "description": "Required claim identifiers and closure evidence exist"
+          },
+          "exceptions": [],
+          "consequence": "needs_review",
+          "indeterminate_consequence": "needs_review",
+          "proof_requirements": [
+            {
+              "description": "Evidence needed to evaluate Sufficient identifiers and attributable evidence",
+              "fact_types": [
+                "ai_closed"
+              ],
+              "preferred_authority": "customer_system_of_record",
+              "entity_type": null,
+              "required_fields": [],
+              "identity_keys": [],
+              "observation_window": {},
+              "requires_absence_proof": false,
+              "missing_evidence_result": "unknown"
+            }
+          ],
+          "violation_reason_code": "R7",
+          "violation_reason": "The claim must contain stable identifiers and its evidence must be directly attributable and internally consistent.",
+          "indeterminate_reason_code": "MISSING_EVIDENCE",
+          "indeterminate_reason": "Required evidence is unavailable or conflicting",
+          "confidence": 1.0,
+          "ambiguity_notes": []
+        }
+      ],
+      "settlement_effects": [],
+      "automation_classification": "executable_if_data_available",
+      "unsupported_concepts": [],
+      "diagnostics": []
+    },
+    {
+      "clause_id": "R0",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "Price: $1.50 per supported outcome",
+      "source_start": 143,
+      "source_end": 177,
+      "source_text_hash": "b879908549280319e4c7200063c29b707f2768656cf155eb89567d1dee40969c",
+      "material": true,
+      "clause_type": "pricing",
+      "parties": [],
+      "defined_terms_used": [],
+      "references": [],
+      "norms": [
+        {
+          "id": "R0",
+          "norm_type": "obligation",
+          "subject": "vendor",
+          "beneficiary": null,
+          "trigger": null,
+          "condition": {
+            "condition_type": "amount_equals",
+            "parameters": {
+              "field": "billed_amount",
+              "expected_amount": "1.50"
+            },
+            "description": "Billed amount matches the contractual unit price"
+          },
+          "exceptions": [],
+          "consequence": "disputed",
+          "indeterminate_consequence": "needs_review",
+          "proof_requirements": [],
+          "violation_reason_code": "R0",
+          "violation_reason": "Each supported outcome must be billed at the fixed amount stated in the approved order form.",
+          "indeterminate_reason_code": "MISSING_EVIDENCE",
+          "indeterminate_reason": "Required evidence is unavailable or conflicting",
+          "confidence": 1.0,
+          "ambiguity_notes": []
+        }
+      ],
+      "settlement_effects": [
+        {
+          "id": "PRICE",
+          "settlement_type": "fixed_per_unit",
+          "parameters": {
+            "unit_price": "1.50"
+          },
+          "source_clause_id": "R0",
+          "description": "Contractual per-outcome rate"
+        }
+      ],
+      "automation_classification": "executable_if_data_available",
+      "unsupported_concepts": [],
+      "diagnostics": []
+    },
+    {
+      "clause_id": "R6",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "Billing period: 2026-06-01 through 2026-06-30",
+      "source_start": 97,
+      "source_end": 142,
+      "source_text_hash": "89480f10f9068df47011f28b475a5d452be9f3dd2ee1bffcf68103f3907297d8",
+      "material": true,
+      "clause_type": "performance",
+      "parties": [],
+      "defined_terms_used": [],
+      "references": [],
+      "norms": [
+        {
+          "id": "R6",
+          "norm_type": "obligation",
+          "subject": "vendor",
+          "beneficiary": null,
+          "trigger": null,
+          "condition": {
+            "condition_type": "datetime_in_range",
+            "parameters": {
+              "field": "closed_at",
+              "start": "2026-06-01T00:00:00",
+              "end_exclusive": "2026-07-01T00:00:00"
+            },
+            "description": "Claim falls within the contractual billing period"
+          },
+          "exceptions": [],
+          "consequence": "disputed",
+          "indeterminate_consequence": "needs_review",
+          "proof_requirements": [],
+          "violation_reason_code": "R6",
+          "violation_reason": "The outcome must close inside the invoice billing period.",
+          "indeterminate_reason_code": "MISSING_EVIDENCE",
+          "indeterminate_reason": "Required evidence is unavailable or conflicting",
+          "confidence": 1.0,
+          "ambiguity_notes": []
+        }
+      ],
+      "settlement_effects": [],
+      "automation_classification": "executable_if_data_available",
+      "unsupported_concepts": [],
+      "diagnostics": []
+    },
+    {
+      "clause_id": "R1",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "A resolution is not billable when a human completes or materially corrects the promised work within 24 hours, or when the customer recontacts support for the same intent within seven calendar days.",
+      "source_start": 253,
+      "source_end": 450,
+      "source_text_hash": "1dfac135209e992c91394f3cba140fb3794ee69b45a457f25e911c65f125b5c5",
+      "material": true,
+      "clause_type": "performance",
+      "parties": [],
+      "defined_terms_used": [],
+      "references": [],
+      "norms": [
+        {
+          "id": "R1",
+          "norm_type": "prohibition",
+          "subject": "vendor",
+          "beneficiary": null,
+          "trigger": null,
+          "condition": {
+            "condition_type": "event_within_window",
+            "parameters": {
+              "event_types": [
+                "customer_recontact"
+              ],
+              "anchor_field": "closed_at",
+              "window_value": 7,
+              "window_unit": "days",
+              "start_exclusive": true,
+              "compare_fields": [
+                {
+                  "event_field": "intent",
+                  "claim_field": "intent",
+                  "normalizer": "text"
+                }
+              ]
+            },
+            "description": "Prohibited event occurs within the contractual window"
+          },
+          "exceptions": [],
+          "consequence": "disputed",
+          "indeterminate_consequence": "needs_review",
+          "proof_requirements": [
+            {
+              "description": "Evidence needed to evaluate No same-intent recontact",
+              "fact_types": [
+                "ai_closed",
+                "customer_recontact"
+              ],
+              "preferred_authority": "customer_system_of_record",
+              "entity_type": null,
+              "required_fields": [],
+              "identity_keys": [],
+              "observation_window": {},
+              "requires_absence_proof": false,
+              "missing_evidence_result": "unknown"
+            }
+          ],
+          "violation_reason_code": "R1",
+          "violation_reason": "No same-intent customer contact may occur within seven calendar days after closure.",
+          "indeterminate_reason_code": "MISSING_EVIDENCE",
+          "indeterminate_reason": "Required evidence is unavailable or conflicting",
+          "confidence": 1.0,
+          "ambiguity_notes": []
+        }
+      ],
+      "settlement_effects": [],
+      "automation_classification": "executable_if_data_available",
+      "unsupported_concepts": [],
+      "diagnostics": []
+    },
+    {
+      "clause_id": "R2",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "A resolution is not billable when a human completes or materially corrects the promised work within 24 hours, or when the customer recontacts support for the same intent within seven calendar days.",
+      "source_start": 253,
+      "source_end": 450,
+      "source_text_hash": "1dfac135209e992c91394f3cba140fb3794ee69b45a457f25e911c65f125b5c5",
+      "material": true,
+      "clause_type": "performance",
+      "parties": [],
+      "defined_terms_used": [],
+      "references": [],
+      "norms": [
+        {
+          "id": "R2",
+          "norm_type": "prohibition",
+          "subject": "vendor",
+          "beneficiary": null,
+          "trigger": null,
+          "condition": {
+            "condition_type": "event_within_window",
+            "parameters": {
+              "event_types": [
+                "human_completion",
+                "human_material_correction"
+              ],
+              "anchor_field": "closed_at",
+              "window_value": 24,
+              "window_unit": "hours",
+              "start_exclusive": true,
+              "compare_fields": []
+            },
+            "description": "Prohibited event occurs within the contractual window"
+          },
+          "exceptions": [],
+          "consequence": "disputed",
+          "indeterminate_consequence": "needs_review",
+          "proof_requirements": [
+            {
+              "description": "Evidence needed to evaluate No human completion",
+              "fact_types": [
+                "ai_closed",
+                "human_completion"
+              ],
+              "preferred_authority": "customer_system_of_record",
+              "entity_type": null,
+              "required_fields": [],
+              "identity_keys": [],
+              "observation_window": {},
+              "requires_absence_proof": false,
+              "missing_evidence_result": "unknown"
+            }
+          ],
+          "violation_reason_code": "R2",
+          "violation_reason": "No human completion or material correction may occur within 24 hours after closure.",
+          "indeterminate_reason_code": "MISSING_EVIDENCE",
+          "indeterminate_reason": "Required evidence is unavailable or conflicting",
+          "confidence": 1.0,
+          "ambiguity_notes": []
+        }
+      ],
+      "settlement_effects": [],
+      "automation_classification": "executable_if_data_available",
+      "unsupported_concepts": [],
+      "diagnostics": []
+    },
+    {
+      "clause_id": "R3",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "A promised downstream action must complete successfully within two hours.",
+      "source_start": 179,
+      "source_end": 252,
+      "source_text_hash": "581fb17ae1644dc2ba478db45321b478f1924846e9af45da9284c740cdc346b3",
+      "material": true,
+      "clause_type": "performance",
+      "parties": [],
+      "defined_terms_used": [],
+      "references": [],
+      "norms": [
+        {
+          "id": "R3",
+          "norm_type": "obligation",
+          "subject": "vendor",
+          "beneficiary": null,
+          "trigger": null,
+          "condition": {
+            "condition_type": "terminal_outcome",
+            "parameters": {
+              "success_types": [
+                "downstream_succeeded"
+              ],
+              "failure_types": [
+                "downstream_failed"
+              ],
+              "anchor_field": "closed_at",
+              "window_value": 2,
+              "window_unit": "hours"
+            },
+            "description": "Required downstream success occurs within the contractual window"
+          },
+          "exceptions": [],
+          "consequence": "disputed",
+          "indeterminate_consequence": "needs_review",
+          "proof_requirements": [
+            {
+              "description": "Evidence needed to evaluate Downstream action succeeds",
+              "fact_types": [
+                "ai_closed",
+                "downstream_succeeded"
+              ],
+              "preferred_authority": "customer_system_of_record",
+              "entity_type": null,
+              "required_fields": [],
+              "identity_keys": [],
+              "observation_window": {},
+              "requires_absence_proof": false,
+              "missing_evidence_result": "unknown"
+            }
+          ],
+          "violation_reason_code": "R3",
+          "violation_reason": "The promised downstream action must complete successfully within two hours.",
+          "indeterminate_reason_code": "MISSING_EVIDENCE",
+          "indeterminate_reason": "Required evidence is unavailable or conflicting",
+          "confidence": 1.0,
+          "ambiguity_notes": []
+        }
+      ],
+      "settlement_effects": [],
+      "automation_classification": "executable_if_data_available",
+      "unsupported_concepts": [],
+      "diagnostics": []
+    },
+    {
+      "clause_id": "R5",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "Evidence must match the expected account and action.",
+      "source_start": 451,
+      "source_end": 503,
+      "source_text_hash": "ad0e0e1792ad96aa31615f48781736880d4725fbaccd541dbeaa1ed75a473ea7",
+      "material": true,
+      "clause_type": "performance",
+      "parties": [],
+      "defined_terms_used": [],
+      "references": [],
+      "norms": [
+        {
+          "id": "R5",
+          "norm_type": "prohibition",
+          "subject": "vendor",
+          "beneficiary": null,
+          "trigger": null,
+          "condition": {
+            "condition_type": "field_mismatch",
+            "parameters": {
+              "event_type": "account_action_mismatch",
+              "comparisons": [
+                {
+                  "event_field": "observed_account_id",
+                  "claim_field": "account_id"
+                },
+                {
+                  "event_field": "observed_action",
+                  "claim_field": "expected_action"
+                }
+              ]
+            },
+            "description": "No authoritative mismatch event exists"
+          },
+          "exceptions": [],
+          "consequence": "disputed",
+          "indeterminate_consequence": "needs_review",
+          "proof_requirements": [
+            {
+              "description": "Evidence needed to evaluate Account and action match",
+              "fact_types": [
+                "account_action_mismatch"
+              ],
+              "preferred_authority": "customer_system_of_record",
+              "entity_type": null,
+              "required_fields": [],
+              "identity_keys": [],
+              "observation_window": {},
+              "requires_absence_proof": false,
+              "missing_evidence_result": "unknown"
+            }
+          ],
+          "violation_reason_code": "R5",
+          "violation_reason": "Operational evidence must match the expected customer account and promised action.",
+          "indeterminate_reason_code": "MISSING_EVIDENCE",
+          "indeterminate_reason": "Required evidence is unavailable or conflicting",
+          "confidence": 1.0,
+          "ambiguity_notes": []
+        }
+      ],
+      "settlement_effects": [],
+      "automation_classification": "executable_if_data_available",
+      "unsupported_concepts": [],
+      "diagnostics": []
+    },
+    {
+      "clause_id": "R4",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "Only the earliest otherwise-payable outcome is billable for the same customer and normalized intent inside the 24-hour attribution window.",
+      "source_start": 504,
+      "source_end": 642,
+      "source_text_hash": "8a9e969aaa84a6f73edc430405b7253cb3df9e1721f5c813e451df04fe7272c9",
+      "material": true,
+      "clause_type": "performance",
+      "parties": [],
+      "defined_terms_used": [],
+      "references": [],
+      "norms": [
+        {
+          "id": "R4",
+          "norm_type": "obligation",
+          "subject": "vendor",
+          "beneficiary": null,
+          "trigger": null,
+          "condition": {
+            "condition_type": "duplicate_in_window",
+            "parameters": {
+              "group_by": [
+                "customer_id",
+                "intent"
+              ],
+              "order_by": [
+                "closed_at",
+                "outcome_id"
+              ],
+              "window_value": 24,
+              "window_unit": "hours",
+              "normalizers": {
+                "intent": "intent"
+              }
+            },
+            "description": "Only the first eligible claim in the duplicate window is billable"
+          },
+          "exceptions": [],
+          "consequence": "disputed",
+          "indeterminate_consequence": "needs_review",
+          "proof_requirements": [],
+          "violation_reason_code": "R4",
+          "violation_reason": "Among otherwise-payable claims, only the earliest outcome is billable for the same customer and normalized intent in a 24-hour window.",
+          "indeterminate_reason_code": "MISSING_EVIDENCE",
+          "indeterminate_reason": "Required evidence is unavailable or conflicting",
+          "confidence": 1.0,
+          "ambiguity_notes": []
+        }
+      ],
+      "settlement_effects": [],
+      "automation_classification": "executable_if_data_available",
+      "unsupported_concepts": [],
+      "diagnostics": []
+    }
+  ],
+  "global_diagnostics": [
+    {
+      "code": "RECORDED_NATIVE_FIXTURE",
+      "severity": "info",
+      "message": "Offline native proposal derived from the bundled recorded demo fixture.",
+      "clause_id": null,
+      "suggested_action": null
+    }
+  ]
+}

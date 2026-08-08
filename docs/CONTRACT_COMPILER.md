@@ -1,61 +1,133 @@
-# Contract compiler and deterministic dispute engine
+# Contract compiler and deterministic financial engine
 
-## Safety boundary
+## Core safety boundary
 
-Evidue uses an LLM only to translate natural-language billing clauses into a proposed, constrained rule program.
-The proposal cannot execute code and cannot adjudicate invoice claims.
+Evidue uses an LLM to **propose an interpretation of contract language**. The proposal cannot execute arbitrary code and cannot adjudicate invoice lines. A human-approved Agreement IR (AIR) is the only contractual authority consumed by the deterministic reconciliation engine.
 
-The runtime sequence is:
+```text
+contract documents
+  -> deterministic source spans
+  -> structured LLM proposal
+  -> Pydantic validation
+  -> deterministic source binding
+  -> AIR lowering + assurance
+  -> human approval / immutable version
+  -> deterministic reconciliation
+```
 
-1. Read the contract text.
-2. Ask Gemini for JSON using a response schema and temperature `0`.
-3. Validate the proposal with strict Pydantic models.
-4. Store the proposal as `pending_approval` with source and prompt SHA-256 hashes.
-5. Require explicit approval, creating an immutable numbered version.
-6. Load that approved version into the deterministic interpreter.
-7. Evaluate customer-owned evidence and calculate payable, disputed, and needs-review amounts.
+The LLM is not called to decide payable/disputed/needs-review or to calculate final money after AIR approval.
 
-## Allowed operations
+## Provider architecture
 
-The model can select only these operations:
+Native contract compilation is provider-independent. Production chooses a server-configured primary provider and may use a server-configured fallback for transient availability failures. Current adapters include Gemini and OpenAI.
 
-- `validate_evidence_envelope`
-- `claim_datetime_in_range`
-- `prohibit_event_within`
-- `require_success_event_within`
-- `prohibit_field_mismatch_event`
-- `unique_first_claim_within`
+Customers never provide LLM credentials. Provider keys live only in server/deployment secrets.
 
-Each operation has required parameters and validation constraints. Unknown operations, missing fields, invalid
-window units, invalid dates, duplicate rule IDs, and duplicate priorities are rejected before approval.
+Typical server configuration:
 
-## Demo modes
+```bash
+export EVIDUE_LLM_PRIMARY=gemini
+export EVIDUE_LLM_FALLBACK=openai       # optional
+export GEMINI_API_KEY='...'
+export GEMINI_MODEL='...'
+export OPENAI_API_KEY='...'             # only if OpenAI is configured
+export OPENAI_MODEL='...'
+```
 
-`POST /api/contracts/current/compile?mode=auto`
+The product configuration API exposes only secret-free readiness metadata such as provider, model, configured state, and `customer_key_required=false`.
 
-- Uses Gemini when `GEMINI_API_KEY` is configured.
-- Falls back to the validated recorded proposal when the live call fails.
-- Uses the recorded proposal immediately when no key is configured.
+## Availability behavior
 
-`POST /api/contracts/current/compile?mode=live`
+The provider layer performs bounded retry with exponential backoff and jitter for transient HTTP/network failures such as 429/500/502/503/504. Non-retryable validation/bad-request failures fail immediately. Production may fall back to a second configured provider; controlled qualification pins one provider and disables fallback.
 
-- Requires a Gemini key.
-- Returns an error if the live call fails.
+Provider failure never changes an already-approved AIR or the result of deterministic reconciliation.
 
-`POST /api/contracts/current/compile?mode=recorded`
+## Independent compiler assurance
 
-- Always loads the checked-in validated proposal.
-- Makes the demo deterministic and usable offline.
+Production can optionally configure `EVIDUE_LLM_ASSURANCE_PROVIDER` (and an optional
+`EVIDUE_LLM_ASSURANCE_MODEL`). The source packet is compiled independently, both candidates are
+lowered, and Evidue compares normalized material semantics rather than generated prose or IDs.
+If the compilers materially disagree, Evidue adds a blocking diagnostic and routes the candidate
+to human review. It never lets models vote on the financial interpretation. If the explicitly
+required assurance provider is unavailable, approval also fails closed.
 
-`POST /api/contracts/current/compilations/{id}/approve`
+This is an optional safety layer, not the source of financial authority; the approved AIR remains
+the only input to deterministic adjudication.
 
-- Replaces the active rule rows with the approved immutable version.
-- Marks the current reconciliation stale.
-- Requires reconciliation to be run again using the newly approved program.
+## Contract-change financial impact
 
-## Source-of-truth guarantee
+A pending AIR version can be replayed against an existing invoice and its already accepted
+evidence before approval through:
 
-The checked-in contract terms are not duplicated as Python `if` statements. The interpreter branches only on
-allowlisted operation names and reads windows, event types, field comparisons, grouping keys, ordering, and
-consequences from the approved rule data. Changing an approved rule proposal changes the executed program
-without editing the adjudication engine.
+```text
+GET /api/pilot/air-versions/{candidate}/financial-impact?invoice_id=...
+```
+
+The response shows normalized semantic changes, exact payable/disputed/needs-review deltas, and
+which invoice lines would change. It is explicitly marked `simulation_only=true`; the baseline
+approved AIR remains financial authority until the candidate is human-approved. This turns an
+amendment/rule change into a measurable finance control event without putting an LLM in the money
+path.
+
+## Historical invoice replay
+
+An already-approved AIR can be replayed across all accepted historical invoices uploaded for the
+same contract through:
+
+```text
+GET /api/pilot/contracts/{contract_id}/historical-replay
+```
+
+This is a non-persistent analysis path intended for low-friction pilots and retrospective vendor
+invoice reviews. It uses the same deterministic adjudicator as normal reconciliation, performs no
+LLM call, verifies money conservation per invoice and in aggregate, and refuses to run with a
+stale or non-approved AIR. Invoices without accepted claims are reported as `not_ready` rather than
+silently disappearing. The output is not a payable instruction and must not be presented as
+recovered savings.
+
+## Source provenance
+
+Model-authored quotations are not trusted as source authority. Evidue deterministically segments original documents into immutable source spans. The model selects span IDs; Evidue validates that the spans exist, belong to the correct document, are ordered/consecutive where required, and then retrieves the original bytes itself.
+
+Evidue calculates source offsets and SHA-256 hashes. It does not use fuzzy or semantic quote matching to manufacture provenance.
+
+## Redacted contract parameters
+
+Public filings often contain `[***]` or other redaction markers. Missing rates, windows, dates, percentages, thresholds, or other material parameters must remain unknown. The native prompt explicitly forbids guessing these values and the qualification system contains hard-fail checks for invented critical parameters.
+
+## Human authority and stale AIR
+
+A generated proposal remains non-authoritative until approved. AIR versions are immutable/versioned. If the governing contract bundle changes, the previously approved AIR becomes stale and reconciliation is blocked until the new governing documents are compiled and approved.
+
+The pilot fails closed on a governing-document change inside one configured reconciliation period rather than silently blending two policies.
+
+## Decision traceability
+
+Reconciliation details now include a deterministic `trace` graph. For a disputed dollar the graph links, where applicable:
+
+```text
+financial decision
+  -> invoice claim
+  -> approved norm/settlement policy
+  -> immutable contract source clause + hash
+  -> proof requirement
+  -> persisted evidence event(s)
+```
+
+A disputed decision without an approved rule or contract source is explicitly marked as an incomplete trace rather than silently presented as auditable.
+
+## Verification readiness
+
+Approved AIR proof requirements are compared with available evidence-source capabilities before reconciliation. Verification-plan responses include a finance-friendly readiness summary with:
+
+- readiness percentage;
+- ready / partial / unavailable requirement counts;
+- missing fact types;
+- missing capabilities such as identity or absence proof;
+- blocking proof requirements.
+
+This lets the operator see what the contract requires that the current evidence set cannot yet prove.
+
+## Qualification
+
+See `docs/CONTRACT_QUALIFICATION.md` for independent gold standards, hard safety gates, semantic stability, mutation tests, controlled exact-dollar scenarios, and real executed-contract qualification.

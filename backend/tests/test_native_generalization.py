@@ -132,6 +132,41 @@ def test_source_binding_attaches_exact_span_and_hash() -> None:
     assert clause.source_text_hash is not None and len(clause.source_text_hash) == 64
 
 
+def test_source_binding_accepts_layout_only_whitespace_and_canonicalizes() -> None:
+    source_clause = "Provider earns $1.00\n\tper outcome."
+    model_quote = "Provider earns $1.00 per outcome."
+    document = f"Heading\n{source_clause}\nEnd"
+
+    proposal = AgreementCompilationProposal(
+        compiler_version="test",
+        contract_id="C1",
+        model="test",
+        provider="test",
+        source_documents=[SourceDocumentRef(document_id="DOC-1", title="Contract")],
+        clauses=[
+            ClauseAnalysisProposal(
+                clause_id="CL-1",
+                source_document_id="DOC-1",
+                source_text=model_quote,
+                clause_type="pricing",
+            )
+        ],
+    )
+
+    bound = bind_proposal_to_sources(
+        proposal,
+        expected_contract_id="C1",
+        source_documents={"DOC-1": ("Contract", document)},
+    )
+
+    clause = bound.clauses[0]
+
+    assert clause.source_text == source_clause
+    assert clause.source_start == document.index(source_clause)
+    assert clause.source_end == clause.source_start + len(source_clause)
+    assert clause.source_text_hash is not None
+
+
 def test_unknown_nested_parameters_are_rejected() -> None:
     with pytest.raises(ValueError, match="unsupported parameters"):
         ConditionProposal(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -1160,3 +1161,167 @@ def test_sample_air_and_exports_have_finance_facing_language(pilot_client):
     assert "Invoice dispute report" in vendor_report.text
     assert "Charges identified for dispute" in vendor_report.text
     assert disputed["rule_description"] in vendor_report.text
+
+
+def test_historical_replay_is_non_persistent_analysis(prepared_pilot):
+    client, sessions, contract_id = prepared_pilot
+
+    with sessions() as session:
+        before = session.scalar(select(func.count()).select_from(PilotReconciliationRunRow))
+
+    response = client.get(
+        f"/api/pilot/contracts/{contract_id}/historical-replay",
+        headers=AUTH,
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+
+    assert payload["historical_replay"] is True
+    assert payload["simulation_only"] is True
+    assert payload["financial_authority"] == "approved_air"
+    assert payload["invoices_total"] == 1
+    assert payload["invoices_replayed"] == 1
+    assert payload["invoices_not_ready"] == 0
+    assert payload["totals"]["billed"] == "1.50"
+    assert payload["totals"]["conservation_passed"] is True
+    assert Decimal(payload["totals"]["billed"]) == (
+        Decimal(payload["totals"]["payable"])
+        + Decimal(payload["totals"]["disputed"])
+        + Decimal(payload["totals"]["needs_review"])
+    )
+    assert "recovered savings" in payload["warning"]
+
+    with sessions() as session:
+        after = session.scalar(select(func.count()).select_from(PilotReconciliationRunRow))
+    assert after == before
+
+
+def test_historical_replay_rejects_stale_approved_air(prepared_pilot):
+    client, _sessions, contract_id = prepared_pilot
+
+    changed = client.post(
+        f"/api/pilot/contracts/{contract_id}/agreement-bundle/documents",
+        params={
+            "title": "Replay Commercial Amendment",
+            "document_type": "amendment",
+            "effective_from": "2026-06-01T00:00:00Z",
+            "precedence": 400,
+        },
+        files={
+            "file": (
+                "replay-amendment.txt",
+                "Effective June 1, 2026, the charge for each verified outcome is $1.75.",
+                "text/plain",
+            )
+        },
+        headers=AUTH,
+    )
+    assert changed.status_code == 200, changed.text
+
+    replay = client.get(
+        f"/api/pilot/contracts/{contract_id}/historical-replay",
+        headers=AUTH,
+    )
+    assert replay.status_code == 409, replay.text
+    assert "stale" in replay.json()["detail"].lower()
+
+
+def test_candidate_air_financial_impact_is_simulation_only(prepared_pilot):
+    client, _sessions, contract_id = prepared_pilot
+
+    candidate = client.post(
+        f"/api/pilot/contracts/{contract_id}/compile-native",
+        params={"mode": "recorded"},
+        headers=AUTH,
+    )
+    assert candidate.status_code == 200, candidate.text
+    candidate_id = candidate.json()["air_version_id"]
+
+    impact = client.get(
+        f"/api/pilot/air-versions/{candidate_id}/financial-impact",
+        params={"invoice_id": "INV-TEST-001"},
+        headers=AUTH,
+    )
+    assert impact.status_code == 200, impact.text
+    payload = impact.json()
+
+    assert payload["simulation_only"] is True
+    assert payload["financial_authority_changed"] is False
+    assert payload["candidate_air_version"]["id"] == candidate_id
+    assert payload["financial_authority_air_version_id"] != candidate_id
+    assert payload["financial"]["affected_line_count"] == 0
+    assert payload["financial"]["delta"] == {
+        "payable": "0.00",
+        "disputed": "0.00",
+        "needs_review": "0.00",
+    }
+
+
+def test_independent_compiler_disagreement_blocks_air_approval(
+    prepared_pilot,
+    monkeypatch,
+):
+    import app.agreements.native_compiler as native_module
+    from app.agreements.compiler_models import AgreementCompilationProposal
+    from app.agreements.native_compiler import NativeCompilationResult, recorded_native_proposal
+
+    client, _sessions, contract_id = prepared_pilot
+    monkeypatch.setenv("EVIDUE_LLM_PRIMARY", "gemini")
+    monkeypatch.setenv("EVIDUE_LLM_ASSURANCE_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_MODEL", "test-assurance-model")
+
+    def replace_exact(value):
+        if isinstance(value, dict):
+            return {key: replace_exact(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [replace_exact(item) for item in value]
+        return "1.75" if value == "1.50" else value
+
+    def fake_compile_native(**kwargs):
+        document_id, (title, text) = next(iter(kwargs["source_documents"].items()))
+        recorded = recorded_native_proposal(
+            contract_id=kwargs["contract_id"],
+            document_id=document_id,
+            title=title,
+            contract_text=text,
+        )
+        provider = kwargs.get("provider") or "gemini"
+        proposal = recorded.proposal
+        if provider == "openai":
+            proposal = AgreementCompilationProposal.model_validate(
+                replace_exact(proposal.model_dump(mode="json"))
+            )
+        return NativeCompilationResult(
+            proposal=proposal,
+            prompt_hash=f"sha256:test-{provider}",
+            raw_response={"test": True},
+            live_model_call=True,
+            model=f"test-{provider}",
+            provider="openai" if provider == "openai" else "google-gemini",
+            provenance={"provider": provider, "model": f"test-{provider}"},
+        )
+
+    monkeypatch.setattr(native_module, "compile_native", fake_compile_native)
+
+    compiled = client.post(
+        f"/api/pilot/contracts/{contract_id}/compile-native",
+        params={"mode": "live"},
+        headers=AUTH,
+    )
+    assert compiled.status_code == 200, compiled.text
+    payload = compiled.json()
+
+    assert payload["approval_ready"] is False
+    assert payload["compiler_consensus"]["status"] == "material_disagreement"
+    assert payload["compiler_consensus"]["approval_blocked"] is True
+    assert any(
+        item["code"] == "INDEPENDENT_COMPILER_DISAGREEMENT" and item["severity"] == "blocking"
+        for item in payload["diagnostics"]
+    )
+
+    approved = client.post(
+        f"/api/pilot/air-versions/{payload['air_version_id']}/approve",
+        headers=AUTH,
+    )
+    assert approved.status_code == 409
+    assert "assurance" in approved.text.lower() or "approvable" in approved.text.lower()

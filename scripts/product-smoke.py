@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """End-to-end product smoke with no external model/network dependency."""
+
 from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 TOKEN = "product-smoke-workspace-key-32-characters"
 
@@ -17,8 +18,8 @@ def main() -> None:
         os.environ.pop("EVIDUE_WORKSPACE_TOKENS", None)
         os.environ.pop("GEMINI_API_KEY", None)
 
-        from fastapi.testclient import TestClient
         from app.main import app
+        from fastapi.testclient import TestClient
 
         headers = {"Authorization": f"Bearer {TOKEN}"}
         with TestClient(app) as client:
@@ -54,7 +55,9 @@ def main() -> None:
 
             audit = client.get("/api/pilot/audit-log", headers=headers)
             audit.raise_for_status()
-            assert any(event["action"] == "reconciliation.completed" for event in audit.json()["events"])
+            assert any(
+                event["action"] == "reconciliation.completed" for event in audit.json()["events"]
+            )
 
         print(
             json.dumps(

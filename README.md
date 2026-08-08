@@ -24,8 +24,9 @@ Open <http://localhost:5173/pilot>, enter the generated access key, and choose
 **Try sample workspace** or **Use my own data**. `/pilot/config` contains workspace
 defaults, preferred evidence systems, integration readiness, and the protected reset
 control. Secrets remain server-side and are never exposed by that page. For arbitrary
-customer contracts, also set `GEMINI_API_KEY` in `.env`; reconciliation itself does
-not require model access after an AIR version is approved.
+customer contracts, configure an Evidue-owned backend compiler provider (for example Gemini
+or OpenAI) in the server environment. Customers never provide an LLM key; reconciliation
+itself does not require model access after an AIR version is approved.
 
 The normal-user workflow is:
 
@@ -76,15 +77,13 @@ a $2,520 recommended deduction.
 The demo no longer treats Python constants as the source of truth for billing terms.
 It implements the complete control boundary Evidue needs in production:
 
-1. A Gemini compiler converts the natural-language contract into a constrained JSON rule proposal.
-2. Pydantic rejects unknown operations, malformed windows, duplicate priorities, and invalid output.
-3. The proposal remains `pending_approval` until a human approves an immutable version.
-4. Reconciliation loads that approved version from SQLite and runs a generic deterministic interpreter.
-5. The LLM is never called while deciding whether an invoice line is payable, disputed, or needs review.
+1. A server-owned, provider-independent compiler converts natural-language contract clauses into a constrained structured proposal.
+2. The model cites deterministic source-span IDs; Evidue binds the proposal back to original contract bytes and hashes.
+3. Pydantic and compiler assurance reject malformed, unsupported, ungrounded, or unsafe structure.
+4. The proposal remains `pending_approval` until a human approves an immutable AIR version.
+5. Reconciliation loads that approved version and runs the deterministic interpreter; no LLM decides line status or payable dollars.
 
-The repository includes a validated recorded proposal so the technical preview works offline. To make a live Gemini
-call, export `GEMINI_API_KEY` before starting the backend. `GEMINI_MODEL` is optional. No API key is checked
-into this repository.
+The repository includes validated recorded proposals so technical previews and the core proof suite work offline. Live compilation uses server-side provider credentials configured by the Evidue operator, never by the customer.
 
 In the UI, open **Contract compiler**, click **Compile contract**, inspect the proposed operations, approve the
 new version, and then run reconciliation. See [docs/CONTRACT_COMPILER.md](docs/CONTRACT_COMPILER.md).
@@ -98,7 +97,7 @@ Open `/demo/contracts/current` before running the invoice. Click **Compile contr
 3. The proposal remains inactive until **Approve rule version** is clicked.
 4. Reconciliation executes only the approved immutable version; the LLM never adjudicates a charge.
 
-Set `GEMINI_API_KEY` in a local `.env` file for a live call. With no key, the same screen replays a checked-in, schema-validated Gemini response so the technical preview is reliable offline. See [docs/LLM_RULE_COMPILER.md](docs/LLM_RULE_COMPILER.md).
+For local developer testing, the Evidue operator may configure a server-side provider credential in `.env`; customers are never asked to supply an LLM key. With no provider credential, the same demo screen replays a checked-in, schema-validated response so the technical preview remains reliable offline. See [docs/LLM_RULE_COMPILER.md](docs/LLM_RULE_COMPILER.md).
 
 Before reconciliation, the demo now shows the production-shaped evidence path:
 eight vendor and customer sources, aggregate source-record volumes, 9,975 direct
@@ -172,6 +171,27 @@ See `docs/FINAL_REPAIR_STATUS.md` for the final ingestion-demo repair and valida
 
 ## Protected product API
 
+### Server-owned compiler providers
+
+The protected product does **not** use BYOK. Configure provider credentials in the Evidue backend/deployment environment. For example:
+
+```bash
+export EVIDUE_LLM_PRIMARY=gemini
+export GEMINI_API_KEY='...'
+export GEMINI_MODEL='...'
+# Optional production fallback:
+export EVIDUE_LLM_FALLBACK=openai
+export OPENAI_API_KEY='...'
+export OPENAI_MODEL='...'
+```
+
+The browser only receives secret-free provider readiness metadata. Controlled qualification pins one provider/model and disables fallback so repeated runs remain interpretable.
+
+For high-assurance agreements, `EVIDUE_LLM_ASSURANCE_PROVIDER` can request an independent second
+compile. Material normalized-semantic disagreement blocks approval and goes to human review;
+models never vote on the rule that determines money.
+
+
 The real-data pilot is deliberately separate from the synthetic demo:
 
 - demo data uses `data/evidue.db`;
@@ -213,13 +233,23 @@ The API sequence is:
 8. `POST /api/pilot/reconcile`
 9. Download the corrected invoice, review report, disputes CSV, summary, or evidence package.
 
-Custom contracts require `GEMINI_API_KEY`; the recorded compiler proposal is accepted only for the bundled demo contract. `pypdf` is a declared runtime dependency for text-based PDF extraction; DOCX parsing uses the standard library and does not require Microsoft Office.
+Custom contracts require a server-configured native compiler provider in live mode; customers are never asked for provider credentials. The recorded compiler proposal is accepted only for controlled/demo fixtures. `pypdf` is a declared runtime dependency for text-based PDF extraction; DOCX parsing uses the standard library and does not require Microsoft Office.
 
 Each reconciliation run is append-only. Use the comparison endpoint to show what changed after new evidence, and record the customer's review with `/api/pilot/reconciliations/{run_id}/customer-review`. This keeps engine output separate from customer acceptance evidence instead of overwriting determinations.
 
 ### Product frontend
 
 Open `/pilot` to use the protected workflow without raw curl commands. The access key is stored in browser `sessionStorage` only and sent as a bearer header. The default UI is written for finance/operators: guided multi-document contract review, deterministic plain-English contract rules, invoice control totals, a contract-driven evidence checklist, deterministic reconciliation, actionable line-level explanations, rerun deltas, and vendor-facing finance exports. AIR hashes, proof planning, derived facts, and audit history live under **Advanced details**. Workspace defaults and integration readiness live at `/pilot/config`; that page never reads server secrets.
+A pending AIR can also be replayed against an existing invoice through the
+financial-impact API so Finance can see the exact dollar effect of a contract/rule change before
+approving it; the result is a simulation and does not replace the approved AIR.
+
+For low-friction pilot validation, an approved AIR can also replay every accepted historical
+invoice already uploaded for that contract through
+`GET /api/pilot/contracts/{contract_id}/historical-replay`. Historical replay is deterministic,
+invokes no LLM, creates no reconciliation runs, and reports aggregate billed/payable/disputed/
+needs-review totals with money-conservation checks. It is explicitly analysis, not a payable
+instruction and not a claim of recovered savings.
 
 The compiler now treats the fixed contract rate as executable policy through `claim_amount_equals`. It also blocks approval when a material clause is ambiguous or unsupported rather than silently omitting it.
 
@@ -238,15 +268,23 @@ A run without reviewed, exhaustive gold can produce a structural/review report b
 the release qualification gate. See [docs/CONTRACT_QUALIFICATION.md](docs/CONTRACT_QUALIFICATION.md).
 
 Public source definitions are catalogued under `qualification/public_sources.json`. Download
-them locally (third-party source files are ignored by Git), review/create gold labels, then
-run live qualification with a server/shell `GEMINI_API_KEY`.
+them locally, validate/review the gold independently, then pin a configured provider for live qualification.
 
 ```bash
 python scripts/fetch_qualification_sources.py --pack sec-demandtec-target-2010
-GEMINI_API_KEY=... PYTHONPATH=backend python scripts/qualify_contract.py \
+PYTHONPATH=backend uv run python scripts/qualify_contract.py \
   --pack qualification/downloaded/sec-demandtec-target-2010 \
-  --mode live --runs 3 --output /tmp/evidue-contract-qualification.json
+  --mode live --provider gemini --runs 1 \
+  --output /tmp/evidue-contract-qualification.json --exit-zero-on-review
 ```
+
+For the reproducible offline verification kernel:
+
+```bash
+./scripts/evidue-proof.sh core
+```
+
+It generates `artifacts/validation/latest.json` and `latest.md` from actual test/qualification results. See [docs/CONTRACT_QUALIFICATION.md](docs/CONTRACT_QUALIFICATION.md) and [docs/LEAP_REPORT.md](docs/LEAP_REPORT.md).
 
 
 ## Generalized agreement runtime

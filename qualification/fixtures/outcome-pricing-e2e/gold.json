@@ -1,0 +1,81 @@
+{
+  "pack_id": "synthetic-outcome-pricing-e2e",
+  "review_status": "human_reviewed",
+  "exhaustive_financial_terms": true,
+  "terms": [
+    {
+      "id": "GOLD-SYN-PRICE",
+      "description": "USD 1.50 per supported outcome",
+      "materiality": "critical_financial",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_phrase": "Price: $1.50 per supported outcome",
+      "expected_kind": "settlement",
+      "expected_numeric_values": ["1.50"],
+      "expected_fact_types": [],
+      "notes": "Controlled synthetic fixture with exhaustive expected financial semantics."
+    },
+    {
+      "id": "GOLD-SYN-PERIOD",
+      "description": "June 2026 billing period",
+      "materiality": "critical_financial",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_phrase": "Billing period: 2026-06-01 through 2026-06-30",
+      "expected_kind": "norm",
+      "expected_norm_type": "obligation",
+      "expected_consequence": "disputed",
+      "expected_automation": "executable_if_data_available",
+      "expected_numeric_values": [],
+      "expected_fact_types": []
+    },
+    {
+      "id": "GOLD-SYN-RECONTACT-HUMAN",
+      "description": "Seven-day same-intent recontact and 24-hour human-completion exclusions",
+      "materiality": "critical_financial",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_phrase": "A resolution is not billable when a human completes or materially corrects the promised work within 24 hours, or when the customer recontacts support for the same intent within seven calendar days.",
+      "expected_kind": "norm",
+      "expected_norm_type": "prohibition",
+      "expected_consequence": "disputed",
+      "expected_automation": "executable_if_data_available",
+      "expected_numeric_values": ["7", "24"],
+      "expected_fact_types": []
+    },
+    {
+      "id": "GOLD-SYN-DOWNSTREAM",
+      "description": "Promised downstream action succeeds within two hours",
+      "materiality": "critical_financial",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_phrase": "A promised downstream action must complete successfully within two hours.",
+      "expected_kind": "norm",
+      "expected_norm_type": "obligation",
+      "expected_consequence": "disputed",
+      "expected_automation": "executable_if_data_available",
+      "expected_numeric_values": ["2"],
+      "expected_fact_types": []
+    },
+    {
+      "id": "GOLD-SYN-IDENTITY",
+      "description": "Evidence must match expected account and action",
+      "materiality": "critical_financial",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_phrase": "Evidence must match the expected account and action.",
+      "expected_kind": "norm",
+      "expected_consequence": "disputed",
+      "expected_automation": "executable_if_data_available",
+      "expected_numeric_values": [],
+      "expected_fact_types": []
+    },
+    {
+      "id": "GOLD-SYN-UNIQUENESS",
+      "description": "Only earliest otherwise-payable same-intent outcome inside 24 hours is billable",
+      "materiality": "critical_financial",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_phrase": "Only the earliest otherwise-payable outcome is billable for the same customer and normalized intent inside the 24-hour attribution window.",
+      "expected_kind": "norm",
+      "expected_consequence": "disputed",
+      "expected_automation": "executable_if_data_available",
+      "expected_numeric_values": ["24"],
+      "expected_fact_types": []
+    }
+  ]
+}

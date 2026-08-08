@@ -1,0 +1,18 @@
+{
+  "id": "sec-demandtec-target-2010",
+  "title": "Executed DemandTec / Target SaaS agreement and order form",
+  "source_class": "public_executed_agreement",
+  "notes": "SEC-filed executed SaaS agreement used to test real agreement ingestion, order-form precedence, fees, credits and payment terms. Some exhibit content is redacted in the public filing.",
+  "documents": [
+    {
+      "id": "DEMANDTEC-TARGET-AGREEMENT",
+      "title": "Amended and Restated Master Agreement and Order Form",
+      "url": "https://www.sec.gov/Archives/edgar/data/1400400/000095012310090865/f56984exv10w1.htm",
+      "document_type": "executed_agreement",
+      "precedence": 200
+    }
+  ],
+  "relations": [],
+  "customer": "Target",
+  "vendor": "DemandTec"
+}

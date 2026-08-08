@@ -1,130 +1,216 @@
-# Contract Compiler Qualification
+# Contract qualification and Evidue verification kernel
 
-Evidue separates two correctness problems:
+Evidue has two different correctness problems and deliberately tests them separately:
 
-1. **Contract interpretation** — an LLM proposes structured Agreement IR (AIR) from source documents.
-2. **Financial adjudication** — only a human-approved AIR is allowed to drive deterministic invoice reconciliation.
+1. **Contract interpretation** — an LLM proposes structured contract semantics from source documents.
+2. **Financial adjudication** — only a human-approved Agreement IR (AIR) may drive deterministic invoice reconciliation.
 
-The normal automated test suite heavily covers the second problem. The qualification harness in
-`backend/app/agreements/qualification.py` exists to make the first problem measurable against contracts
-that were not designed around Evidue's demo fixtures.
+A model response is never financial authority. Qualification measures the proposal and AIR before approval; reconciliation uses the approved AIR and customer evidence without requiring an LLM.
 
-## Safety boundary
+## Trust boundary
 
-A qualification run never makes an LLM response financial authority. The output is a candidate AIR plus
-an evaluation report. Approval remains an explicit product action. Invoice-line adjudication continues to
-run without an LLM.
+The live native compiler follows this path:
 
-Do not put expected qualification answers into compiler prompts or production runtime code. Gold labels
-belong only in qualification packs.
+```text
+raw contract bytes
+  -> document-integrity / transport-decoding checks
+  -> deterministic source spans
+  -> provider-independent structured LLM inference
+  -> strict Pydantic validation
+  -> deterministic source-span binding
+  -> Agreement IR lowering + assurance
+  -> human approval / immutable AIR version
+  -> deterministic evidence/fact evaluation
+  -> payable / disputed / needs-review dollars
+```
 
-## Qualification pack
+The model is never authoritative for source text, source offsets, or source hashes. It cites source span IDs; Evidue retrieves the original source bytes and calculates offsets/hashes itself. Fuzzy citation matching is not an acceptable provenance mechanism.
 
-A pack is a directory containing `manifest.json`, source documents, and optionally a `gold.json` file.
-The manifest supports multiple documents, precedence metadata, document relations, effective dates, and
-financially material mutation cases.
+## Document integrity preflight
 
-A gold standard records reviewer-controlled expected financial terms. Gold created by engineering before
-an independent review must be marked `provisional_engineering_gold`; it must not be presented as an
-independently validated score.
+Qualification refuses to silently parse transport-compressed or obvious non-document content as a contract. The ingestion boundary:
 
-The scorer checks, among other things:
+- detects gzip by HTTP metadata or gzip magic bytes;
+- supports deflate transport decoding;
+- validates basic text readability;
+- rejects obvious SEC/rate-limit/access-denied/captcha pages;
+- records raw and decoded content hashes when fetched through the qualification source downloader.
 
-- critical financial-term recall;
-- source grounding of executable rules and pricing policies;
-- exact numeric parameter fidelity;
-- expected rule type/consequence and automation classification;
-- evidence-plan fact types;
-- unsupported executable financial rules when the gold set is exhaustive;
-- silent automation of subjective/manual clauses;
-- deterministic compiler assurance.
+This exists because a successful model call is meaningless if the bytes sent to the compiler were not actually the intended contract.
 
-For a human-reviewed exhaustive pack, the intended release gate is:
+## Gold standards
 
-- 100% recall of critical financial terms;
-- zero unsupported executable financial rules;
-- zero ungrounded executable financial rules or pricing policies;
-- zero critical numeric mismatches;
-- zero silently automated subjective/manual terms.
+A qualification pack may contain `gold.json`. Gold is an answer key controlled independently of the model output; it is **not** a previously generated AIR relabeled as truth.
 
-A release-level `qualification_passed=true` additionally requires the gold set to be
-`human_reviewed` **and** `exhaustive_financial_terms=true`. Provisional engineering gold,
-partial gold, or no gold may still expose useful metrics, but the harness reports
-`review_required` rather than claiming the contract is qualified.
+Review status is explicit:
 
-A pack may also include `scenario_file` containing reviewer-controlled synthetic invoice
-claims/evidence with expected payable/disputed/needs-review dollars. These scenarios execute
-through the same deterministic AIR adjudicator as the pilot, proving the path from real
-contract semantics to financial outcomes. Scenario expectations must be marked
-`human_reviewed` before they can pass the scenario qualification gate.
+- `provisional_engineering_gold` — useful for engineering evaluation, but not independently reviewed and never sufficient for a release-level pass.
+- `human_reviewed` — reviewed controlled truth. `qualification_passed=true` additionally requires `exhaustive_financial_terms=true`.
 
-## Live qualification
+Gold can describe material source phrases, expected rule/settlement type, automation classification, numeric parameters, evidence facts, forbidden numeric interpretations, redacted/unknown parameters, required diagnostics, and terms that must remain non-executable.
 
-Never put `GEMINI_API_KEY` into a pack or command-line argument. Configure it only in the shell/server
-environment.
+### Hard safety gates
+
+Aggregate scores must not hide financially dangerous errors. Qualification fails if it finds, among other things:
+
+- unsupported/invented executable financial rules in an exhaustive gold set;
+- executable semantics without valid source provenance;
+- a critical expected numeric parameter mismatch;
+- a critical redacted/unknown parameter that was assigned a numeric value;
+- a critical term that gold requires to remain non-executable but the compiler automated;
+- failed deterministic compiler assurance.
+
+A high average score does not override a hard failure.
+
+## Redaction policy
+
+Public executed agreements often redact precisely the parameters that matter. `[***]`, `[REDACTED]`, and equivalent omitted-confidential-information markers are unknown values.
+
+The compiler prompt explicitly forbids inventing a missing rate, duration, percentage, threshold, date, party, or condition. Qualification gold can additionally mark a numeric parameter as `numeric_parameter_must_be_unknown` and `must_not_be_executable`.
+
+The DemandTec/Target SEC pack intentionally contains several such hallucination traps, including a redacted cure period, annual fee, and payment window.
+
+## Semantic stability
+
+Repeated runs compare normalized material semantics rather than generated prose, clause IDs, ordering, or descriptions. The normalized snapshot includes rules, pricing, evidence requirements, and material coverage.
+
+One run reports:
+
+```text
+semantic_stability.status = insufficient_runs
+```
+
+It never reports one successful run as evidence of stability. Stability is useful, but it is not correctness; correctness still requires gold or another independent oracle.
+
+## Metamorphic / mutation tests
+
+Qualification packs can declare contract mutations with both:
+
+- `expected_changed_sections`
+- `expected_unchanged_sections`
+
+A valid mutation test does more than assert that output changed. For example, changing `$1.50` to `$1.75` should change the settlement/rule semantics while leaving unrelated evidence and coverage semantics unchanged. Collateral semantic drift is reported as a failure.
+
+The controlled outcome-pricing pack contains rate, recontact-window, and downstream-window mutations intended for pinned live-provider qualification.
+
+## Controlled contract-to-dollar benchmark
+
+`qualification/fixtures/outcome-pricing-e2e` is a clearly synthetic controlled contract. It is not presented as customer data. It provides:
+
+- source contract text;
+- a source-bound native proposal for offline reproducibility;
+- human-reviewed exhaustive gold;
+- eight reviewed invoice/evidence scenarios with exact Decimal expectations;
+- live metamorphic mutations.
+
+Core/offline qualification executes the same native proposal -> AIR lowerer -> deterministic adjudicator used by the product. It checks exact status and payable/disputed/needs-review amounts and verifies financial conservation.
+
+Run it:
 
 ```bash
-GEMINI_API_KEY=... uv run python scripts/qualify_contract.py \
-  --pack qualification/my-reviewed-pack \
+PYTHONPATH=backend uv run python scripts/qualify_contract.py \
+  --pack qualification/fixtures/outcome-pricing-e2e \
+  --mode proposal \
+  --proposal qualification/fixtures/outcome-pricing-e2e/proposal.json \
+  --runs 1 \
+  --output /tmp/evidue-synthetic-e2e.json
+```
+
+The recorded proposal is used only to make the core proof reproducible without network/model access. It does not substitute for live compiler qualification.
+
+## Real executed-contract pack
+
+`qualification/downloaded/sec-demandtec-target-2010` contains an SEC-filed executed SaaS master agreement plus embedded order form. The stored artifact has been transport-decoded and the manifest records both the originally received compressed-byte hash and decoded-content hash.
+
+Its current gold is `provisional_engineering_gold` and non-exhaustive. Therefore a live run may measure structure, source grounding, critical-term behavior and hallucination traps, but it **cannot** honestly return release-level qualification until the gold is independently reviewed and made exhaustive where appropriate.
+
+The earlier live result produced before the transport-decoding bug was discovered is invalid and must not be used as evidence.
+
+## Provider-independent live qualification
+
+Evidue owns inference credentials. Customers do not bring API keys. Server operators configure provider credentials in the deployment environment.
+
+Examples:
+
+```bash
+export EVIDUE_LLM_PRIMARY=gemini
+export GEMINI_API_KEY='...'
+export GEMINI_MODEL='...'
+```
+
+or:
+
+```bash
+export EVIDUE_LLM_PRIMARY=openai
+export OPENAI_API_KEY='...'
+export OPENAI_MODEL='...'
+```
+
+Qualification pins the provider/model and disables fallback so repeated benchmark runs are interpretable:
+
+```bash
+PYTHONPATH=backend uv run python scripts/qualify_contract.py \
+  --pack qualification/fixtures/outcome-pricing-e2e \
   --mode live \
+  --provider gemini \
+  --model "$GEMINI_MODEL" \
   --runs 3 \
   --mutations \
-  --output /tmp/evidue-contract-qualification.json
+  --output /tmp/evidue-live-e2e.json
 ```
 
-`--runs 3` compares financial-semantic fingerprints rather than raw generated IDs. `--mutations` applies
-contract mutations declared in the manifest and verifies that financially material source changes alter the
-compiled financial policy.
-
-For an ad-hoc real contract without a gold standard:
+For the SEC pack:
 
 ```bash
-GEMINI_API_KEY=... uv run python scripts/qualify_contract.py \
-  --document ORDER_FORM=/path/to/order-form.pdf \
-  --document MSA=/path/to/msa.pdf \
-  --customer "Acme" \
-  --vendor "Vendor" \
-  --runs 3
+PYTHONPATH=backend uv run python scripts/qualify_contract.py \
+  --pack qualification/downloaded/sec-demandtec-target-2010 \
+  --mode live \
+  --provider gemini \
+  --runs 1 \
+  --output /tmp/evidue-sec.json \
+  --exit-zero-on-review
 ```
 
-An ad-hoc run can prove parser/compiler execution, source grounding, assurance, and semantic stability. It
-cannot honestly claim contract-interpretation accuracy until a reviewer creates a human-reviewed, exhaustive
-gold standard. The command therefore returns a review-required qualification status rather than a pass.
+`--exit-zero-on-review` means the execution completed successfully but review remains required. It does not convert provisional gold into a pass.
 
-## Public-source research packs
+## One-command proof
 
-`qualification/public_sources.json` lists lawful public sources useful for generalization work. They are
-source definitions, not baked-in expected answers and not part of the production runtime.
-
-Download a source pack locally with:
+Run the offline proof kernel:
 
 ```bash
-python scripts/fetch_qualification_sources.py --pack intercom-fin-current
+./scripts/evidue-proof.sh core
 ```
 
-Downloaded third-party documents are intentionally ignored by Git. Review licensing/terms before
-redistributing any downloaded source. Public product/help documentation must not be described as a signed
-customer contract. The catalog distinguishes public commercial terms from public executed agreements.
+This generates:
 
-## Effective-date boundary in the current pilot
+```text
+artifacts/validation/latest.json
+artifacts/validation/latest.md
+```
 
-The current pilot binds one approved AIR rule set to one configured reconciliation/agreement period.
-If a governing amendment starts or ends *inside* that period, Evidue intentionally fails closed and asks
-the operator to split the reconciliation into periods with one governing rule set each. This prevents a
-mid-period amendment from being silently ignored or applied retroactively. Native temporal AIR selection
-across multiple rule sets is a future capability and should not be simulated with one blended AIR.
+The generated dossier reports measured results only. Unmeasured real-contract/live-provider claims are marked `NOT MEASURED` rather than inferred.
 
-## Human review workflow
+Run live provider qualification separately:
 
-For a real pilot, the strongest qualification is:
+```bash
+./scripts/evidue-proof.sh live --provider gemini --model "$GEMINI_MODEL"
+```
 
-1. ingest the customer's redacted executed agreement/order form plus incorporated documents;
-2. run live compilation at least three times;
-3. have a finance/legal reviewer create or review the gold labels independently of compiler output;
-4. fix generic AIR/compiler gaps rather than vendor-specific special cases;
-5. approve the resulting AIR in `/pilot` only after comparing finance-readable rules with source clauses;
-6. reconcile a synthetic invoice/evidence set derived from that real agreement and independently verify the
-   expected dollar totals.
+For a complete repository gate in a fully bootstrapped checkout:
 
-This establishes the complete path: **real contract semantics → approved structured policy → deterministic
-dollars**.
+```bash
+./scripts/evidue-proof.sh full --provider gemini --model "$GEMINI_MODEL"
+```
+
+## What qualification does not prove
+
+Qualification does not prove that:
+
+- engineering gold is legally correct;
+- a synthetic scenario is customer validation;
+- a stable model output is a correct model output;
+- an identified dispute will be accepted by the vendor;
+- an identified dispute is recovered savings;
+- every future contract can be automated.
+
+Uncertain or unsupported material semantics should block approval or require human review rather than being guessed.

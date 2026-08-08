@@ -66,6 +66,61 @@ class VerificationPlan(BaseModel):
         return all(item.status == ProofPlanStatus.READY for item in self.items)
 
 
+def verification_readiness_summary(plan: VerificationPlan) -> dict[str, object]:
+    """Return a finance-friendly summary of whether the approved contract is verifiable.
+
+    This is derived entirely from the deterministic verification plan.  It is
+    intended to answer a practical question before reconciliation: which
+    contractual checks can Evidue actually prove with the evidence sources the
+    workspace has supplied?
+    """
+
+    total = len(plan.items)
+    ready = [item for item in plan.items if item.status == ProofPlanStatus.READY]
+    partial = [item for item in plan.items if item.status == ProofPlanStatus.PARTIAL]
+    unavailable = [item for item in plan.items if item.status == ProofPlanStatus.UNAVAILABLE]
+    readiness_percent = 100.0 if total == 0 else round(len(ready) / total * 100, 1)
+    missing_fact_types = sorted(
+        {fact_type for item in plan.items for fact_type in item.missing_fact_types}
+    )
+    missing_capabilities = sorted(
+        {capability for item in plan.items for capability in item.missing_capabilities}
+    )
+    blocking = [
+        {
+            "proof_requirement_id": item.proof_requirement_id,
+            "status": item.status.value,
+            "missing_fact_types": list(item.missing_fact_types),
+            "missing_capabilities": list(item.missing_capabilities),
+            "rationale": item.rationale,
+        }
+        for item in plan.items
+        if item.status != ProofPlanStatus.READY
+    ]
+    if total == 0:
+        status = "no_external_evidence_required"
+    elif not unavailable and not partial:
+        status = "ready"
+    elif ready or partial:
+        status = "partial"
+    else:
+        status = "blocked"
+    return {
+        "status": status,
+        "ready_for_full_verification": plan.ready,
+        "readiness_percent": readiness_percent,
+        "requirements": {
+            "total": total,
+            "ready": len(ready),
+            "partial": len(partial),
+            "unavailable": len(unavailable),
+        },
+        "missing_fact_types": missing_fact_types,
+        "missing_capabilities": missing_capabilities,
+        "blocking_requirements": blocking,
+    }
+
+
 def _capability_matches(requirement: ProofRequirement, capability: EvidenceCapability) -> list[str]:
     missing: list[str] = []
     if (

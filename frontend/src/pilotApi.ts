@@ -209,6 +209,47 @@ export type Reconciliation = {
   [key: string]: unknown;
 };
 
+export type HistoricalReplay = {
+  version: string;
+  historical_replay: true;
+  simulation_only: true;
+  contract_id: string;
+  customer: string;
+  vendor: string;
+  air_version_id: string;
+  air_version_number: number;
+  financial_authority: "approved_air";
+  currency: string | null;
+  currency_consistent: boolean;
+  invoices_total: number;
+  invoices_replayed: number;
+  invoices_not_ready: number;
+  totals: {
+    billed: string;
+    payable: string;
+    disputed: string;
+    needs_review: string;
+    conservation_passed: boolean;
+  };
+  invoices: Array<{
+    invoice_id: string;
+    status: "replayed" | "not_ready";
+    reason?: string;
+    billing_period_start?: string;
+    billing_period_end?: string;
+    claimed_outcomes?: number;
+    payable_outcomes?: number;
+    disputed_outcomes?: number;
+    needs_review_outcomes?: number;
+    billed?: string;
+    payable?: string;
+    disputed?: string;
+    needs_review?: string;
+    conservation_passed?: boolean;
+  }>;
+  warning: string;
+};
+
 export type CustomerReviewRequest = {
   reviewed_by: string;
   claims_sampled: number;
@@ -484,6 +525,12 @@ export const pilotApi = {
     request<Reconciliation>(`/reconcile?${query({ invoice_id: invoiceId })}`, {
       method: "POST",
     }),
+  historicalReplay: (contractId: string, airVersionId?: string) =>
+    request<HistoricalReplay>(
+      `/contracts/${contractId}/historical-replay${
+        airVersionId ? `?${query({ air_version_id: airVersionId })}` : ""
+      }`,
+    ),
   reconciliation: (runId?: string) =>
     request<Reconciliation>(`/reconciliation${runId ? `?${query({ run_id: runId })}` : ""}`),
   compare: (runId: string, priorRunId: string) =>

@@ -1272,10 +1272,10 @@ function PilotConfigurationPage({
         <Stack spacing={1.5}>
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
-              <Box><Typography fontWeight={750}>Contract analysis AI</Typography><Typography variant="body2" color="text.secondary">{config?.integrations.contract_ai.provider ?? "Google Gemini"} · {config?.integrations.contract_ai.model ?? "default model"}</Typography></Box>
+              <Box><Typography fontWeight={750}>Contract analysis AI</Typography><Typography variant="body2" color="text.secondary">{config?.integrations.contract_ai.provider ?? "server provider"} · {config?.integrations.contract_ai.model ?? "deployment default"}</Typography></Box>
               <Chip color={config?.integrations.contract_ai.configured ? "success" : "warning"} label={config?.integrations.contract_ai.configured ? "Configured" : "Not configured"} />
             </Stack>
-            <Typography variant="caption" color="text.secondary">Configure GEMINI_API_KEY in the backend environment. The value is never exposed to this page.</Typography>
+            <Typography variant="caption" color="text.secondary">Provider credentials are managed only by the Evidue backend/deployment. Customers never enter or store LLM API keys here.</Typography>
           </Paper>
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>

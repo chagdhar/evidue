@@ -1,23 +1,22 @@
 """Native contract-language to AgreementCompilationProposal compiler.
 
 The LLM is constrained to the semantic proposal schema. A deterministic source
-binder verifies that every proposed clause is an exact span of an uploaded
-agreement document before the proposal may be lowered into executable AIR.
+binder validates model-selected immutable source-span IDs, retrieves the original
+contract text itself, and attaches hashes before lowering into executable AIR.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import urllib.error
-import urllib.request
+import re
 from dataclasses import dataclass
 from hashlib import sha256
+from itertools import pairwise
 from typing import Any
 
 from pydantic import ValidationError
 
-from app.contracts.compiler import DEFAULT_MODEL, load_recorded_proposal, sha256_text
+from app.contracts.compiler import load_recorded_proposal, sha256_text
 
 from .compiler_models import (
     AgreementCompilationProposal,
@@ -29,9 +28,56 @@ from .compiler_models import (
     SettlementProposal,
     SourceDocumentRef,
 )
+from .providers import (
+    ProviderError,
+    ProviderResult,
+    call_provider,
+    canonical_provider_name,
+    compilation_provenance,
+)
 
-NATIVE_COMPILER_VERSION = "native-air-0.2"
-NATIVE_PROMPT_VERSION = "native-air-prompt-0.2"
+NATIVE_COMPILER_VERSION = "native-air-0.4"
+NATIVE_PROMPT_VERSION = "native-air-prompt-0.4"
+MAX_SEMANTIC_REPAIRS = 2
+
+_SEMANTIC_PARAMETER_CONTRACT = r"""
+STRICT SEMANTIC PARAMETER CONTRACT:
+- field_present.parameters = {"field": ...}
+- field_equals.parameters = {"field": ..., "expected_value": ...}; never use "value".
+- field_in_set.parameters = {"field": ..., "values": [..]} with a non-empty values list.
+- datetime_in_range.parameters = {"field": ..., "start": ..., "end_exclusive": ...}.
+- amount_equals.parameters = {"field": ..., "expected_amount": ...}.
+- event_exists/event_absent require a non-empty "event_types" list.
+- event_within_window requires event_types, anchor_field, window_value, and window_unit.
+- all_of/any_of/none_of.parameters.conditions MUST be a non-empty JSON array of full
+  condition objects, each with condition_type, parameters, and description. Never place
+  strings, IDs, or prose in conditions.
+- fixed_per_unit settlement requires an explicit unit_price present in the supplied source.
+- rate_table settlement requires an explicit lookup_field and a non-empty rates object present
+  in the supplied source.
+- tiered_rate requires an explicit non-empty tiers list.
+- percentage requires an explicit percent; cap requires maximum; floor requires minimum;
+  deduction requires amount.
+- If the agreement delegates a price/rate to a missing Order Form, SOW, exhibit, schedule,
+  or redacted text, DO NOT create a partially parameterized settlement effect and DO NOT
+  guess the missing value. Leave settlement_effects empty for that clause, classify the
+  clause as human_attestation_required or unsupported as appropriate, record the missing
+  concept in unsupported_concepts, and emit a diagnostic.
+- If a contractual obligation cannot be expressed with the allowed deterministic condition
+  vocabulary using parameters explicitly supported by the source, DO NOT invent event types
+  or claim fields. Keep it non-executable/review-required and emit a diagnostic.
+- proof_requirements.preferred_authority is an AUTHORITY CLASS, not a system name,
+  event type, database name, log type, or evidence-source identifier.
+- preferred_authority MUST be exactly one of:
+    customer_system_of_record
+    independent_third_party
+    signed_execution_log
+    vendor_tool_trace
+- For example, "system_audit_log", "zendesk", "salesforce", "refund_event", and
+  "transaction_log" are NOT authority values. Represent those concepts through
+  fact_types, entity_type, required_fields, descriptions, or evidence-source
+  capabilities instead.
+"""
 
 
 @dataclass(frozen=True)
@@ -42,23 +88,164 @@ class NativeCompilationResult:
     live_model_call: bool
     model: str
     provider: str
-
-
-def _extract_response_text(payload: dict[str, Any]) -> str:
-    candidates = payload.get("candidates") or []
-    if not candidates:
-        raise ValueError("Gemini returned no candidates")
-    parts = candidates[0].get("content", {}).get("parts", [])
-    text = "".join(str(part.get("text", "")) for part in parts).strip()
-    if not text:
-        raise ValueError("Gemini returned an empty native AIR proposal")
-    return text
+    provenance: dict[str, Any]
 
 
 def _proposal_schema() -> dict[str, Any]:
-    """Return the strict Pydantic schema used for model output validation."""
+    """Return the schema used for live structured model output."""
 
-    return AgreementCompilationProposal.model_json_schema()
+    schema = AgreementCompilationProposal.model_json_schema()
+
+    clause_schema = schema.get("$defs", {}).get("ClauseAnalysisProposal")
+    if clause_schema is None:
+        raise ValueError("ClauseAnalysisProposal missing from generated response schema")
+
+    required = clause_schema.setdefault("required", [])
+
+    if "source_span_ids" not in required:
+        required.append("source_span_ids")
+
+    return schema
+
+
+@dataclass(frozen=True)
+class SourceSpan:
+    """Exact immutable span from an original contract document."""
+
+    span_id: str
+    document_id: str
+    ordinal: int
+    start: int
+    end: int
+    text: str
+
+
+_SOURCE_SPAN_MAX_CHARS = 700
+_SOURCE_SPAN_MAX_PER_CLAUSE = 6
+
+
+def _split_source_line(
+    text: str,
+    start: int,
+    end: int,
+) -> list[tuple[int, int]]:
+    """Split a long source line while preserving exact original offsets."""
+
+    while start < end and text[start].isspace():
+        start += 1
+
+    while end > start and text[end - 1].isspace():
+        end -= 1
+
+    if start >= end:
+        return []
+
+    ranges: list[tuple[int, int]] = []
+    cursor = start
+
+    while cursor < end:
+        candidate_end = min(cursor + _SOURCE_SPAN_MAX_CHARS, end)
+
+        if candidate_end < end:
+            minimum_break = cursor + (_SOURCE_SPAN_MAX_CHARS // 2)
+            break_at = text.rfind(" ", minimum_break, candidate_end)
+
+            if break_at > cursor:
+                candidate_end = break_at
+
+        chunk_start = cursor
+        chunk_end = candidate_end
+
+        while chunk_start < chunk_end and text[chunk_start].isspace():
+            chunk_start += 1
+
+        while chunk_end > chunk_start and text[chunk_end - 1].isspace():
+            chunk_end -= 1
+
+        if chunk_start < chunk_end:
+            ranges.append((chunk_start, chunk_end))
+
+        cursor = candidate_end
+
+        while cursor < end and text[cursor].isspace():
+            cursor += 1
+
+    return ranges
+
+
+def _build_source_spans(
+    source_documents: dict[str, tuple[str, str]],
+) -> dict[str, SourceSpan]:
+    """Create deterministic citable spans from original contract text."""
+
+    spans: dict[str, SourceSpan] = {}
+    global_index = 1
+
+    for document_id, (_, source_text) in source_documents.items():
+        ordinal = 0
+        offset = 0
+
+        for raw_line in source_text.splitlines(keepends=True):
+            line_start = offset
+            line_end = offset + len(raw_line)
+            offset = line_end
+
+            for start, end in _split_source_line(
+                source_text,
+                line_start,
+                line_end,
+            ):
+                ordinal += 1
+                span_id = f"SPAN-{global_index:06d}"
+
+                spans[span_id] = SourceSpan(
+                    span_id=span_id,
+                    document_id=document_id,
+                    ordinal=ordinal,
+                    start=start,
+                    end=end,
+                    text=source_text[start:end],
+                )
+
+                global_index += 1
+
+        if ordinal == 0 and source_text.strip():
+            start = len(source_text) - len(source_text.lstrip())
+            end = len(source_text.rstrip())
+
+            span_id = f"SPAN-{global_index:06d}"
+
+            spans[span_id] = SourceSpan(
+                span_id=span_id,
+                document_id=document_id,
+                ordinal=1,
+                start=start,
+                end=end,
+                text=source_text[start:end],
+            )
+
+            global_index += 1
+
+        if ordinal == 0 and not source_text.strip():
+            raise ValueError(f"Source document {document_id} contains no citable text")
+
+    return spans
+
+
+def _render_source_documents_with_spans(
+    source_documents: dict[str, tuple[str, str]],
+) -> str:
+    spans = _build_source_spans(source_documents)
+    sections: list[str] = []
+
+    for document_id, (title, _) in source_documents.items():
+        rendered_spans = [span for span in spans.values() if span.document_id == document_id]
+
+        body = "\n\n".join(f"[{span.span_id}]\n{span.text}" for span in rendered_spans)
+
+        sections.append(f"DOCUMENT_ID: {document_id}\nTITLE: {title}\n---\n{body}")
+
+    return "\n\n".join(sections)
 
 
 def build_native_compiler_prompt(
@@ -67,45 +254,61 @@ def build_native_compiler_prompt(
     source_documents: dict[str, tuple[str, str]],
     metadata: dict[str, str],
 ) -> str:
-    document_block = "\n\n".join(
-        f"DOCUMENT_ID: {document_id}\nTITLE: {title}\n---\n{text}"
-        for document_id, (title, text) in source_documents.items()
-    )
+    document_block = _render_source_documents_with_spans(source_documents)
+
     return f"""You are Evidue's contract clause-analysis compiler.
 
 Your output is a proposal for deterministic lowering. You DO NOT decide whether
 an invoice claim is payable and you DO NOT calculate a final payable amount.
 
-Rules:
-1. Analyze every material commercial clause in the supplied documents.
-2. Copy source_text EXACTLY from the source document. Do not paraphrase it.
-3. Use only condition_type, settlement_type, norm_type, consequence, clause_type,
-   automation classification, and diagnostic values allowed by the JSON schema.
-4. Never invent an observation window, rate, threshold, party, definition, or
-   exception. If a material concept cannot be represented safely, classify the
-   clause as unsupported or human_attestation_required and emit a blocking or
-   warning diagnostic as appropriate.
-5. A pricing term belongs in settlement_effects. A performance requirement
-   belongs in norms. Do not encode prices as prose-only diagnostics.
-6. Missing evidence must be capable of resolving to unknown/needs_review rather
-   than automatically proving breach.
-7. Identify defined terms and cross-references. Unresolved material references
-   must be explicit diagnostics.
-8. Use proof requirements to state the FACTS needed, not vendor product names.
-   Do NOT create a proof requirement for a condition that can be evaluated only
-   from normalized invoice claim fields already present in the claim (for
-   example billed amount, claim timestamp, identifiers, or batch uniqueness).
-   Proof requirements are for facts that require external evidence, state, or
-   authoritative absence/completeness guarantees.
-9. Prefer customer_system_of_record authority for operational outcome facts.
-10. Respect document precedence, effective dates, amendments, supersession, and incorporation relationships supplied in METADATA. When commercial terms conflict, represent the controlling effective term rather than combining incompatible rates or conditions. If precedence is ambiguous, require human review instead of guessing.
-11. Subjective standards such as "reasonable", "material", "satisfactory", "good faith", or similar judgment language must not be silently converted into fully executable predicates unless the contract itself defines an objective measurable test.
-12. Preserve negation and exceptions exactly. "Unless", "except", "only if", "not payable", and similar language can reverse financial effect and must never be flattened into the opposite rule.
-13. Do not emit executable code, SQL, Python, Rego, JavaScript, or arbitrary AST.
+SOURCE GROUNDING:
+1. Every material clause MUST cite source_span_ids.
+2. Use only SPAN IDs supplied below.
+3. Every cited span must belong to the clause's source_document_id.
+4. A clause may cite up to {_SOURCE_SPAN_MAX_PER_CLAUSE} consecutive spans.
+5. Never invent a SPAN ID.
+6. source_text is informational only. Evidue will replace it with the exact
+   original source bytes selected by source_span_ids.
+7. Set source_start, source_end, and source_text_hash to null. Evidue computes
+   them deterministically.
+
+CONTRACT INTERPRETATION:
+8. Analyze every material commercial clause.
+9. Never invent a rate, observation window, threshold, exception, party,
+   effective date, definition, or commercial condition.
+10. If a material concept cannot be safely represented, classify it as
+    unsupported or human_attestation_required and emit an appropriate
+    diagnostic.
+11. Only explicit, fully parameterized pricing terms belong in settlement_effects.
+    If a price/rate is delegated to a missing document or redacted, do not fabricate a
+    settlement effect. Performance requirements belong in norms only when representable
+    with the allowed deterministic vocabulary.
+12. Missing evidence must resolve to unknown/needs_review rather than silently
+    proving breach.
+13. Proof requirements describe facts needed from external evidence, not vendor
+    product names.
+14. Do not create proof requirements for data already present on normalized
+    invoice claims.
+15. Respect document precedence, effective dates, amendments, supersession,
+    and incorporation relationships supplied in METADATA.
+16. If precedence is ambiguous, require human review rather than guessing.
+17. Subjective standards must not become deterministic predicates unless the
+    agreement defines an objective test.
+18. Preserve negation and exceptions exactly, including unless, except,
+    only if, and not payable.
+19. Treat redaction markers such as [***], [REDACTED], or omitted-confidential
+    language as UNKNOWN. Never reconstruct, infer, or guess a missing rate, date,
+    duration, percentage, threshold, party, or condition. If the missing value is
+    financially material, keep the clause non-executable and emit a blocking or
+    review diagnostic instead of parameterizing it.
+20. Do not emit executable code or arbitrary expression trees.
+
+{_SEMANTIC_PARAMETER_CONTRACT}
 
 CONTRACT_ID: {contract_id}
 METADATA: {json.dumps(metadata, sort_keys=True)}
 COMPILER_VERSION: {NATIVE_COMPILER_VERSION}
+PROMPT_VERSION: {NATIVE_PROMPT_VERSION}
 
 SOURCE DOCUMENTS:
 {document_block}
@@ -114,11 +317,71 @@ Return only JSON matching the supplied response schema.
 """
 
 
-def _find_exact_span(text: str, clause_text: str) -> tuple[int, int]:
-    start = text.find(clause_text)
-    if start < 0:
-        raise ValueError("Proposed source_text is not an exact substring of the source document")
-    return start, start + len(clause_text)
+def _find_exact_span(
+    text: str,
+    clause_text: str,
+    *,
+    hinted_start: int | None = None,
+) -> tuple[int, int]:
+    """Ground an LLM quote without allowing paraphrase.
+
+    Exact matches are preferred. As a concession to document-layout artifacts,
+    a quote may differ only in runs of whitespace (spaces, tabs, newlines,
+    non-breaking spaces). The returned offsets always point into the original
+    source text.
+
+    No case folding, punctuation normalization, edit-distance matching, or
+    semantic/fuzzy matching is allowed.
+    """
+
+    exact_matches = list(re.finditer(re.escape(clause_text), text))
+    if len(exact_matches) == 1:
+        return exact_matches[0].span()
+
+    if len(exact_matches) > 1:
+        if hinted_start is not None:
+            hinted = next(
+                (match for match in exact_matches if match.start() == hinted_start),
+                None,
+            )
+            if hinted is not None:
+                return hinted.span()
+
+        raise ValueError(
+            "Proposed source_text occurs more than once in the source document; "
+            "the source location is ambiguous"
+        )
+
+    stripped = clause_text.strip()
+    if not stripped:
+        raise ValueError("Proposed source_text is empty after trimming whitespace")
+
+    pieces = re.split(r"(\s+)", stripped)
+    pattern = "".join(r"\s+" if piece.isspace() else re.escape(piece) for piece in pieces if piece)
+
+    layout_matches = list(re.finditer(pattern, text))
+
+    if len(layout_matches) == 1:
+        return layout_matches[0].span()
+
+    if len(layout_matches) > 1:
+        if hinted_start is not None:
+            hinted = next(
+                (match for match in layout_matches if match.start() == hinted_start),
+                None,
+            )
+            if hinted is not None:
+                return hinted.span()
+
+        raise ValueError(
+            "Proposed source_text has multiple whitespace-equivalent matches; "
+            "the source location is ambiguous"
+        )
+
+    raise ValueError(
+        "Proposed source_text is not an exact substring of the source document, "
+        "even after layout-only whitespace normalization"
+    )
 
 
 def bind_proposal_to_sources(
@@ -126,39 +389,92 @@ def bind_proposal_to_sources(
     *,
     expected_contract_id: str,
     source_documents: dict[str, tuple[str, str]],
+    require_source_spans: bool = False,
 ) -> AgreementCompilationProposal:
-    """Verify and attach exact source spans/hashes for every proposed clause."""
+    """Attach authoritative source provenance to every proposed clause."""
 
     if proposal.contract_id != expected_contract_id:
         raise ValueError(
             f"Proposal contract_id {proposal.contract_id!r} does not match {expected_contract_id!r}"
         )
+
     known_documents = set(source_documents)
+
     proposal_document_ids = {item.document_id for item in proposal.source_documents}
+
     unknown = proposal_document_ids - known_documents
+
     if unknown:
         raise ValueError(f"Proposal references unknown source documents: {sorted(unknown)}")
 
+    span_index = _build_source_spans(source_documents)
     bound_clauses: list[ClauseAnalysisProposal] = []
+
     for clause in proposal.clauses:
         if clause.source_document_id not in source_documents:
             raise ValueError(
                 f"Clause {clause.clause_id} references unknown document {clause.source_document_id}"
             )
+
         _, source_text = source_documents[clause.source_document_id]
-        start, end = _find_exact_span(source_text, clause.source_text)
-        if clause.source_start is not None and clause.source_start != start:
-            raise ValueError(f"Clause {clause.clause_id} source_start does not match source text")
-        if clause.source_end is not None and clause.source_end != end:
-            raise ValueError(f"Clause {clause.clause_id} source_end does not match source text")
-        text_hash = sha256(clause.source_text.encode("utf-8")).hexdigest()
-        if clause.source_text_hash is not None and clause.source_text_hash != text_hash:
-            raise ValueError(
-                f"Clause {clause.clause_id} source_text_hash does not match source text"
+
+        if clause.source_span_ids:
+            selected: list[SourceSpan] = []
+
+            for span_id in clause.source_span_ids:
+                span = span_index.get(span_id)
+
+                if span is None:
+                    raise ValueError(
+                        f"Clause {clause.clause_id} references unknown source span {span_id}"
+                    )
+
+                if span.document_id != clause.source_document_id:
+                    raise ValueError(
+                        f"Clause {clause.clause_id} cites {span_id} from "
+                        f"{span.document_id}, not "
+                        f"{clause.source_document_id}"
+                    )
+
+                selected.append(span)
+
+            if len(selected) > _SOURCE_SPAN_MAX_PER_CLAUSE:
+                raise ValueError(f"Clause {clause.clause_id} cites too many source spans")
+
+            ordinals = [span.ordinal for span in selected]
+
+            if ordinals != sorted(ordinals):
+                raise ValueError(
+                    f"Clause {clause.clause_id} source spans are not in document order"
+                )
+
+            if any(current != previous + 1 for previous, current in pairwise(ordinals)):
+                raise ValueError(f"Clause {clause.clause_id} source spans must be consecutive")
+
+            start = selected[0].start
+            end = selected[-1].end
+
+            canonical_source_text = source_text[start:end]
+
+        else:
+            if require_source_spans:
+                raise ValueError(f"Clause {clause.clause_id} omitted source_span_ids")
+
+            # Backward compatibility for recorded/offline proposals.
+            start, end = _find_exact_span(
+                source_text,
+                clause.source_text,
+                hinted_start=clause.source_start,
             )
+
+            canonical_source_text = source_text[start:end]
+
+        text_hash = sha256(canonical_source_text.encode("utf-8")).hexdigest()
+
         bound_clauses.append(
             clause.model_copy(
                 update={
+                    "source_text": canonical_source_text,
                     "source_start": start,
                     "source_end": end,
                     "source_text_hash": text_hash,
@@ -167,15 +483,275 @@ def bind_proposal_to_sources(
         )
 
     expected_documents = [
-        SourceDocumentRef(document_id=document_id, title=title)
+        SourceDocumentRef(
+            document_id=document_id,
+            title=title,
+        )
         for document_id, (title, _) in source_documents.items()
     ]
+
     return proposal.model_copy(
         update={
             "contract_id": expected_contract_id,
             "source_documents": expected_documents,
             "clauses": bound_clauses,
         }
+    )
+
+
+def _payload_for_validation(
+    result: ProviderResult,
+    *,
+    contract_id: str,
+) -> dict[str, Any]:
+    payload = dict(result.payload)
+    payload.update(
+        {
+            "compiler_version": NATIVE_COMPILER_VERSION,
+            "contract_id": contract_id,
+            "model": result.model,
+            "provider": result.provider,
+        }
+    )
+    return payload
+
+
+def _validation_error_summary(exc: ValidationError) -> list[dict[str, str]]:
+    """Return only structural validation metadata, never input values/source text."""
+
+    issues: list[dict[str, str]] = []
+    for error in exc.errors(include_input=False, include_url=False):
+        location = ".".join(str(part) for part in error.get("loc", ())) or "<root>"
+        issues.append(
+            {
+                "location": location,
+                "type": str(error.get("type", "validation_error")),
+                "message": str(error.get("msg", "invalid structured output")),
+            }
+        )
+    return issues
+
+
+def _semantic_repair_prompt(
+    *,
+    original_prompt: str,
+    invalid_payload: dict[str, Any],
+    issues: list[dict[str, str]],
+    attempt: int,
+) -> str:
+    """Ask the same pinned provider to repair schema-valid but semantically invalid JSON."""
+
+    return f"""{original_prompt}
+
+SEMANTIC VALIDATION REPAIR {attempt}
+
+Your previous JSON was syntactically valid but rejected by Evidue's deterministic
+semantic validators. Return a COMPLETE replacement JSON object, not a patch.
+
+You are repairing structure only. Re-read the ORIGINAL SOURCE DOCUMENTS above.
+Do not invent facts merely to satisfy validation. In particular, if a required
+rate, event type, field, threshold, date, or referenced document is not explicitly
+supported by source text, REMOVE the invalid executable norm/settlement and mark
+the clause review-required/unsupported with a diagnostic instead.
+
+{_SEMANTIC_PARAMETER_CONTRACT}
+
+VALIDATION ERRORS (no source text is included in these diagnostics):
+{json.dumps(issues, indent=2, sort_keys=True)}
+
+PREVIOUS JSON:
+{json.dumps(invalid_payload, indent=2, sort_keys=True)}
+
+Return only the complete corrected JSON matching the supplied response schema.
+"""
+
+
+def _repair_api_key_for_result(
+    *,
+    requested_provider: str | None,
+    actual_provider: str,
+    api_key: str | None,
+) -> str | None:
+    """Reuse an explicitly supplied key only when repair stays on that same provider."""
+
+    if api_key is None or requested_provider is None:
+        return None
+    if canonical_provider_name(requested_provider) != canonical_provider_name(actual_provider):
+        return None
+    return api_key
+
+
+def _validate_with_semantic_repairs(
+    *,
+    initial_result: ProviderResult,
+    contract_id: str,
+    original_prompt: str,
+    schema: dict[str, Any],
+    requested_provider: str | None,
+    api_key: str | None,
+    timeout_seconds: int,
+    max_retries: int,
+    max_semantic_repairs: int,
+) -> tuple[AgreementCompilationProposal, ProviderResult, dict[str, Any]]:
+    """Validate provider JSON and make bounded same-provider structural repair attempts.
+
+    JSON-schema structured output cannot encode all of Evidue's parameter-dependent
+    semantic invariants because several proposal fields intentionally use constrained
+    dictionaries. The Pydantic validators remain authoritative. Production may ask the
+    same provider to repair rejected JSON, but every repair is recorded in provenance so
+    qualification can distinguish first-pass validity from repaired validity.
+    """
+
+    result = initial_result
+    validation_history: list[dict[str, Any]] = []
+
+    for repair_count in range(max_semantic_repairs + 1):
+        payload = _payload_for_validation(result, contract_id=contract_id)
+        try:
+            proposal = AgreementCompilationProposal.model_validate(payload)
+        except ValidationError as exc:
+            issues = _validation_error_summary(exc)
+            validation_history.append(
+                {
+                    "attempt": repair_count + 1,
+                    "issues": issues,
+                }
+            )
+            if repair_count >= max_semantic_repairs:
+                raise ValueError(
+                    "Model output failed native proposal semantic validation after "
+                    f"{repair_count} repair attempt(s): {issues}"
+                ) from exc
+
+            repair_prompt = _semantic_repair_prompt(
+                original_prompt=original_prompt,
+                invalid_payload=payload,
+                issues=issues,
+                attempt=repair_count + 1,
+            )
+            result = call_provider(
+                repair_prompt,
+                schema,
+                provider=result.provider,
+                model=result.model,
+                api_key=_repair_api_key_for_result(
+                    requested_provider=requested_provider,
+                    actual_provider=result.provider,
+                    api_key=api_key,
+                ),
+                fallback_provider=None,
+                timeout=timeout_seconds,
+                max_retries=max_retries,
+                pin_provider=True,
+            )
+            continue
+
+        return (
+            proposal,
+            result,
+            {
+                "first_pass_valid": repair_count == 0,
+                "semantic_repair_attempts": repair_count,
+                "validation_history": validation_history,
+            },
+        )
+
+    raise AssertionError("semantic repair loop terminated unexpectedly")
+
+
+def compile_native(
+    *,
+    contract_id: str,
+    source_documents: dict[str, tuple[str, str]],
+    metadata: dict[str, str],
+    provider: str | None = None,
+    model: str | None = None,
+    api_key: str | None = None,
+    fallback_provider: str | None = None,
+    timeout_seconds: int = 120,
+    max_retries: int = 3,
+    max_semantic_repairs: int = MAX_SEMANTIC_REPAIRS,
+    pin_provider: bool = False,
+) -> NativeCompilationResult:
+    """Compile contract language through a provider-independent structured-output boundary."""
+
+    prompt = build_native_compiler_prompt(
+        contract_id=contract_id,
+        source_documents=source_documents,
+        metadata=metadata,
+    )
+    schema = _proposal_schema()
+    try:
+        result = call_provider(
+            prompt,
+            schema,
+            provider=provider,
+            model=model,
+            api_key=api_key,
+            fallback_provider=fallback_provider,
+            timeout=timeout_seconds,
+            max_retries=max_retries,
+            pin_provider=pin_provider,
+        )
+    except ProviderError as exc:
+        raise RuntimeError(f"Native agreement compilation failed: {exc}") from exc
+
+    proposal, result, semantic_validation = _validate_with_semantic_repairs(
+        initial_result=result,
+        contract_id=contract_id,
+        original_prompt=prompt,
+        schema=schema,
+        requested_provider=provider,
+        api_key=api_key,
+        timeout_seconds=timeout_seconds,
+        max_retries=max_retries,
+        max_semantic_repairs=max_semantic_repairs,
+    )
+
+    proposal = bind_proposal_to_sources(
+        proposal,
+        expected_contract_id=contract_id,
+        source_documents=source_documents,
+        require_source_spans=True,
+    )
+    schema_hash = (
+        "sha256:"
+        + sha256(
+            json.dumps(schema, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+    )
+    source_hashes = {
+        document_id: "sha256:" + sha256(text.encode("utf-8")).hexdigest()
+        for document_id, (_, text) in sorted(source_documents.items())
+    }
+    original_prompt_hash = sha256_text(prompt)
+    provenance = compilation_provenance(
+        result,
+        prompt_hash=original_prompt_hash,
+        final_provider_request_prompt_hash=result.prompt_hash,
+        compiler_version=NATIVE_COMPILER_VERSION,
+        prompt_version=NATIVE_PROMPT_VERSION,
+        schema_hash=schema_hash,
+        source_hashes=source_hashes,
+        first_pass_semantically_valid=semantic_validation["first_pass_valid"],
+        semantic_repair_attempts=semantic_validation["semantic_repair_attempts"],
+        semantic_validation_history=semantic_validation["validation_history"],
+    )
+    return NativeCompilationResult(
+        proposal=proposal,
+        prompt_hash=original_prompt_hash,
+        raw_response={
+            "provider_metadata": result.raw_metadata,
+            "structured_payload": result.payload,
+            "response_text_hash": "sha256:"
+            + sha256(result.response_text.encode("utf-8")).hexdigest(),
+            "provenance": provenance,
+            "semantic_validation": semantic_validation,
+        },
+        live_model_call=True,
+        model=result.model,
+        provider=result.provider,
+        provenance=provenance,
     )
 
 
@@ -186,65 +762,19 @@ def compile_native_with_gemini(
     metadata: dict[str, str],
     api_key: str | None = None,
     model: str | None = None,
-    timeout_seconds: int = 60,
+    timeout_seconds: int = 120,
 ) -> NativeCompilationResult:
-    key = api_key or os.getenv("GEMINI_API_KEY")
-    if not key:
-        raise RuntimeError("GEMINI_API_KEY is not configured")
-    selected_model = model or os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
-    prompt = build_native_compiler_prompt(
+    """Backward-compatible pinned Gemini wrapper used by older callers/tests."""
+
+    return compile_native(
         contract_id=contract_id,
         source_documents=source_documents,
         metadata=metadata,
-    )
-    request_payload = {
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0,
-            "responseMimeType": "application/json",
-            "responseSchema": _proposal_schema(),
-        },
-    }
-    request = urllib.request.Request(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent",
-        data=json.dumps(request_payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "x-goog-api-key": key},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            raw = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Gemini native compilation failed ({exc.code}): {body[:500]}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Gemini native compilation failed: {exc.reason}") from exc
-
-    payload = json.loads(_extract_response_text(raw))
-    payload.update(
-        {
-            "compiler_version": NATIVE_COMPILER_VERSION,
-            "contract_id": contract_id,
-            "model": selected_model,
-            "provider": "google-gemini",
-        }
-    )
-    try:
-        proposal = AgreementCompilationProposal.model_validate(payload)
-    except ValidationError as exc:
-        raise ValueError(f"Model output failed native proposal validation: {exc}") from exc
-    proposal = bind_proposal_to_sources(
-        proposal,
-        expected_contract_id=contract_id,
-        source_documents=source_documents,
-    )
-    return NativeCompilationResult(
-        proposal=proposal,
-        prompt_hash=sha256_text(prompt),
-        raw_response=raw,
-        live_model_call=True,
-        model=selected_model,
-        provider="google-gemini",
+        provider="gemini",
+        model=model,
+        api_key=api_key,
+        timeout_seconds=timeout_seconds,
+        pin_provider=True,
     )
 
 
@@ -491,4 +1021,11 @@ def recorded_native_proposal(
         live_model_call=False,
         model="recorded-fixture",
         provider="recorded-fixture",
+        provenance={
+            "provider": "recorded-fixture",
+            "model": proposal.model,
+            "prompt_hash": sha256_text("recorded-native-proposal"),
+            "compiler_version": NATIVE_COMPILER_VERSION,
+            "prompt_version": NATIVE_PROMPT_VERSION,
+        },
     )

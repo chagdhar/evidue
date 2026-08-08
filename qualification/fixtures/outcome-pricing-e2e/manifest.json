@@ -1,0 +1,68 @@
+{
+  "id": "synthetic-outcome-pricing-e2e",
+  "title": "Synthetic outcome-priced AI invoice end-to-end qualification",
+  "contract_id": "QUAL-SYNTHETIC-OUTCOME-PRICING-E2E",
+  "customer": "Acme Commerce (synthetic)",
+  "vendor": "Nova Support AI (synthetic)",
+  "documents": [
+    {
+      "id": "SYNTHETIC-ORDER-FORM",
+      "title": "Synthetic Outcome Pricing Order Form",
+      "path": "documents/agreement.txt",
+      "document_type": "synthetic_order_form",
+      "precedence": 200
+    }
+  ],
+  "relations": [],
+  "gold_file": "gold.json",
+  "scenario_file": "scenarios.json",
+  "mutations": [
+    {
+      "id": "MUT-RATE-150-175",
+      "document_id": "SYNTHETIC-ORDER-FORM",
+      "find": "Price: $1.50 per supported outcome",
+      "replace": "Price: $1.75 per supported outcome",
+      "financially_material": true,
+      "expected_changed_sections": [
+        "rules",
+        "pricing"
+      ],
+      "expected_unchanged_sections": [
+        "evidence",
+        "coverage"
+      ]
+    },
+    {
+      "id": "MUT-RECONTACT-7-14",
+      "document_id": "SYNTHETIC-ORDER-FORM",
+      "find": "within seven calendar days",
+      "replace": "within fourteen calendar days",
+      "financially_material": true,
+      "expected_changed_sections": [
+        "rules",
+        "evidence"
+      ],
+      "expected_unchanged_sections": [
+        "pricing",
+        "coverage"
+      ]
+    },
+    {
+      "id": "MUT-DOWNSTREAM-2-3",
+      "document_id": "SYNTHETIC-ORDER-FORM",
+      "find": "within two hours",
+      "replace": "within three hours",
+      "financially_material": true,
+      "expected_changed_sections": [
+        "rules",
+        "evidence"
+      ],
+      "expected_unchanged_sections": [
+        "pricing",
+        "coverage"
+      ]
+    }
+  ],
+  "source_class": "synthetic_controlled_contract",
+  "source_notes": "Controlled synthetic contract. Used for exact contract-to-AIR-to-dollar verification; never represented as a customer agreement."
+}

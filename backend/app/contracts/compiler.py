@@ -35,7 +35,7 @@ ROOT = Path(__file__).parents[3]
 RECORDED_PROPOSAL_PATH = ROOT / "demo-data" / "contract" / "recorded-gemini-rule-proposal.json"
 DEFAULT_CONTRACT_PATH = ROOT / "demo-data" / "contract" / "acme-nova-outcome-pricing-order-form.txt"
 COMPILER_VERSION = "1.1"
-DEFAULT_MODEL = "gemini-2.5-flash-lite"
+DEFAULT_MODEL = "gemini-3.6-flash"
 
 AllowedOperation = Literal[
     "validate_evidence_envelope",
@@ -379,8 +379,8 @@ def _response_schema() -> dict[str, Any]:
             "code": {"type": "string"},
             "severity": {"type": "string", "enum": ["info", "warning", "blocking"]},
             "message": {"type": "string"},
-            "clause_text": {"type": "string", "nullable": True},
-            "suggested_action": {"type": "string", "nullable": True},
+            "clause_text": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "suggested_action": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         },
     }
     coverage = {
@@ -490,9 +490,8 @@ def compile_with_gemini(
     request_payload = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
-            "temperature": 0,
             "responseMimeType": "application/json",
-            "responseSchema": _response_schema(),
+            "responseJsonSchema": _response_schema(),
         },
     }
     request = urllib.request.Request(

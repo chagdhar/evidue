@@ -18,9 +18,12 @@ from sqlalchemy.orm import Session
 from app.agreements.adjudication import reconcile_agreement
 from app.agreements.assurance import assure_agreement
 from app.agreements.evaluation import dual_run
+from app.agreements.impact import simulate_agreement_financial_impact
 from app.agreements.legacy import conformance_report
 from app.agreements.models import AgreementIR
 from app.agreements.presentation import rule_description_for_id
+from app.agreements.providers import provider_configuration_status
+from app.agreements.traceability import build_decision_trace
 from app.contracts.compiler import (
     DEFAULT_CONTRACT_PATH,
     agreement_artifacts_for_proposal,
@@ -154,12 +157,7 @@ def workspace_config_view(session: Session) -> dict[str, object]:
         "preferred_crm_system": row.preferred_crm_system,
         "updated_at": row.updated_at.isoformat(),
         "integrations": {
-            "contract_ai": {
-                "configured": bool(os.getenv("GEMINI_API_KEY")),
-                "provider": "Google Gemini",
-                "model": os.getenv("GEMINI_MODEL", "default"),
-                "secret_location": "server_environment",
-            },
+            "contract_ai": provider_configuration_status(os.getenv("EVIDUE_LLM_PRIMARY", "gemini")),
             "workspace_access": {
                 "configured": bool(
                     os.getenv("EVIDUE_WORKSPACE_TOKENS") or os.getenv("EVIDUE_PILOT_TOKEN")
@@ -414,8 +412,9 @@ def compile_contract(
     use_live = mode == "live" or (mode == "auto" and bool(os.getenv("GEMINI_API_KEY")))
     if not use_live and not is_demo_contract:
         raise ValueError(
-            "Custom pilot contracts require GEMINI_API_KEY. The recorded proposal may only be "
-            "used with the bundled demo contract."
+            "This legacy compiler route requires a server-side Gemini configuration for custom "
+            "contracts. Use /compile-native for provider-independent product compilation; "
+            "customers never provide model credentials."
         )
     if use_live:
         result = compile_with_gemini(
@@ -1331,6 +1330,318 @@ def _comparison_payload(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _invoice_claim_rows(
+    session: Session,
+    invoice: PilotInvoiceRow,
+) -> list[PilotClaimRow]:
+    claims = list(
+        session.scalars(
+            select(PilotClaimRow)
+            .where(PilotClaimRow.invoice_id == invoice.id)
+            .order_by(PilotClaimRow.external_outcome_id)
+        ).all()
+    )
+    if not claims:
+        raise ValueError("Pilot invoice has no accepted claims")
+    return claims
+
+
+def _claim_evidence_for_invoice(
+    session: Session,
+    invoice: PilotInvoiceRow,
+    *,
+    claims: list[PilotClaimRow] | None = None,
+) -> list[tuple[OutcomeClaim, list[OperationalEvent]]]:
+    claim_rows = claims if claims is not None else _invoice_claim_rows(session, invoice)
+    events = session.scalars(
+        select(PilotEventRow).where(
+            PilotEventRow.invoice_id == invoice.id,
+            PilotEventRow.match_status == "accepted",
+            PilotEventRow.matched_claim_id.is_not(None),
+        )
+    ).all()
+    events_by_claim: dict[str, list[PilotEventRow]] = {}
+    for event in events:
+        if event.matched_claim_id:
+            events_by_claim.setdefault(event.matched_claim_id, []).append(event)
+    return [
+        (
+            _domain_claim(claim),
+            [_domain_event(event, claim) for event in events_by_claim.get(claim.id, [])],
+        )
+        for claim in claim_rows
+    ]
+
+
+def simulate_air_version_financial_impact(
+    session: Session,
+    *,
+    invoice_id: str,
+    candidate_air_version_id: str,
+    baseline_air_version_id: str | None = None,
+) -> dict[str, object]:
+    """Replay one invoice against approved and candidate AIR versions without persisting money.
+
+    This is a pre-approval control surface for contract/amendment changes. The
+    baseline must be human-approved; the candidate must pass deterministic
+    compiler assurance/conformance, but it may still be pending human approval.
+    No provider or LLM is invoked.
+    """
+
+    invoice = session.get(PilotInvoiceRow, invoice_id)
+    if invoice is None:
+        raise LookupError("Pilot invoice not found")
+    contract = session.get(PilotContractRow, invoice.contract_id)
+    if contract is None:
+        raise LookupError("Pilot contract not found")
+
+    candidate_row = session.get(PilotAIRVersionRow, candidate_air_version_id)
+    if candidate_row is None:
+        raise LookupError("Candidate AIR version not found")
+    if candidate_row.contract_id != contract.id:
+        raise ValueError("Candidate AIR version does not belong to the invoice contract")
+
+    if baseline_air_version_id:
+        baseline_row = session.get(PilotAIRVersionRow, baseline_air_version_id)
+        if baseline_row is None:
+            raise LookupError("Baseline AIR version not found")
+    else:
+        baseline_row = session.scalar(
+            select(PilotAIRVersionRow).where(
+                PilotAIRVersionRow.contract_id == contract.id,
+                PilotAIRVersionRow.approved_at.is_not(None),
+                PilotAIRVersionRow.superseded_by_id.is_(None),
+            )
+        )
+        if baseline_row is None:
+            # If the candidate is the current approved version, compare against
+            # the most recent older approved version when one exists.
+            baseline_row = session.scalar(
+                select(PilotAIRVersionRow)
+                .where(
+                    PilotAIRVersionRow.contract_id == contract.id,
+                    PilotAIRVersionRow.approved_at.is_not(None),
+                    PilotAIRVersionRow.id != candidate_row.id,
+                )
+                .order_by(PilotAIRVersionRow.version_number.desc())
+            )
+    if baseline_row is None:
+        raise ValueError("Financial impact requires an approved baseline AIR version")
+    if baseline_row.contract_id != contract.id:
+        raise ValueError("Baseline AIR version does not belong to the invoice contract")
+    if baseline_row.approved_at is None:
+        raise ValueError("Financial impact baseline must be a human-approved AIR version")
+
+    baseline_air = AgreementIR.model_validate(baseline_row.air_json)
+    candidate_air = AgreementIR.model_validate(candidate_row.air_json)
+    baseline_assurance = assure_agreement(baseline_air)
+    candidate_assurance = assure_agreement(candidate_air)
+    candidate_conformance = conformance_report(candidate_air)
+    if not baseline_assurance.hard_gate_passed:
+        raise ValueError("Approved baseline AIR no longer passes compiler assurance")
+    if not candidate_assurance.hard_gate_passed or not candidate_conformance.approvable:
+        raise ValueError(
+            "Candidate AIR must pass deterministic assurance and conformance before impact analysis"
+        )
+
+    claim_evidence = _claim_evidence_for_invoice(session, invoice)
+    impact = simulate_agreement_financial_impact(
+        claim_evidence,
+        baseline_air,
+        candidate_air,
+    )
+
+    from app.upload.agreement_store import agreement_bundle_source_hash
+
+    current_source_hash = agreement_bundle_source_hash(session, contract.id)
+    impact.update(
+        {
+            "invoice_id": invoice.id,
+            "contract_id": contract.id,
+            "baseline_air_version": {
+                "id": baseline_row.id,
+                "version_number": baseline_row.version_number,
+                "source_bundle_hash": baseline_row.source_bundle_hash,
+                "approved_at": (
+                    baseline_row.approved_at.isoformat() if baseline_row.approved_at else None
+                ),
+            },
+            "candidate_air_version": {
+                "id": candidate_row.id,
+                "version_number": candidate_row.version_number,
+                "source_bundle_hash": candidate_row.source_bundle_hash,
+                "approved_at": (
+                    candidate_row.approved_at.isoformat() if candidate_row.approved_at else None
+                ),
+                "matches_current_agreement_bundle": (
+                    candidate_row.source_bundle_hash == current_source_hash
+                ),
+            },
+            "current_agreement_bundle_hash": current_source_hash,
+            "financial_authority_air_version_id": baseline_row.id,
+            "warning": (
+                "Simulation only. Candidate rules do not become financial authority until a human "
+                "approves that AIR version."
+            ),
+        }
+    )
+    return impact
+
+
+def simulate_contract_historical_replay(
+    session: Session,
+    *,
+    contract_id: str,
+    air_version_id: str | None = None,
+) -> dict[str, object]:
+    """Replay all accepted historical invoices through one approved AIR without persistence.
+
+    This is the low-friction pilot/diagnostic path: Finance can upload historical
+    invoice and evidence exports, approve the governing AIR once, and see the
+    aggregate contractual result without creating reconciliation runs.
+    """
+
+    contract = session.get(PilotContractRow, contract_id)
+    if contract is None:
+        raise LookupError("Pilot contract not found")
+
+    if air_version_id:
+        air_row = session.get(PilotAIRVersionRow, air_version_id)
+        if air_row is None:
+            raise LookupError("AIR version not found")
+    else:
+        air_row = session.scalar(
+            select(PilotAIRVersionRow).where(
+                PilotAIRVersionRow.contract_id == contract.id,
+                PilotAIRVersionRow.approved_at.is_not(None),
+                PilotAIRVersionRow.superseded_by_id.is_(None),
+            )
+        )
+    if air_row is None:
+        raise ValueError("Historical replay requires a human-approved AIR version")
+    if air_row.contract_id != contract.id:
+        raise ValueError("AIR version does not belong to the requested contract")
+    if air_row.approved_at is None:
+        raise ValueError("Historical replay requires a human-approved AIR version")
+
+    from app.upload.agreement_store import (
+        agreement_bundle_source_hash,
+        ensure_single_governing_period,
+    )
+
+    ensure_single_governing_period(session, contract.id)
+    current_source_hash = agreement_bundle_source_hash(session, contract.id)
+    if air_row.source_bundle_hash != current_source_hash:
+        raise ValueError(
+            "Historical replay is blocked because the approved AIR is stale for the current "
+            "agreement bundle. Approve the governing contract version before replaying invoices."
+        )
+
+    agreement = AgreementIR.model_validate(air_row.air_json)
+    assurance = assure_agreement(agreement)
+    if not assurance.hard_gate_passed:
+        raise ValueError("Approved Agreement IR no longer passes compiler assurance")
+
+    settlement_currencies = sorted({policy.currency for policy in agreement.settlement_policies})
+    if len(settlement_currencies) > 1:
+        raise ValueError(
+            "Historical replay cannot aggregate an AIR with multiple currencies without a "
+            "contract-authorized FX conversion policy. Split the replay by currency/contract "
+            "period instead."
+        )
+    currency = settlement_currencies[0] if settlement_currencies else None
+
+    invoices = session.scalars(
+        select(PilotInvoiceRow)
+        .where(PilotInvoiceRow.contract_id == contract.id)
+        .order_by(PilotInvoiceRow.billing_period_start, PilotInvoiceRow.id)
+    ).all()
+    if not invoices:
+        raise ValueError("No invoices are available for historical replay")
+
+    billed_total = Decimal()
+    payable_total = Decimal()
+    disputed_total = Decimal()
+    review_total = Decimal()
+    replayed = 0
+    invoice_rows: list[dict[str, object]] = []
+
+    for invoice in invoices:
+        try:
+            claim_evidence = _claim_evidence_for_invoice(session, invoice)
+        except ValueError as exc:
+            invoice_rows.append(
+                {
+                    "invoice_id": invoice.id,
+                    "status": "not_ready",
+                    "reason": str(exc),
+                }
+            )
+            continue
+
+        results = reconcile_agreement(claim_evidence, agreement)
+        billed = sum((item.claim.billed_amount for item in results), Decimal())
+        payable = sum((item.confirmed_payable_amount for item in results), Decimal())
+        disputed = sum((item.confirmed_disputed_amount for item in results), Decimal())
+        review = sum((item.needs_review_amount for item in results), Decimal())
+        conservation = billed == payable + disputed + review
+        if not conservation:
+            raise ValueError(f"Historical replay violated money conservation for {invoice.id}")
+
+        billed_total += billed
+        payable_total += payable
+        disputed_total += disputed
+        review_total += review
+        replayed += 1
+        invoice_rows.append(
+            {
+                "invoice_id": invoice.id,
+                "status": "replayed",
+                "billing_period_start": invoice.billing_period_start.isoformat(),
+                "billing_period_end": invoice.billing_period_end.isoformat(),
+                "claimed_outcomes": len(results),
+                "payable_outcomes": sum(item.status == "payable" for item in results),
+                "disputed_outcomes": sum(item.status == "disputed" for item in results),
+                "needs_review_outcomes": sum(item.status == "needs_review" for item in results),
+                "billed": _money(billed),
+                "payable": _money(payable),
+                "disputed": _money(disputed),
+                "needs_review": _money(review),
+                "conservation_passed": conservation,
+            }
+        )
+
+    aggregate_conservation = billed_total == payable_total + disputed_total + review_total
+    return {
+        "version": "historical-replay-1",
+        "historical_replay": True,
+        "simulation_only": True,
+        "contract_id": contract.id,
+        "customer": contract.customer,
+        "vendor": contract.vendor,
+        "air_version_id": air_row.id,
+        "air_version_number": air_row.version_number,
+        "financial_authority": "approved_air",
+        "currency": currency,
+        "currency_consistent": True,
+        "invoices_total": len(invoices),
+        "invoices_replayed": replayed,
+        "invoices_not_ready": len(invoices) - replayed,
+        "totals": {
+            "billed": _money(billed_total),
+            "payable": _money(payable_total),
+            "disputed": _money(disputed_total),
+            "needs_review": _money(review_total),
+            "conservation_passed": aggregate_conservation,
+        },
+        "invoices": invoice_rows,
+        "warning": (
+            "Historical replay is an analysis over uploaded historical exports. It does not "
+            "create a payable instruction or claim recovered savings."
+        ),
+    }
+
+
 def run_pilot_reconciliation(session: Session, invoice_id: str) -> dict[str, object]:
     """Reconcile using the approved AIR as the contractual financial authority.
 
@@ -1375,32 +1686,8 @@ def run_pilot_reconciliation(session: Session, invoice_id: str) -> dict[str, obj
     if not assurance.hard_gate_passed:
         raise ValueError("Approved Agreement IR no longer passes compiler assurance")
 
-    claims = session.scalars(
-        select(PilotClaimRow)
-        .where(PilotClaimRow.invoice_id == invoice.id)
-        .order_by(PilotClaimRow.external_outcome_id)
-    ).all()
-    if not claims:
-        raise ValueError("Pilot invoice has no accepted claims")
-    events = session.scalars(
-        select(PilotEventRow).where(
-            PilotEventRow.invoice_id == invoice.id,
-            PilotEventRow.match_status == "accepted",
-            PilotEventRow.matched_claim_id.is_not(None),
-        )
-    ).all()
-    events_by_claim: dict[str, list[PilotEventRow]] = {}
-    for event in events:
-        if event.matched_claim_id:
-            events_by_claim.setdefault(event.matched_claim_id, []).append(event)
-
-    claim_evidence = [
-        (
-            _domain_claim(claim),
-            [_domain_event(event, claim) for event in events_by_claim.get(claim.id, [])],
-        )
-        for claim in claims
-    ]
+    claims = _invoice_claim_rows(session, invoice)
+    claim_evidence = _claim_evidence_for_invoice(session, invoice, claims=claims)
     results = reconcile_agreement(claim_evidence, approved_air)
     air_version_id = air_row.id
 
@@ -1686,6 +1973,30 @@ def reconciliation_details(session: Session, run_id: str) -> list[dict[str, obje
             for clause_id in source_clause_ids
             if clause_id in clause_by_id
         ]
+        evidence = [
+            {
+                "event_id": event.id,
+                "purpose": reference.purpose,
+                "source_system": event.source_system,
+                "source_record_id": event.source_record_id,
+                "event_type": event.event_type,
+                "timestamp": event.timestamp.isoformat(),
+                "match_method": event.match_method,
+                "match_confidence": f"{event.match_confidence:.4f}",
+            }
+            for reference, event in evidence_rows
+        ]
+        trace = build_decision_trace(
+            agreement,
+            outcome_id=row.external_outcome_id,
+            status=row.status,
+            rule_id=row.rule_id,
+            billed_amount=row.billed_amount,
+            payable_amount=row.confirmed_payable_amount,
+            disputed_amount=row.confirmed_disputed_amount,
+            needs_review_amount=row.needs_review_amount,
+            evidence=evidence,
+        )
         result.append(
             {
                 "outcome_id": row.external_outcome_id,
@@ -1702,19 +2013,8 @@ def reconciliation_details(session: Session, run_id: str) -> list[dict[str, obje
                 "normalizer_version": row.normalizer_version,
                 "matching_version": row.matching_version,
                 "contract_clauses": contract_clauses,
-                "evidence": [
-                    {
-                        "event_id": event.id,
-                        "purpose": reference.purpose,
-                        "source_system": event.source_system,
-                        "source_record_id": event.source_record_id,
-                        "event_type": event.event_type,
-                        "timestamp": event.timestamp.isoformat(),
-                        "match_method": event.match_method,
-                        "match_confidence": f"{event.match_confidence:.4f}",
-                    }
-                    for reference, event in evidence_rows
-                ],
+                "evidence": evidence,
+                "trace": trace,
             }
         )
     return result

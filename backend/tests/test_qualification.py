@@ -362,3 +362,76 @@ def test_multiple_contract_currencies_fail_closed_to_needs_review():
     result = evaluate_claim(claim, [], agreement)
     assert result.status == "needs_review"
     assert "multiple currencies" in result.reason
+
+
+def test_redacted_critical_parameter_cannot_be_invented_or_executed():
+    text = "Customer will pay the Annual Fee of [***] per year."
+    clause = _clause("CLAUSE-REDACTED", "order-form", text)
+    agreement = AgreementIR(
+        agreement_id="REDACTED",
+        source_hash="sha256:test",
+        clauses=[clause],
+        norms=[],
+        predicates=[],
+        proof_requirements=[],
+        settlement_policies=[
+            SettlementPolicy(
+                id="PRICE-INVENTED",
+                claim_type="outcome",
+                amount_expression=Expression(operator="constant", value="30"),
+                source_clause_ids=["CLAUSE-REDACTED"],
+                currency="USD",
+            )
+        ],
+        coverage=[
+            ClauseCoverage(
+                clause_id="CLAUSE-REDACTED",
+                clause_text=text,
+                classification=AutomationClass.FULLY_EXECUTABLE,
+                norm_ids=[],
+                rationale="Incorrectly invented for test purposes.",
+            )
+        ],
+    )
+    gold = QualificationGold(
+        pack_id="redacted",
+        review_status="human_reviewed",
+        exhaustive_financial_terms=True,
+        terms=[
+            QualificationGoldTerm(
+                id="GOLD-REDACTED",
+                description="Annual fee amount is redacted and must remain unknown",
+                materiality="critical_financial",
+                source_document_id="order-form",
+                source_phrase="Annual Fee of [***] per year",
+                expected_kind="manual_or_unsupported",
+                numeric_parameter_must_be_unknown=True,
+                must_not_be_executable=True,
+                forbidden_numeric_values=["30"],
+            )
+        ],
+    )
+    result = score_agreement(agreement, gold)
+    assert result["qualification_passed"] is False
+    assert result["hard_failures"]
+    issues = result["terms"][0]["issues"]
+    assert any("redacted/unknown parameter" in issue for issue in issues)
+    assert any("remain non-executable" in issue for issue in issues)
+
+
+def test_sec_pack_gold_loads_against_real_decoded_contract():
+    from pathlib import Path
+
+    from app.agreements.qualification import load_pack
+
+    root = Path(__file__).parents[2] / "qualification" / "downloaded" / "sec-demandtec-target-2010"
+    pack = load_pack(root)
+    assert pack.gold is not None
+    assert pack.gold.review_status == "provisional_engineering_gold"
+    assert pack.gold.exhaustive_financial_terms is False
+    source = pack.documents["DEMANDTEC-TARGET-AGREEMENT"][1]
+    assert "No other amounts will be owed by Customer to DemandTec" in source
+    assert "[***]" in source
+    normalized_source = " ".join(source.split())
+    for term in pack.gold.terms:
+        assert " ".join(term.source_phrase.split()) in normalized_source, term.id

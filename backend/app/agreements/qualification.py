@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal
@@ -16,12 +17,24 @@ from .adjudication import evaluate_claim
 from .assurance import assure_agreement
 from .compiler import lower_to_agreement_ir
 from .compiler_models import AgreementCompilationProposal
+from .document_ingestion import read_decoded_file, validate_text_artifact
 from .models import AgreementIR, AutomationClass
-from .native_compiler import bind_proposal_to_sources, compile_native_with_gemini
+from .native_compiler import bind_proposal_to_sources, compile_native
 from .presentation import agreement_finance_view
+from .semantics import semantic_fingerprint
 
-Materiality = Literal["critical", "high", "medium", "informational"]
-ExpectedKind = Literal["norm", "settlement", "manual_or_unsupported"]
+Materiality = Literal[
+    "critical",
+    "high",
+    "medium",
+    "informational",
+    "critical_financial",
+    "material_operational",
+    "supporting",
+    "non_material",
+]
+ExpectedKind = Literal["norm", "settlement", "manual_or_unsupported", "source_only"]
+SemanticSection = Literal["rules", "pricing", "evidence", "coverage"]
 
 
 class QualificationGoldTerm(BaseModel):
@@ -38,6 +51,10 @@ class QualificationGoldTerm(BaseModel):
     expected_automation: str | None = None
     expected_numeric_values: list[str] = Field(default_factory=list)
     expected_fact_types: list[str] = Field(default_factory=list)
+    forbidden_numeric_values: list[str] = Field(default_factory=list)
+    numeric_parameter_must_be_unknown: bool = False
+    must_not_be_executable: bool = False
+    expected_diagnostic_codes: list[str] = Field(default_factory=list)
     notes: str = ""
 
 
@@ -64,6 +81,10 @@ class QualificationDocument(BaseModel):
     effective_until: str | None = None
     source_url: str | None = None
     retrieved_at: str | None = None
+    raw_sha256: str | None = None
+    content_sha256: str | None = None
+    transport_encoding: str | None = None
+    content_type: str | None = None
 
 
 class QualificationRelation(BaseModel):
@@ -82,6 +103,8 @@ class QualificationMutation(BaseModel):
     find: str
     replace: str
     financially_material: bool = True
+    expected_changed_sections: list[SemanticSection] = Field(default_factory=list)
+    expected_unchanged_sections: list[SemanticSection] = Field(default_factory=list)
 
 
 class QualificationScenarioEvent(BaseModel):
@@ -188,9 +211,10 @@ def _strip_html(value: str) -> str:
 
 def load_document_text(path: Path) -> str:
     suffix = path.suffix.lower()
-    raw = path.read_bytes()
+    decoded = read_decoded_file(path)
+    raw = decoded.content
     if suffix in {".txt", ".md", ".text"}:
-        text = raw.decode("utf-8-sig")
+        text = raw.decode("utf-8-sig", errors="strict")
     elif suffix in {".html", ".htm"}:
         text = _strip_html(raw.decode("utf-8-sig", errors="replace"))
     elif suffix == ".pdf":
@@ -219,8 +243,7 @@ def load_document_text(path: Path) -> str:
     else:
         raise ValueError(f"Unsupported qualification document type: {path.name}")
     cleaned = text.strip()
-    if len(cleaned) < 50:
-        raise ValueError(f"Qualification document {path.name} has too little readable text")
+    validate_text_artifact(cleaned, name=path.name, require_contract_like=True)
     return cleaned
 
 
@@ -279,11 +302,26 @@ def source_bundle_hash(pack: QualificationPack) -> str:
     return "sha256:" + sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
 
-def compile_pack_live(pack: QualificationPack, *, run_number: int = 1) -> AgreementIR:
-    result = compile_native_with_gemini(
+@dataclass(frozen=True)
+class QualificationCompilation:
+    agreement: AgreementIR
+    provenance: dict[str, Any]
+
+
+def compile_pack_live_result(
+    pack: QualificationPack,
+    *,
+    run_number: int = 1,
+    provider: str | None = None,
+    model: str | None = None,
+) -> QualificationCompilation:
+    result = compile_native(
         contract_id=pack.manifest.contract_id,
         source_documents=pack.documents,
         metadata=pack_metadata(pack),
+        provider=provider,
+        model=model,
+        pin_provider=True,
     )
     agreement, _ = lower_to_agreement_ir(
         result.proposal,
@@ -291,7 +329,22 @@ def compile_pack_live(pack: QualificationPack, *, run_number: int = 1) -> Agreem
         version=run_number,
         source_hash=source_bundle_hash(pack),
     )
-    return agreement
+    return QualificationCompilation(agreement=agreement, provenance=result.provenance)
+
+
+def compile_pack_live(
+    pack: QualificationPack,
+    *,
+    run_number: int = 1,
+    provider: str | None = None,
+    model: str | None = None,
+) -> AgreementIR:
+    return compile_pack_live_result(
+        pack,
+        run_number=run_number,
+        provider=provider,
+        model=model,
+    ).agreement
 
 
 def compile_pack_proposal(
@@ -320,9 +373,31 @@ def _contains_numeric(payload: Any, expected: str) -> bool:
         return any(_contains_numeric(value, expected) for value in payload.values())
     if isinstance(payload, list):
         return any(_contains_numeric(value, expected) for value in payload)
-    if payload is None:
+    if isinstance(payload, bool) or payload is None:
         return False
-    return str(payload).strip() == expected.strip()
+
+    try:
+        return Decimal(str(payload).strip()) == Decimal(expected.strip())
+    except InvalidOperation:
+        return str(payload).strip() == expected.strip()
+
+
+def _numeric_literals(payload: Any) -> set[str]:
+    values: set[str] = set()
+    if isinstance(payload, dict):
+        for value in payload.values():
+            values.update(_numeric_literals(value))
+    elif isinstance(payload, list):
+        for value in payload:
+            values.update(_numeric_literals(value))
+    elif isinstance(payload, bool) or payload is None:
+        pass
+    elif isinstance(payload, (int, float, Decimal)):
+        values.add(str(payload))
+    elif isinstance(payload, str):
+        with suppress(InvalidOperation):
+            values.add(format(Decimal(payload), "f"))
+    return values
 
 
 def _source_matches(agreement: AgreementIR, term: QualificationGoldTerm) -> list[str]:
@@ -406,6 +481,36 @@ def _term_result(agreement: AgreementIR, term: QualificationGoldTerm) -> dict[st
     if numeric_mismatches:
         issues.append("numeric parameter mismatch: " + ", ".join(numeric_mismatches))
 
+    forbidden_numeric = [
+        value for value in term.forbidden_numeric_values if _contains_numeric(structured, value)
+    ]
+    if forbidden_numeric:
+        issues.append("forbidden numeric interpretation: " + ", ".join(forbidden_numeric))
+
+    numeric_literals = _numeric_literals(structured)
+    if term.numeric_parameter_must_be_unknown and numeric_literals:
+        issues.append(
+            "redacted/unknown parameter was assigned numeric value(s): "
+            + ", ".join(sorted(numeric_literals))
+        )
+
+    automatically_executable = bool(policies) or any(
+        norm.automation_class
+        in {AutomationClass.FULLY_EXECUTABLE, AutomationClass.EXECUTABLE_IF_DATA_AVAILABLE}
+        for norm in norms
+    )
+    if term.must_not_be_executable and automatically_executable:
+        issues.append("gold requires this term to remain non-executable")
+
+    diagnostic_codes = {
+        diagnostic.code
+        for diagnostic in agreement.diagnostics
+        if not diagnostic.clause_ids or set(diagnostic.clause_ids).intersection(clause_ids)
+    }
+    missing_diagnostics = sorted(set(term.expected_diagnostic_codes) - diagnostic_codes)
+    if missing_diagnostics:
+        issues.append("missing expected diagnostic(s): " + ", ".join(missing_diagnostics))
+
     return {
         "id": term.id,
         "description": term.description,
@@ -420,38 +525,11 @@ def _term_result(agreement: AgreementIR, term: QualificationGoldTerm) -> dict[st
             or (term.expected_kind == "settlement" and not policies)
         ),
         "numeric_mismatches": numeric_mismatches,
+        "forbidden_numeric_values_found": forbidden_numeric,
+        "numeric_literals": sorted(numeric_literals),
+        "missing_diagnostics": missing_diagnostics,
         "issues": issues,
     }
-
-
-def semantic_fingerprint(agreement: AgreementIR) -> str:
-    finance = agreement_finance_view(agreement)
-    normalized = {
-        "rules": [
-            {
-                "description": item["description"],
-                "consequence": item["consequence"],
-                "verification_method": item["verification_method"],
-                "evidence_needed": sorted(item["evidence_needed"]),
-                "condition": item["technical"]["condition"],
-            }
-            for item in finance["contract_rules"]
-        ],
-        "pricing": [
-            {
-                "description": item["description"],
-                "currency": item["currency"],
-                "amount_expression": item["technical"]["amount_expression"],
-            }
-            for item in finance["pricing_terms"]
-        ],
-    }
-    return (
-        "sha256:"
-        + sha256(
-            json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
-    )
 
 
 def score_agreement(agreement: AgreementIR, gold: QualificationGold | None) -> dict[str, Any]:
@@ -497,12 +575,12 @@ def score_agreement(agreement: AgreementIR, gold: QualificationGold | None) -> d
         return base
 
     terms = [_term_result(agreement, term) for term in gold.terms]
-    critical = [item for item in terms if item["materiality"] == "critical"]
+    critical = [item for item in terms if item["materiality"] in {"critical", "critical_financial"}]
     critical_found = [item for item in critical if item["found"] and not item["issues"]]
     numeric_mismatches = [
         {"id": item["id"], "values": item["numeric_mismatches"]}
         for item in terms
-        if item["materiality"] == "critical" and item["numeric_mismatches"]
+        if item["materiality"] in {"critical", "critical_financial"} and item["numeric_mismatches"]
     ]
     silent_automation = [
         item["id"]
@@ -528,12 +606,41 @@ def score_agreement(agreement: AgreementIR, gold: QualificationGold | None) -> d
         )
 
     critical_recall = 100.0 if not critical else len(critical_found) / len(critical) * 100
+    dangerous_term_failures = [
+        {"id": item["id"], "issues": item["issues"]}
+        for item in terms
+        if item["materiality"] in {"critical", "critical_financial"}
+        and any(
+            marker in issue
+            for issue in item["issues"]
+            for marker in (
+                "numeric parameter mismatch",
+                "forbidden numeric interpretation",
+                "redacted/unknown parameter",
+                "silently made automatic",
+                "remain non-executable",
+            )
+        )
+    ]
+    hard_failures: list[dict[str, Any]] = []
+    if unsupported_executable:
+        hard_failures.append(
+            {"code": "UNEXPECTED_EXECUTABLE_RULE", "items": unsupported_executable}
+        )
+    if ungrounded or ungrounded_policies:
+        hard_failures.append(
+            {
+                "code": "UNGROUNDED_EXECUTABLE_SEMANTICS",
+                "items": [*ungrounded, *ungrounded_policies],
+            }
+        )
+    if dangerous_term_failures:
+        hard_failures.append({"code": "CRITICAL_GOLD_MISMATCH", "items": dangerous_term_failures})
+
     metric_gate_passed = (
         assurance.hard_gate_passed
         and critical_recall == 100.0
-        and not unsupported_executable
-        and not ungrounded
-        and not ungrounded_policies
+        and not hard_failures
         and not numeric_mismatches
         and not silent_automation
     )
@@ -559,6 +666,7 @@ def score_agreement(agreement: AgreementIR, gold: QualificationGold | None) -> d
             "unsupported_executable_financial_rules": unsupported_executable,
             "critical_numeric_parameter_mismatches": numeric_mismatches,
             "silent_subjective_automation": silent_automation,
+            "hard_failures": hard_failures,
             "qualification_status": status,
             "qualification_passed": passed,
         }
@@ -643,13 +751,25 @@ def run_financial_scenarios(
             }
         )
 
-    metric_passed = all(row["passed"] for row in rows)
+    billed_total = sum(Decimal(item.billed_amount) for item in scenario_set.scenarios)
+    payable_total = sum(Decimal(row["actual"]["payable"]) for row in rows)
+    disputed_total = sum(Decimal(row["actual"]["disputed"]) for row in rows)
+    review_total = sum(Decimal(row["actual"]["needs_review"]) for row in rows)
+    conservation_passed = billed_total == payable_total + disputed_total + review_total
+    metric_passed = all(row["passed"] for row in rows) and conservation_passed
     reviewed = scenario_set.review_status == "human_reviewed"
     passed = metric_passed and reviewed
     return {
         "available": True,
         "review_status": scenario_set.review_status,
         "metric_gate_passed": metric_passed,
+        "conservation_passed": conservation_passed,
+        "totals": {
+            "billed": format(billed_total, "f"),
+            "payable": format(payable_total, "f"),
+            "disputed": format(disputed_total, "f"),
+            "needs_review": format(review_total, "f"),
+        },
         "passed": passed,
         "status": "passed" if passed else ("review_required" if metric_passed else "failed"),
         "scenarios": rows,

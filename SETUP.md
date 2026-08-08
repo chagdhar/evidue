@@ -12,11 +12,12 @@ From the repository root:
 ./scripts/dev.sh
 ```
 
-Optional live contract compilation:
+Optional live contract compilation uses Evidue-owned backend credentials:
 
 ```fish
 cp .env.example .env
-# Add GEMINI_API_KEY only in your local .env file.
+# Configure EVIDUE_LLM_PRIMARY plus the matching provider key/model only in .env.
+# Customers never enter provider API keys in the product UI.
 ```
 
 Open:
@@ -77,16 +78,30 @@ http://localhost:8000/demo
 A reset returns the June invoice to the unreconciled state.
 
 
-## Optional live Gemini compilation
+## Optional live contract compilation
 
-The demo is fully repeatable without network access because it includes a validated recorded rule proposal.
-For the live contract-compilation path, set environment variables before `./scripts/dev.sh`:
+The demo/core proof is repeatable without network access because controlled recorded proposals are included. For arbitrary contracts, configure a server-owned provider before `./scripts/dev.sh`:
 
-```bash
-export GEMINI_API_KEY="your-key"
-export GEMINI_MODEL="gemini-2.5-flash-lite"  # optional override
+```fish
+set -x EVIDUE_LLM_PRIMARY gemini
+set -x GEMINI_API_KEY 'your-server-key'
+set -x GEMINI_MODEL 'your-enabled-model'
 ```
 
-Then use **Compile contract** in the contract compiler section. `auto` mode calls Gemini when a key exists and
-falls back to the recorded proposal if the live call fails. Explicit `live` API mode returns an error instead of
-falling back. Never commit a real key.
+Or use OpenAI:
+
+```fish
+set -x EVIDUE_LLM_PRIMARY openai
+set -x OPENAI_API_KEY 'your-server-key'
+set -x OPENAI_MODEL 'your-enabled-model'
+```
+
+An optional `EVIDUE_LLM_FALLBACK` can be configured for production availability. Qualification runs pin a provider and do not silently fail over. Never commit a real key.
+
+## Verification kernel
+
+```fish
+./scripts/evidue-proof.sh core
+```
+
+The command creates `artifacts/validation/latest.json` and `latest.md`. Run `./scripts/evidue-proof.sh full` after a complete dependency bootstrap for the broader repository/frontend gate.

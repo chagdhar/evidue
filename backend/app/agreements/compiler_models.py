@@ -85,6 +85,13 @@ AllowedAutomationClass = Literal[
 
 AllowedDiagnosticSeverity = Literal["info", "warning", "blocking"]
 
+AllowedEvidenceAuthority = Literal[
+    "customer_system_of_record",
+    "independent_third_party",
+    "signed_execution_log",
+    "vendor_tool_trace",
+]
+
 
 def _reject_unknown_keys(parameters: dict[str, Any], allowed: set[str], label: str) -> None:
     unknown = sorted(set(parameters) - allowed)
@@ -270,7 +277,7 @@ class ConditionProposal(BaseModel):
                 raise ValueError(f"{ct} 'conditions' must be a non-empty list")
             for i, sub in enumerate(p["conditions"]):
                 if not isinstance(sub, dict):
-                    raise TypeError(f"{ct} condition {i} must be a dict")
+                    raise ValueError(f"{ct} condition {i} must be a dict")  # noqa: TRY004
                 ConditionProposal.model_validate(sub)
         return self
 
@@ -291,7 +298,7 @@ class ProofRequirementProposal(BaseModel):
 
     description: str = Field(min_length=1, max_length=1000)
     fact_types: list[str] = Field(min_length=1)
-    preferred_authority: str = "customer_system_of_record"
+    preferred_authority: AllowedEvidenceAuthority = "customer_system_of_record"
     entity_type: str | None = None
     required_fields: list[str] = Field(default_factory=list)
     identity_keys: list[str] = Field(default_factory=list)
@@ -374,7 +381,7 @@ class SettlementProposal(BaseModel):
             normalized: list[dict[str, str | None]] = []
             for index, tier in enumerate(p["tiers"]):
                 if not isinstance(tier, dict):
-                    raise TypeError(f"tiered_rate tier {index} must be an object")
+                    raise ValueError(f"tiered_rate tier {index} must be an object")  # noqa: TRY004
                 _reject_unknown_keys(tier, {"up_to", "unit_price"}, f"tiered_rate tier {index}")
                 if "unit_price" not in tier:
                     raise ValueError(f"tiered_rate tier {index} requires unit_price")
@@ -446,6 +453,7 @@ class ClauseAnalysisProposal(BaseModel):
 
     clause_id: str = Field(min_length=1, max_length=50)
     source_document_id: str
+    source_span_ids: list[str] = Field(default_factory=list, max_length=6)
     source_text: str = Field(min_length=1, max_length=5000)
     source_start: int | None = Field(default=None, ge=0)
     source_end: int | None = Field(default=None, ge=1)

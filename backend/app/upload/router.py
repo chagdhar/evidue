@@ -76,6 +76,8 @@ from app.upload.store import (
     record_audit,
     run_identity_matching,
     run_pilot_reconciliation,
+    simulate_air_version_financial_impact,
+    simulate_contract_historical_replay,
     update_workspace_config,
     workspace_config_view,
 )
@@ -1251,7 +1253,8 @@ def compile_native_air(
 ) -> dict[str, object]:
     """Compile uploaded agreement language into native AIR.
 
-    Live mode calls Gemini for a strict clause-analysis proposal. Recorded mode
+    Live mode calls the configured server-side compiler provider for a strict
+    clause-analysis proposal. Recorded mode
     is available only for the bundled demo contract. A caller-supplied proposal
     is accepted for testing, but is still source-bound before lowering.
     """
@@ -1263,9 +1266,10 @@ def compile_native_air(
     from app.agreements.native_compiler import (
         NATIVE_PROMPT_VERSION,
         bind_proposal_to_sources,
-        compile_native_with_gemini,
+        compile_native,
         recorded_native_proposal,
     )
+    from app.agreements.providers import canonical_provider_name, provider_is_configured
     from app.contracts.compiler import DEFAULT_CONTRACT_PATH, sha256_text
     from app.upload.agreement_store import (
         agreement_bundle_view,
@@ -1294,11 +1298,15 @@ def compile_native_air(
             "vendor": contract.vendor,
             "billing_period_start": contract.period_start.isoformat(),
             "billing_period_end_exclusive": contract.period_end.isoformat(),
-            "price_per_outcome": str(contract.price_per_outcome),
             "agreement_documents": json.dumps(bundle_view["documents"], sort_keys=True),
             "agreement_relations": json.dumps(bundle_view["relations"], sort_keys=True),
         }
         manual_proposal = request.proposal if request is not None else None
+        secondary_compilation = None
+        secondary_compilation_error: str | None = None
+        secondary_assurance_provider: str | None = None
+        secondary_assurance_model: str | None = None
+        compiler_consensus: dict[str, object] | None = None
         if manual_proposal is not None:
             try:
                 proposal = AgreementCompilationProposal.model_validate(manual_proposal)
@@ -1315,19 +1323,62 @@ def compile_native_air(
             live_model_call = False
             raw_response: dict[str, object] = {"manual_proposal": True}
         else:
-            use_live = mode == "live" or (mode == "auto" and bool(os.getenv("GEMINI_API_KEY")))
+            primary_provider = os.getenv("EVIDUE_LLM_PRIMARY", "gemini")
+            use_live = mode == "live" or (
+                mode == "auto" and provider_is_configured(primary_provider)
+            )
             try:
                 if use_live:
-                    result = compile_native_with_gemini(
+                    result = compile_native(
                         contract_id=contract.id,
                         source_documents=source_documents,
                         metadata=metadata,
+                        provider=primary_provider,
+                        fallback_provider=os.getenv("EVIDUE_LLM_FALLBACK") or None,
+                        pin_provider=False,
                     )
+                    secondary_assurance_provider = (
+                        os.getenv("EVIDUE_LLM_ASSURANCE_PROVIDER", "").strip() or None
+                    )
+                    secondary_assurance_model = (
+                        os.getenv("EVIDUE_LLM_ASSURANCE_MODEL", "").strip() or None
+                    )
+                    primary_actual_provider = canonical_provider_name(result.provider)
+                    secondary_actual_provider = (
+                        canonical_provider_name(secondary_assurance_provider)
+                        if secondary_assurance_provider
+                        else None
+                    )
+                    should_assure = bool(
+                        secondary_actual_provider
+                        and (
+                            secondary_actual_provider != primary_actual_provider
+                            or (
+                                secondary_assurance_model
+                                and secondary_assurance_model != result.model
+                            )
+                        )
+                    )
+                    if should_assure and secondary_assurance_provider:
+                        try:
+                            secondary_compilation = compile_native(
+                                contract_id=contract.id,
+                                source_documents=source_documents,
+                                metadata=metadata,
+                                provider=secondary_assurance_provider,
+                                model=secondary_assurance_model,
+                                fallback_provider=None,
+                                pin_provider=True,
+                            )
+                        except (RuntimeError, ValueError) as exc:
+                            # The primary result remains a reviewable candidate. A
+                            # configured dual-compiler policy fails closed at approval.
+                            secondary_compilation_error = str(exc)
                 else:
                     if contract.source_text.strip() != DEFAULT_CONTRACT_PATH.read_text().strip():
                         raise ValueError(
-                            "Custom agreement packets require GEMINI_API_KEY for native compilation; "
-                            "recorded mode is limited to the bundled demo contract"
+                            "Custom agreement packets require server-side LLM inference for native "
+                            "compilation; recorded mode is limited to the bundled demo contract"
                         )
                     if len(source_documents) != 1:
                         raise ValueError(
@@ -1381,6 +1432,55 @@ def compile_native_air(
         except Exception as exc:
             raise HTTPException(422, f"Native AIR lowering failed: {exc}") from exc
 
+        if secondary_compilation is not None:
+            from app.agreements.consensus import (
+                compiler_consensus_report,
+                consensus_blocking_diagnostic,
+            )
+
+            try:
+                secondary_air, _ = lower_to_agreement_ir(
+                    secondary_compilation.proposal,
+                    compilation_id=f"{compilation_id}-ASSURANCE",
+                    version=compilation_version,
+                    source_hash=source_bundle_hash,
+                )
+                compiler_consensus = compiler_consensus_report(
+                    air,
+                    secondary_air,
+                    primary_provenance=result.provenance,
+                    secondary_provenance=secondary_compilation.provenance,
+                )
+                consensus_diagnostic = consensus_blocking_diagnostic(compiler_consensus)
+                if consensus_diagnostic is not None:
+                    air = air.model_copy(
+                        update={"diagnostics": [*air.diagnostics, consensus_diagnostic]}
+                    )
+            except (KeyError, TypeError, ValueError) as exc:
+                secondary_compilation_error = (
+                    "Independent compiler output could not be lowered/compared: "
+                    f"{type(exc).__name__}"
+                )
+
+        if secondary_compilation_error and secondary_assurance_provider:
+            from app.agreements.consensus import assurance_provider_unavailable_diagnostic
+
+            unavailable = assurance_provider_unavailable_diagnostic(secondary_assurance_provider)
+            air = air.model_copy(update={"diagnostics": [*air.diagnostics, unavailable]})
+            compiler_consensus = {
+                "version": "compiler-consensus-1",
+                "status": "assurance_provider_unavailable",
+                "agreed": False,
+                "approval_blocked": True,
+                "provider": secondary_assurance_provider,
+                "model": secondary_assurance_model,
+                "error": secondary_compilation_error,
+            }
+
+        if compiler_consensus is not None:
+            raw_response = {**raw_response, "compiler_consensus": compiler_consensus}
+        conformance = conformance_report(air)
+
         compilation_row = PilotRuleCompilationRow(
             id=compilation_id,
             contract_id=contract.id,
@@ -1428,6 +1528,7 @@ def compile_native_air(
             "settlement_policies": len(air.settlement_policies),
             "blocking_diagnostics": len(blocking),
             "approval_ready": report.approvable and assurance.hard_gate_passed,
+            "compiler_consensus": compiler_consensus,
             "assurance": assurance.model_dump(mode="json"),
             "diagnostics": [item.model_dump(mode="json") for item in air.diagnostics],
             "conformance": report.model_dump(mode="json"),
@@ -1514,6 +1615,57 @@ def get_air_conformance(version_id: str) -> dict[str, object]:
             raise HTTPException(404, "AIR version not found")
         agreement = AgreementIR.model_validate(row.air_json)
         return conformance_report(agreement).model_dump(mode="json")
+
+
+@router.get("/air-versions/{version_id}/financial-impact")
+def get_air_financial_impact(
+    version_id: str,
+    invoice_id: str = Query(...),
+    baseline_version_id: str | None = Query(None),
+) -> dict[str, object]:
+    """Preview how a candidate AIR would change one invoice before approval.
+
+    This endpoint never changes financial authority and never invokes an LLM.
+    It replays the same accepted claims/evidence through the approved baseline
+    and the candidate AIR, returning exact line/totals deltas for human review.
+    """
+
+    try:
+        with PilotSessionLocal() as session:
+            return simulate_air_version_financial_impact(
+                session,
+                invoice_id=invoice_id,
+                candidate_air_version_id=version_id,
+                baseline_air_version_id=baseline_version_id,
+            )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@router.get("/contracts/{contract_id}/historical-replay")
+def get_contract_historical_replay(
+    contract_id: str,
+    air_version_id: str | None = Query(None),
+) -> dict[str, object]:
+    """Replay uploaded historical invoices without creating financial authority.
+
+    The replay uses an already human-approved AIR and deterministic adjudication.
+    It never invokes an LLM and never persists reconciliation runs.
+    """
+
+    try:
+        with PilotSessionLocal() as session:
+            return simulate_contract_historical_replay(
+                session,
+                contract_id=contract_id,
+                air_version_id=air_version_id,
+            )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("/contracts/{contract_id}/air-active")

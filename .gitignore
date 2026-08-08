@@ -1,52 +1,34 @@
-.venv/
-.pytest_cache/
-.ruff_cache/
-__pycache__/
-*.py[cod]
-*.tsbuildinfo
+# Secrets / local configuration
 .env
 .env.*
 !.env.example
-gha-creds-*.json
-data/*.db
-data/*.db-*
-data/*.sqlite
-data/*.sqlite3
-frontend/node_modules/
-frontend/dist/
-playwright-report/
-test-results/
-*.log
-
-# ----------------------------------------------------------------------
-# Local environment
-# ----------------------------------------------------------------------
-.env
-.env.*
-!.env.example
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
 
 # Python
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+htmlcov/
 
-# JavaScript
+# Node / build
 node_modules/
-
-# Build output
-dist/
+frontend/node_modules/
 frontend/dist/
-
-# Test output
+dist/
+build/
 playwright-report/
 test-results/
-coverage/
 
-# Local/editor/runtime noise
+# Runtime / generated validation
+artifacts/validation/
+data/*.db
+data/workspaces/
 *.log
-.DS_Store
-qualification/downloaded/
-contract-qualification-report.json
