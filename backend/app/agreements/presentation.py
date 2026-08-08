@@ -328,8 +328,40 @@ def proof_requirement_views(agreement: AgreementIR) -> list[dict[str, Any]]:
     return result
 
 
+def requirement_views(agreement: AgreementIR) -> list[dict[str, Any]]:
+    clauses = {item.id: item for item in agreement.clauses}
+    return [
+        {
+            "id": requirement.id,
+            "statement": requirement.statement,
+            "kind": humanize_identifier(requirement.kind),
+            "materiality": humanize_identifier(requirement.materiality),
+            "disposition": humanize_identifier(requirement.disposition),
+            "data_dependencies": [
+                humanize_identifier(item) for item in requirement.data_dependencies
+            ],
+            "binding_status": humanize_identifier(requirement.binding_status),
+            "norm_ids": list(requirement.norm_ids),
+            "settlement_policy_ids": list(requirement.settlement_policy_ids),
+            "proof_requirement_ids": list(requirement.proof_requirement_ids),
+            "source_clause_ids": list(requirement.source_clause_ids),
+            "source_clauses": [
+                {
+                    "id": clause_id,
+                    "document_id": clauses[clause_id].document_id,
+                    "text": clauses[clause_id].text,
+                }
+                for clause_id in requirement.source_clause_ids
+                if clause_id in clauses
+            ],
+        }
+        for requirement in agreement.requirements
+    ]
+
+
 def agreement_finance_view(agreement: AgreementIR) -> dict[str, Any]:
     return {
+        "contract_requirements": requirement_views(agreement),
         "contract_rules": finance_rule_views(agreement),
         "pricing_terms": pricing_term_views(agreement),
         "evidence_needed": proof_requirement_views(agreement),

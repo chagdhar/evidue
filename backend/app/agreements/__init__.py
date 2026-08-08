@@ -17,6 +17,7 @@ from .capabilities import (
 from .legacy import legacy_rule_program_to_agreement_ir
 from .models import (
     AgreementIR,
+    AtomicRequirement,
     AutomationClass,
     ClauseCoverage,
     CommercialClaim,
@@ -47,6 +48,7 @@ __all__ = [
     "AgreementBundle",
     "AgreementDocument",
     "AgreementIR",
+    "AtomicRequirement",
     "AutomationClass",
     "ClauseCoverage",
     "CommercialClaim",

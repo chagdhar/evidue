@@ -4,9 +4,34 @@ from copy import deepcopy
 
 import pytest
 from app.agreements import native_compiler
-from app.agreements.compiler_models import ConditionProposal
+from app.agreements.compiler_models import (
+    AtomicRequirementProposal,
+    ConditionProposal,
+    RequirementLedgerProposal,
+)
 from app.agreements.providers import ProviderResult
 from pydantic import ValidationError
+
+
+def _requirement_ledger() -> RequirementLedgerProposal:
+    return RequirementLedgerProposal(
+        ledger_version="test-ledger",
+        contract_id="C-1",
+        requirements=[
+            AtomicRequirementProposal(
+                id="PRICE-RATE",
+                statement="Supported outcomes are priced at $1.50 per outcome.",
+                kind="pricing",
+                materiality="financial",
+                data_dependencies=["contract_constant"],
+                disposition="settlement",
+                parameters={"unit_price": "1.50"},
+                source_document_id="DOC-1",
+                source_span_ids=["SPAN-000001"],
+                source_text="Price: $1.50 per supported outcome",
+            )
+        ],
+    )
 
 
 def _payload(*, unit_price: str | None) -> dict:
@@ -17,6 +42,24 @@ def _payload(*, unit_price: str | None) -> dict:
         "model": "model-value-overridden",
         "provider": "model-value-overridden",
         "source_documents": [{"document_id": "DOC-1", "title": "Order Form"}],
+        "requirements": [
+            {
+                "id": "PRICE-RATE",
+                "statement": "Supported outcomes are priced at $1.50 per outcome.",
+                "kind": "pricing",
+                "materiality": "financial",
+                "data_dependencies": ["contract_constant"],
+                "disposition": "settlement",
+                "parameters": {"unit_price": "1.50"},
+                "source_document_id": "DOC-1",
+                "source_span_ids": ["SPAN-000001"],
+                "source_text": "Price: $1.50 per supported outcome",
+                "source_start": None,
+                "source_end": None,
+                "source_text_hash": None,
+                "review_notes": [],
+            }
+        ],
         "definitions": [],
         "clauses": [
             {
@@ -40,6 +83,7 @@ def _payload(*, unit_price: str | None) -> dict:
                         "parameters": parameters,
                         "source_clause_id": "PRICE-1",
                         "description": "Explicit per-outcome price",
+                        "requirement_ids": ["PRICE-RATE"],
                     }
                 ],
                 "automation_classification": "fully_executable",
@@ -95,6 +139,7 @@ def test_compile_native_repairs_semantically_invalid_structured_output(monkeypat
         api_key="test-key",
         pin_provider=True,
         max_semantic_repairs=1,
+        requirement_ledger=_requirement_ledger(),
     )
 
     settlement = result.proposal.clauses[0].settlement_effects[0]
@@ -125,18 +170,42 @@ def test_semantic_repair_is_bounded(monkeypatch) -> None:
 
     monkeypatch.setattr(native_compiler, "call_provider", fake_call_provider)
 
-    with pytest.raises(ValueError, match="semantic validation after 1 repair attempt"):
-        native_compiler.compile_native(
-            contract_id="C-1",
-            source_documents={"DOC-1": ("Order Form", "Price: $1.50 per supported outcome")},
-            metadata={},
-            provider="gemini",
-            api_key="test-key",
-            pin_provider=True,
-            max_semantic_repairs=1,
-        )
+    result = native_compiler.compile_native(
+        contract_id="C-1",
+        source_documents={
+            "DOC-1": (
+                "Order Form",
+                "Price: $1.50 per supported outcome",
+            )
+        },
+        metadata={},
+        provider="gemini",
+        api_key="test-key",
+        pin_provider=True,
+        max_semantic_repairs=1,
+        requirement_ledger=_requirement_ledger(),
+    )
 
+    # Initial inference + exactly one bounded repair.
     assert calls == 2
+
+    # Exhausting repair must fail closed, not manufacture executable
+    # financial semantics and not crash the whole compilation.
+    clause = result.proposal.clauses[0]
+
+    assert clause.settlement_effects == []
+    assert clause.automation_classification == "human_attestation_required"
+
+    diagnostic = clause.diagnostics[-1]
+    assert diagnostic.code == "SEMANTIC_COMPILER_ARTIFACT_REJECTED"
+    assert diagnostic.severity == "blocking"
+
+    assert result.provenance["degraded_after_semantic_repair"] is True
+
+    artifacts = result.provenance["degraded_artifacts"]
+    assert len(artifacts) == 1
+    assert artifacts[0]["artifact_kind"] == "settlement_effects"
+    assert artifacts[0]["clause_index"] == 0
 
 
 def test_proof_requirement_rejects_unknown_evidence_authority() -> None:
@@ -171,3 +240,28 @@ def test_proof_requirement_accepts_supported_evidence_authority(
     )
 
     assert proof.preferred_authority == authority
+
+
+def test_missing_evidence_result_cannot_be_needs_review() -> None:
+    from app.agreements.compiler_models import ProofRequirementProposal
+
+    with pytest.raises(ValidationError):
+        ProofRequirementProposal(
+            description="Customer-system evidence is required.",
+            fact_types=["outcome_verified"],
+            preferred_authority="customer_system_of_record",
+            missing_evidence_result="needs_review",
+        )
+
+
+def test_missing_evidence_uses_unknown_truth_value() -> None:
+    from app.agreements.compiler_models import ProofRequirementProposal
+
+    proof = ProofRequirementProposal(
+        description="Customer-system evidence is required.",
+        fact_types=["outcome_verified"],
+        preferred_authority="customer_system_of_record",
+        missing_evidence_result="unknown",
+    )
+
+    assert proof.missing_evidence_result == "unknown"

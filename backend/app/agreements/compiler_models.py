@@ -93,6 +93,37 @@ AllowedEvidenceAuthority = Literal[
 ]
 
 
+AllowedRequirementKind = Literal[
+    "eligibility",
+    "pricing",
+    "exclusion",
+    "performance",
+    "identity",
+    "uniqueness",
+    "timing",
+    "evidence",
+    "procedure",
+    "other",
+]
+AllowedRequirementMateriality = Literal["financial", "operational", "supporting", "non_material"]
+AllowedRequirementDataDependency = Literal[
+    "claim",
+    "invoice",
+    "contract_constant",
+    "batch_claims",
+    "customer_evidence",
+    "external_document",
+    "human_attestation",
+]
+AllowedRequirementDisposition = Literal[
+    "norm",
+    "settlement",
+    "manual_review",
+    "unresolved_dependency",
+    "non_operational",
+]
+
+
 def _reject_unknown_keys(parameters: dict[str, Any], allowed: set[str], label: str) -> None:
     unknown = sorted(set(parameters) - allowed)
     if unknown:
@@ -112,6 +143,61 @@ def _decimal_string(value: Any, label: str) -> str:
 # ---------------------------------------------------------------------------
 # Sub-proposal models
 # ---------------------------------------------------------------------------
+
+
+class AtomicRequirementProposal(BaseModel):
+    """One indivisible source-grounded contractual requirement.
+
+    This is produced by the independent requirement-decomposition pass. The
+    downstream clause compiler may bind it to executable AIR semantics but may
+    not merge, delete, or rewrite the requirement itself.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=50)
+    statement: str = Field(min_length=1, max_length=1200)
+    kind: AllowedRequirementKind
+    materiality: AllowedRequirementMateriality
+    data_dependencies: list[AllowedRequirementDataDependency] = Field(default_factory=list)
+    disposition: AllowedRequirementDisposition
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    source_document_id: str
+    source_span_ids: list[str] = Field(default_factory=list, max_length=6)
+    source_text: str = Field(min_length=1, max_length=5000)
+    source_start: int | None = Field(default=None, ge=0)
+    source_end: int | None = Field(default=None, ge=1)
+    source_text_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    review_notes: list[str] = Field(default_factory=list)
+
+    @field_validator("data_dependencies")
+    @classmethod
+    def dependencies_unique(
+        cls, values: list[AllowedRequirementDataDependency]
+    ) -> list[AllowedRequirementDataDependency]:
+        if len(values) != len(set(values)):
+            raise ValueError("Atomic requirement data_dependencies must be unique")
+        return values
+
+
+class RequirementLedgerProposal(BaseModel):
+    """Authoritative output of the independent atomic-requirement pass."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ledger_version: str = Field(min_length=1)
+    contract_id: str = Field(min_length=1)
+    requirements: list[AtomicRequirementProposal] = Field(default_factory=list)
+
+    @field_validator("requirements")
+    @classmethod
+    def requirement_ids_unique(
+        cls, values: list[AtomicRequirementProposal]
+    ) -> list[AtomicRequirementProposal]:
+        ids = [item.id for item in values]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Atomic requirement IDs must be unique")
+        return values
 
 
 class DefinitionProposal(BaseModel):
@@ -304,7 +390,8 @@ class ProofRequirementProposal(BaseModel):
     identity_keys: list[str] = Field(default_factory=list)
     observation_window: dict[str, Any] = Field(default_factory=dict)
     requires_absence_proof: bool = False
-    missing_evidence_result: Literal["unknown", "needs_review"] = "unknown"
+    missing_evidence_result: Literal["unknown"] = "unknown"
+    requirement_ids: list[str] = Field(default_factory=list)
 
 
 class NormProposal(BaseModel):
@@ -328,6 +415,7 @@ class NormProposal(BaseModel):
     indeterminate_reason: str | None = None
     confidence: float = Field(ge=0.0, le=1.0, default=1.0)
     ambiguity_notes: list[str] = Field(default_factory=list)
+    requirement_ids: list[str] = Field(default_factory=list)
 
 
 class SettlementProposal(BaseModel):
@@ -340,6 +428,7 @@ class SettlementProposal(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
     source_clause_id: str
     description: str = Field(min_length=1, max_length=1000)
+    requirement_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_settlement_parameters(self) -> SettlementProposal:
@@ -486,6 +575,7 @@ class AgreementCompilationProposal(BaseModel):
     provider: str = Field(min_length=1)
     source_documents: list[SourceDocumentRef] = Field(min_length=1)
     definitions: list[DefinitionProposal] = Field(default_factory=list)
+    requirements: list[AtomicRequirementProposal] = Field(default_factory=list)
     clauses: list[ClauseAnalysisProposal] = Field(min_length=1)
     global_diagnostics: list[DiagnosticProposal] = Field(default_factory=list)
 
@@ -498,11 +588,46 @@ class AgreementCompilationProposal(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_norm_ids_unique(self) -> AgreementCompilationProposal:
+    def validate_cross_references(self) -> AgreementCompilationProposal:
+        requirement_ids = [item.id for item in self.requirements]
+        if len(requirement_ids) != len(set(requirement_ids)):
+            raise ValueError("Atomic requirement IDs must be globally unique")
+        known_requirements = set(requirement_ids)
+
         norm_ids: list[str] = []
+        settlement_ids: list[str] = []
         for clause in self.clauses:
             for norm in clause.norms:
                 norm_ids.append(norm.id)
+                unknown = set(norm.requirement_ids) - known_requirements
+                if unknown:
+                    raise ValueError(
+                        f"Norm {norm.id} references unknown atomic requirements: {sorted(unknown)}"
+                    )
+                for proof in norm.proof_requirements:
+                    unknown_proof = set(proof.requirement_ids) - known_requirements
+                    if unknown_proof:
+                        raise ValueError(
+                            f"Proof in norm {norm.id} references unknown atomic requirements: "
+                            f"{sorted(unknown_proof)}"
+                        )
+                    if proof.requirement_ids and not set(proof.requirement_ids).issubset(
+                        set(norm.requirement_ids)
+                    ):
+                        raise ValueError(
+                            f"Proof in norm {norm.id} must bind only requirements bound to its norm"
+                        )
+            for settlement in clause.settlement_effects:
+                settlement_ids.append(settlement.id)
+                unknown = set(settlement.requirement_ids) - known_requirements
+                if unknown:
+                    raise ValueError(
+                        f"Settlement {settlement.id} references unknown atomic requirements: "
+                        f"{sorted(unknown)}"
+                    )
+
         if len(norm_ids) != len(set(norm_ids)):
             raise ValueError("Norm IDs must be globally unique across all clauses")
+        if len(settlement_ids) != len(set(settlement_ids)):
+            raise ValueError("Settlement IDs must be globally unique across all clauses")
         return self

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from hashlib import sha256
 from itertools import pairwise
@@ -20,11 +21,13 @@ from app.contracts.compiler import load_recorded_proposal, sha256_text
 
 from .compiler_models import (
     AgreementCompilationProposal,
+    AtomicRequirementProposal,
     ClauseAnalysisProposal,
     ConditionProposal,
     DiagnosticProposal,
     NormProposal,
     ProofRequirementProposal,
+    RequirementLedgerProposal,
     SettlementProposal,
     SourceDocumentRef,
 )
@@ -36,8 +39,9 @@ from .providers import (
     compilation_provenance,
 )
 
-NATIVE_COMPILER_VERSION = "native-air-0.4"
-NATIVE_PROMPT_VERSION = "native-air-prompt-0.4"
+NATIVE_COMPILER_VERSION = "native-air-0.5"
+NATIVE_PROMPT_VERSION = "native-air-prompt-0.5"
+REQUIREMENT_LEDGER_VERSION = "atomic-requirements-0.1"
 MAX_SEMANTIC_REPAIRS = 2
 
 _SEMANTIC_PARAMETER_CONTRACT = r"""
@@ -66,6 +70,10 @@ STRICT SEMANTIC PARAMETER CONTRACT:
 - If a contractual obligation cannot be expressed with the allowed deterministic condition
   vocabulary using parameters explicitly supported by the source, DO NOT invent event types
   or claim fields. Keep it non-executable/review-required and emit a diagnostic.
+- proof_requirements.missing_evidence_result MUST be exactly "unknown".
+- "needs_review" is a financial/adjudication consequence, not a TruthValue. If missing
+  evidence should send the invoice line to review, use the enclosing norm's
+  indeterminate_consequence="needs_review".
 - proof_requirements.preferred_authority is an AUTHORITY CLASS, not a system name,
   event type, database name, log type, or evidence-source identifier.
 - preferred_authority MUST be exactly one of:
@@ -77,6 +85,14 @@ STRICT SEMANTIC PARAMETER CONTRACT:
   "transaction_log" are NOT authority values. Represent those concepts through
   fact_types, entity_type, required_fields, descriptions, or evidence-source
   capabilities instead.
+- requirement_ids bind executable artifacts to the authoritative atomic requirement ledger.
+- Every executable norm MUST bind to exactly one atomic requirement. Never merge multiple
+  independent requirements into one generic norm merely because they share a source clause.
+- Every settlement effect MUST bind to exactly one pricing requirement.
+- Conditions based only on normalized claim/invoice fields MUST NOT have proof requirements.
+- Conditions that consume downstream operational events MUST declare proof requirements.
+- duplicate_in_window is evaluated from the invoice/batch claim set and MUST NOT require
+  downstream evidence proof.
 """
 
 
@@ -108,6 +124,19 @@ def _proposal_schema() -> dict[str, Any]:
     return schema
 
 
+def _requirement_schema() -> dict[str, Any]:
+    """Return the strict schema for the independent requirement-decomposition pass."""
+
+    schema = RequirementLedgerProposal.model_json_schema()
+    requirement_schema = schema.get("$defs", {}).get("AtomicRequirementProposal")
+    if requirement_schema is None:
+        raise ValueError("AtomicRequirementProposal missing from requirement schema")
+    required = requirement_schema.setdefault("required", [])
+    if "source_span_ids" not in required:
+        required.append("source_span_ids")
+    return schema
+
+
 @dataclass(frozen=True)
 class SourceSpan:
     """Exact immutable span from an original contract document."""
@@ -129,46 +158,51 @@ def _split_source_line(
     start: int,
     end: int,
 ) -> list[tuple[int, int]]:
-    """Split a long source line while preserving exact original offsets."""
+    """Split source text into sentence-sized immutable spans with exact offsets."""
 
     while start < end and text[start].isspace():
         start += 1
-
     while end > start and text[end - 1].isspace():
         end -= 1
-
     if start >= end:
         return []
 
-    ranges: list[tuple[int, int]] = []
+    # Prefer sentence boundaries because atomic contractual requirements often
+    # correspond to individual sentences even when PDF/HTML extraction places
+    # an entire paragraph on one physical line. Long sentences are still split
+    # deterministically by the bounded-size fallback below.
+    sentence_ranges: list[tuple[int, int]] = []
     cursor = start
+    for match in re.finditer(r"(?<=[.!?])\s+(?=[A-Z0-9])", text[start:end]):
+        candidate_end = start + match.start()
+        if cursor < candidate_end:
+            sentence_ranges.append((cursor, candidate_end))
+        cursor = start + match.end()
+    if cursor < end:
+        sentence_ranges.append((cursor, end))
 
-    while cursor < end:
-        candidate_end = min(cursor + _SOURCE_SPAN_MAX_CHARS, end)
+    ranges: list[tuple[int, int]] = []
+    for sentence_start, sentence_end in sentence_ranges:
+        cursor = sentence_start
+        while cursor < sentence_end:
+            candidate_end = min(cursor + _SOURCE_SPAN_MAX_CHARS, sentence_end)
+            if candidate_end < sentence_end:
+                minimum_break = cursor + (_SOURCE_SPAN_MAX_CHARS // 2)
+                break_at = text.rfind(" ", minimum_break, candidate_end)
+                if break_at > cursor:
+                    candidate_end = break_at
 
-        if candidate_end < end:
-            minimum_break = cursor + (_SOURCE_SPAN_MAX_CHARS // 2)
-            break_at = text.rfind(" ", minimum_break, candidate_end)
-
-            if break_at > cursor:
-                candidate_end = break_at
-
-        chunk_start = cursor
-        chunk_end = candidate_end
-
-        while chunk_start < chunk_end and text[chunk_start].isspace():
-            chunk_start += 1
-
-        while chunk_end > chunk_start and text[chunk_end - 1].isspace():
-            chunk_end -= 1
-
-        if chunk_start < chunk_end:
-            ranges.append((chunk_start, chunk_end))
-
-        cursor = candidate_end
-
-        while cursor < end and text[cursor].isspace():
-            cursor += 1
+            chunk_start = cursor
+            chunk_end = candidate_end
+            while chunk_start < chunk_end and text[chunk_start].isspace():
+                chunk_start += 1
+            while chunk_end > chunk_start and text[chunk_end - 1].isspace():
+                chunk_end -= 1
+            if chunk_start < chunk_end:
+                ranges.append((chunk_start, chunk_end))
+            cursor = candidate_end
+            while cursor < sentence_end and text[cursor].isspace():
+                cursor += 1
 
     return ranges
 
@@ -248,13 +282,79 @@ def _render_source_documents_with_spans(
     return "\n\n".join(sections)
 
 
-def build_native_compiler_prompt(
+def build_requirement_ledger_prompt(
     *,
     contract_id: str,
     source_documents: dict[str, tuple[str, str]],
     metadata: dict[str, str],
 ) -> str:
     document_block = _render_source_documents_with_spans(source_documents)
+    return f"""You are Evidue's independent atomic-contract-requirement analyzer.
+
+You do NOT produce executable rules and you do NOT decide invoice outcomes. Your only
+job is to identify every indivisible contractual requirement that could matter to
+financial reconciliation or evidence sufficiency.
+
+ATOMICITY RULES:
+1. One requirement = one independently testable contractual proposition.
+2. If a sentence contains AND/OR/UNLESS/EXCEPT/PROVIDED THAT/ONLY IF and each branch can
+   independently change whether an amount is payable, emit separate requirements.
+3. Never collapse several exclusions, timing windows, identity checks, or performance
+   conditions into a generic summary requirement.
+4. Pricing and validation are separate when both are present: a rate is a settlement
+   requirement; an invoice/claim amount check is a norm requirement.
+5. Preserve every explicit numeric value exactly. Never infer redacted or omitted values.
+
+DATA DEPENDENCY CLASSIFICATION:
+- claim: normalized invoice-line/claim fields such as billed amount, service timestamp,
+  account ID, outcome ID, or expected action.
+- invoice: invoice-level metadata not belonging to a single claim.
+- contract_constant: literal rate/date/window/threshold supplied by the contract.
+- batch_claims: cross-claim comparisons such as uniqueness or duplicate attribution.
+- customer_evidence: downstream operational events or customer systems of record.
+- external_document: a referenced Order Form/SOW/exhibit/schedule that is not available.
+- human_attestation: a fact that cannot be objectively established from available systems.
+Do not label direct claim/invoice checks as customer_evidence merely because evidence exists
+elsewhere in the contract.
+
+DISPOSITION:
+- norm: deterministic eligibility/performance/exclusion/timing/identity rule.
+- settlement: explicit, fully parameterized pricing/amount calculation.
+- manual_review: material requirement requiring human judgment.
+- unresolved_dependency: material requirement whose referenced/redacted parameter is absent.
+- non_operational: source language not used in reconciliation.
+
+SOURCE GROUNDING:
+- Every requirement MUST cite source_span_ids supplied below.
+- Use only span IDs from the requirement's source_document_id.
+- Up to {_SOURCE_SPAN_MAX_PER_CLAUSE} consecutive spans may support one requirement.
+- source_text is informational; Evidue will replace it with exact source bytes.
+- Set source_start/source_end/source_text_hash to null; Evidue computes them.
+
+CONTRACT_ID: {contract_id}
+METADATA: {json.dumps(metadata, sort_keys=True)}
+LEDGER_VERSION: {REQUIREMENT_LEDGER_VERSION}
+
+SOURCE DOCUMENTS:
+{document_block}
+
+Return only JSON matching the supplied requirement-ledger response schema.
+"""
+
+
+def build_native_compiler_prompt(
+    *,
+    contract_id: str,
+    source_documents: dict[str, tuple[str, str]],
+    metadata: dict[str, str],
+    requirements: list[AtomicRequirementProposal] | None = None,
+) -> str:
+    document_block = _render_source_documents_with_spans(source_documents)
+    requirement_block = json.dumps(
+        [item.model_dump(mode="json") for item in requirements or []],
+        indent=2,
+        sort_keys=True,
+    )
 
     return f"""You are Evidue's contract clause-analysis compiler.
 
@@ -283,8 +383,10 @@ CONTRACT INTERPRETATION:
     If a price/rate is delegated to a missing document or redacted, do not fabricate a
     settlement effect. Performance requirements belong in norms only when representable
     with the allowed deterministic vocabulary.
-12. Missing evidence must resolve to unknown/needs_review rather than silently
-    proving breach.
+12. Missing evidence at the proof/fact layer must resolve to "unknown"; it must
+    never silently prove satisfaction or breach. "needs_review" is NOT a truth
+    value. When an indeterminate norm should cause financial review, express that
+    with norm.indeterminate_consequence="needs_review".
 13. Proof requirements describe facts needed from external evidence, not vendor
     product names.
 14. Do not create proof requirements for data already present on normalized
@@ -309,6 +411,21 @@ CONTRACT_ID: {contract_id}
 METADATA: {json.dumps(metadata, sort_keys=True)}
 COMPILER_VERSION: {NATIVE_COMPILER_VERSION}
 PROMPT_VERSION: {NATIVE_PROMPT_VERSION}
+
+AUTHORITATIVE ATOMIC REQUIREMENT LEDGER:
+{requirement_block}
+
+REQUIREMENT BINDING:
+21. The requirement ledger above was produced by an independent pass. Do not add, remove,
+    merge, split, or rewrite those requirements.
+22. Bind every executable norm and settlement_effect to requirement_ids from that ledger.
+23. Every financial/operational requirement whose disposition is norm or settlement must be
+    implemented exactly once. If you cannot safely implement it with the allowed vocabulary,
+    leave it unmapped and emit a blocking diagnostic; do not invent substitute semantics.
+24. A norm may bind to only one atomic requirement. A settlement effect may bind to only one
+    atomic requirement.
+25. Match each requirement's declared data_dependencies. Direct claim/invoice checks do not
+    get proof requirements; customer_evidence conditions do; batch_claim uniqueness does not.
 
 SOURCE DOCUMENTS:
 {document_block}
@@ -490,19 +607,200 @@ def bind_proposal_to_sources(
         for document_id, (title, _) in source_documents.items()
     ]
 
+    bound_requirements = proposal.requirements
+    if proposal.requirements:
+        requirement_ledger = bind_requirement_ledger_to_sources(
+            RequirementLedgerProposal(
+                ledger_version=REQUIREMENT_LEDGER_VERSION,
+                contract_id=expected_contract_id,
+                requirements=proposal.requirements,
+            ),
+            expected_contract_id=expected_contract_id,
+            source_documents=source_documents,
+            require_source_spans=require_source_spans,
+        )
+        bound_requirements = requirement_ledger.requirements
+
     return proposal.model_copy(
         update={
             "contract_id": expected_contract_id,
             "source_documents": expected_documents,
+            "requirements": bound_requirements,
             "clauses": bound_clauses,
         }
     )
+
+
+def bind_requirement_ledger_to_sources(
+    ledger: RequirementLedgerProposal,
+    *,
+    expected_contract_id: str,
+    source_documents: dict[str, tuple[str, str]],
+    require_source_spans: bool = True,
+) -> RequirementLedgerProposal:
+    """Bind every atomic requirement to immutable original source bytes."""
+
+    if ledger.contract_id != expected_contract_id:
+        raise ValueError(
+            f"Requirement ledger contract_id {ledger.contract_id!r} does not match "
+            f"{expected_contract_id!r}"
+        )
+    span_index = _build_source_spans(source_documents)
+    bound: list[AtomicRequirementProposal] = []
+    for requirement in ledger.requirements:
+        if requirement.source_document_id not in source_documents:
+            raise ValueError(
+                f"Requirement {requirement.id} references unknown document "
+                f"{requirement.source_document_id}"
+            )
+        if require_source_spans and not requirement.source_span_ids:
+            raise ValueError(f"Requirement {requirement.id} omitted source_span_ids")
+
+        selected: list[SourceSpan] = []
+        for span_id in requirement.source_span_ids:
+            span = span_index.get(span_id)
+            if span is None:
+                raise ValueError(
+                    f"Requirement {requirement.id} references unknown source span {span_id}"
+                )
+            if span.document_id != requirement.source_document_id:
+                raise ValueError(
+                    f"Requirement {requirement.id} cites {span_id} from {span.document_id}, "
+                    f"not {requirement.source_document_id}"
+                )
+            selected.append(span)
+
+        if selected:
+            if len(selected) > _SOURCE_SPAN_MAX_PER_CLAUSE:
+                raise ValueError(f"Requirement {requirement.id} cites too many source spans")
+            ordinals = [span.ordinal for span in selected]
+            if ordinals != sorted(ordinals):
+                raise ValueError(
+                    f"Requirement {requirement.id} source spans are not in document order"
+                )
+            if any(current != previous + 1 for previous, current in pairwise(ordinals)):
+                raise ValueError(f"Requirement {requirement.id} source spans must be consecutive")
+            _, document_text = source_documents[requirement.source_document_id]
+            start = selected[0].start
+            end = selected[-1].end
+            source_text = document_text[start:end]
+        else:
+            _, document_text = source_documents[requirement.source_document_id]
+            start, end = _find_exact_span(
+                document_text,
+                requirement.source_text,
+                hinted_start=requirement.source_start,
+            )
+            source_text = document_text[start:end]
+
+        bound.append(
+            requirement.model_copy(
+                update={
+                    "source_text": source_text,
+                    "source_start": start,
+                    "source_end": end,
+                    "source_text_hash": sha256(source_text.encode("utf-8")).hexdigest(),
+                }
+            )
+        )
+
+    return ledger.model_copy(
+        update={
+            "ledger_version": REQUIREMENT_LEDGER_VERSION,
+            "contract_id": expected_contract_id,
+            "requirements": bound,
+        }
+    )
+
+
+def _requirement_payload_for_validation(
+    result: ProviderResult,
+    *,
+    contract_id: str,
+) -> dict[str, Any]:
+    payload = dict(result.payload)
+    payload.update(
+        {
+            "ledger_version": REQUIREMENT_LEDGER_VERSION,
+            "contract_id": contract_id,
+        }
+    )
+    return payload
+
+
+def _validate_requirement_ledger(
+    *,
+    initial_result: ProviderResult,
+    contract_id: str,
+    original_prompt: str,
+    schema: dict[str, Any],
+    requested_provider: str | None,
+    api_key: str | None,
+    timeout_seconds: int,
+    max_retries: int,
+) -> tuple[RequirementLedgerProposal, ProviderResult, dict[str, Any]]:
+    """Validate the independent requirement pass with one bounded structural repair."""
+
+    result = initial_result
+    history: list[dict[str, Any]] = []
+    for repair_count in range(2):
+        payload = _requirement_payload_for_validation(result, contract_id=contract_id)
+        try:
+            ledger = RequirementLedgerProposal.model_validate(payload)
+        except ValidationError as exc:
+            issues = _validation_error_summary(exc)
+            history.append({"attempt": repair_count + 1, "issues": issues})
+            if repair_count == 1:
+                raise ValueError(
+                    "Model output failed atomic requirement-ledger validation after "
+                    f"1 repair attempt: {issues}"
+                ) from exc
+            repair_prompt = f"""{original_prompt}
+
+ATOMIC REQUIREMENT LEDGER REPAIR
+Your previous requirement JSON failed deterministic structural validation. Return a COMPLETE
+replacement ledger. Repair structure only; do not invent contractual facts and do not merge
+requirements to make validation easier.
+
+VALIDATION ERRORS:
+{json.dumps(issues, indent=2, sort_keys=True)}
+
+PREVIOUS JSON:
+{json.dumps(payload, indent=2, sort_keys=True)}
+"""
+            result = call_provider(
+                repair_prompt,
+                schema,
+                provider=result.provider,
+                model=result.model,
+                api_key=_repair_api_key_for_result(
+                    requested_provider=requested_provider,
+                    actual_provider=result.provider,
+                    api_key=api_key,
+                ),
+                fallback_provider=None,
+                timeout=timeout_seconds,
+                max_retries=max_retries,
+                pin_provider=True,
+            )
+            continue
+        return (
+            ledger,
+            result,
+            {
+                "first_pass_valid": repair_count == 0,
+                "repair_attempts": repair_count,
+                "validation_history": history,
+            },
+        )
+    raise AssertionError("requirement validation loop terminated unexpectedly")
 
 
 def _payload_for_validation(
     result: ProviderResult,
     *,
     contract_id: str,
+    authoritative_requirements: list[AtomicRequirementProposal] | None = None,
 ) -> dict[str, Any]:
     payload = dict(result.payload)
     payload.update(
@@ -513,6 +811,10 @@ def _payload_for_validation(
             "provider": result.provider,
         }
     )
+    if authoritative_requirements is not None:
+        payload["requirements"] = [
+            item.model_dump(mode="json") for item in authoritative_requirements
+        ]
     return payload
 
 
@@ -581,12 +883,114 @@ def _repair_api_key_for_result(
     return api_key
 
 
+def _degrade_invalid_executable_artifacts(
+    *,
+    payload: dict[str, Any],
+    issues: list[dict[str, str]],
+) -> tuple[AgreementCompilationProposal, list[dict[str, Any]]] | None:
+    """Fail closed on localized invalid executable artifacts after repair is exhausted.
+
+    This transformation never invents executable semantics. It removes only rejected
+    norms or settlement effects, marks the source clause as requiring human attestation,
+    and attaches blocking diagnostics. If any issue is outside those executable artifacts,
+    or the degraded proposal still fails validation, no degradation is performed.
+    """
+
+    targets: dict[tuple[int, str], set[int]] = {}
+    for issue in issues:
+        parts = issue.get("location", "").split(".")
+        if len(parts) < 4 or parts[0] != "clauses":
+            return None
+        artifact_kind = parts[2]
+        if artifact_kind not in {"norms", "settlement_effects"}:
+            return None
+        try:
+            clause_index = int(parts[1])
+            artifact_index = int(parts[3])
+        except ValueError:
+            return None
+        targets.setdefault((clause_index, artifact_kind), set()).add(artifact_index)
+
+    if not targets:
+        return None
+
+    candidate = deepcopy(payload)
+    clauses = candidate.get("clauses")
+    if not isinstance(clauses, list):
+        return None
+
+    degraded: list[dict[str, Any]] = []
+    touched_clauses: set[int] = set()
+    for (clause_index, artifact_kind), artifact_indexes in sorted(targets.items()):
+        if clause_index < 0 or clause_index >= len(clauses):
+            return None
+        clause = clauses[clause_index]
+        if not isinstance(clause, dict):
+            return None
+        artifacts = clause.get(artifact_kind)
+        if not isinstance(artifacts, list):
+            return None
+
+        removed: list[dict[str, Any]] = []
+        for artifact_index in sorted(artifact_indexes, reverse=True):
+            if artifact_index < 0 or artifact_index >= len(artifacts):
+                return None
+            artifact = artifacts.pop(artifact_index)
+            removed.append(
+                {
+                    "clause_index": clause_index,
+                    "clause_id": clause.get("clause_id"),
+                    "artifact_kind": artifact_kind,
+                    "artifact_index": artifact_index,
+                    "artifact_id": artifact.get("id") if isinstance(artifact, dict) else None,
+                }
+            )
+        degraded.extend(reversed(removed))
+        touched_clauses.add(clause_index)
+
+    for clause_index in sorted(touched_clauses):
+        clause = clauses[clause_index]
+        clause["automation_classification"] = "human_attestation_required"
+        unsupported = clause.setdefault("unsupported_concepts", [])
+        marker = "Executable artifact rejected by deterministic semantic validation"
+        if marker not in unsupported:
+            unsupported.append(marker)
+
+        rejected_kinds = sorted(
+            {item["artifact_kind"] for item in degraded if item["clause_index"] == clause_index}
+        )
+        clause.setdefault("diagnostics", []).append(
+            {
+                "code": "SEMANTIC_COMPILER_ARTIFACT_REJECTED",
+                "severity": "blocking",
+                "message": (
+                    "LLM-proposed executable artifact(s) failed deterministic semantic "
+                    f"validation after bounded repair ({', '.join(rejected_kinds)}) and "
+                    "were removed. No replacement semantics were inferred; human review "
+                    "is required."
+                ),
+                "clause_id": clause.get("clause_id"),
+                "suggested_action": (
+                    "Review the source clause and approve a corrected AIR before "
+                    "using it for financial decisions."
+                ),
+            }
+        )
+
+    try:
+        proposal = AgreementCompilationProposal.model_validate(candidate)
+    except ValidationError:
+        return None
+    return proposal, degraded
+
+
 def _validate_with_semantic_repairs(
     *,
     initial_result: ProviderResult,
     contract_id: str,
     original_prompt: str,
     schema: dict[str, Any],
+    authoritative_requirements: list[AtomicRequirementProposal] | None,
     requested_provider: str | None,
     api_key: str | None,
     timeout_seconds: int,
@@ -606,7 +1010,11 @@ def _validate_with_semantic_repairs(
     validation_history: list[dict[str, Any]] = []
 
     for repair_count in range(max_semantic_repairs + 1):
-        payload = _payload_for_validation(result, contract_id=contract_id)
+        payload = _payload_for_validation(
+            result,
+            contract_id=contract_id,
+            authoritative_requirements=authoritative_requirements,
+        )
         try:
             proposal = AgreementCompilationProposal.model_validate(payload)
         except ValidationError as exc:
@@ -618,6 +1026,20 @@ def _validate_with_semantic_repairs(
                 }
             )
             if repair_count >= max_semantic_repairs:
+                degraded = _degrade_invalid_executable_artifacts(payload=payload, issues=issues)
+                if degraded is not None:
+                    proposal, degraded_artifacts = degraded
+                    return (
+                        proposal,
+                        result,
+                        {
+                            "first_pass_valid": False,
+                            "semantic_repair_attempts": repair_count,
+                            "validation_history": validation_history,
+                            "degraded_after_semantic_repair": True,
+                            "degraded_artifacts": degraded_artifacts,
+                        },
+                    )
                 raise ValueError(
                     "Model output failed native proposal semantic validation after "
                     f"{repair_count} repair attempt(s): {issues}"
@@ -653,6 +1075,8 @@ def _validate_with_semantic_repairs(
                 "first_pass_valid": repair_count == 0,
                 "semantic_repair_attempts": repair_count,
                 "validation_history": validation_history,
+                "degraded_after_semantic_repair": False,
+                "degraded_artifacts": [],
             },
         )
 
@@ -672,13 +1096,70 @@ def compile_native(
     max_retries: int = 3,
     max_semantic_repairs: int = MAX_SEMANTIC_REPAIRS,
     pin_provider: bool = False,
+    requirement_ledger: RequirementLedgerProposal | None = None,
 ) -> NativeCompilationResult:
-    """Compile contract language through a provider-independent structured-output boundary."""
+    """Compile contract language through independent interpretation and deterministic gates.
+
+    Live compilation deliberately uses two model passes: an atomic-requirement pass
+    followed by a clause/AIR proposal pass. The second pass receives the first pass as
+    authoritative input and cannot silently merge or discard its requirements.
+    """
+
+    requirement_prompt: str | None = None
+    requirement_result: ProviderResult | None = None
+    requirement_validation: dict[str, Any] = {
+        "first_pass_valid": True,
+        "repair_attempts": 0,
+        "validation_history": [],
+    }
+
+    if requirement_ledger is None:
+        requirement_prompt = build_requirement_ledger_prompt(
+            contract_id=contract_id,
+            source_documents=source_documents,
+            metadata=metadata,
+        )
+        requirement_schema = _requirement_schema()
+        try:
+            requirement_result = call_provider(
+                requirement_prompt,
+                requirement_schema,
+                provider=provider,
+                model=model,
+                api_key=api_key,
+                fallback_provider=fallback_provider,
+                timeout=timeout_seconds,
+                max_retries=max_retries,
+                pin_provider=pin_provider,
+            )
+        except ProviderError as exc:
+            raise RuntimeError(f"Atomic requirement extraction failed: {exc}") from exc
+
+        requirement_ledger, requirement_result, requirement_validation = (
+            _validate_requirement_ledger(
+                initial_result=requirement_result,
+                contract_id=contract_id,
+                original_prompt=requirement_prompt,
+                schema=requirement_schema,
+                requested_provider=provider,
+                api_key=api_key,
+                timeout_seconds=timeout_seconds,
+                max_retries=max_retries,
+            )
+        )
+
+    requirement_ledger = bind_requirement_ledger_to_sources(
+        requirement_ledger,
+        expected_contract_id=contract_id,
+        source_documents=source_documents,
+        require_source_spans=True,
+    )
 
     prompt = build_native_compiler_prompt(
         contract_id=contract_id,
         source_documents=source_documents,
         metadata=metadata,
+        requirements=requirement_ledger.requirements,
     )
     schema = _proposal_schema()
     try:
@@ -701,6 +1182,7 @@ def compile_native(
         contract_id=contract_id,
         original_prompt=prompt,
         schema=schema,
+        authoritative_requirements=requirement_ledger.requirements,
         requested_provider=provider,
         api_key=api_key,
         timeout_seconds=timeout_seconds,
@@ -736,6 +1218,22 @@ def compile_native(
         first_pass_semantically_valid=semantic_validation["first_pass_valid"],
         semantic_repair_attempts=semantic_validation["semantic_repair_attempts"],
         semantic_validation_history=semantic_validation["validation_history"],
+        degraded_after_semantic_repair=semantic_validation["degraded_after_semantic_repair"],
+        degraded_artifacts=semantic_validation["degraded_artifacts"],
+        requirement_ledger_version=REQUIREMENT_LEDGER_VERSION,
+        requirement_count=len(requirement_ledger.requirements),
+        requirement_first_pass_valid=requirement_validation["first_pass_valid"],
+        requirement_repair_attempts=requirement_validation["repair_attempts"],
+        requirement_validation_history=requirement_validation["validation_history"],
+        requirement_provider=(
+            requirement_result.provider if requirement_result is not None else "prevalidated"
+        ),
+        requirement_model=(
+            requirement_result.model if requirement_result is not None else "prevalidated"
+        ),
+        requirement_prompt_hash=(
+            sha256_text(requirement_prompt) if requirement_prompt is not None else None
+        ),
     )
     return NativeCompilationResult(
         proposal=proposal,
@@ -747,6 +1245,7 @@ def compile_native(
             + sha256(result.response_text.encode("utf-8")).hexdigest(),
             "provenance": provenance,
             "semantic_validation": semantic_validation,
+            "requirement_validation": requirement_validation,
         },
         live_model_call=True,
         model=result.model,

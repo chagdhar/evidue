@@ -37,6 +37,7 @@ from .models import (
     SettlementPolicy,
     SourceClause,
 )
+from .requirements import lower_atomic_requirements, requirement_id
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -75,6 +76,7 @@ def lower_to_agreement_ir(
                 source_start=clause_proposal.source_start,
                 source_end=clause_proposal.source_end,
                 text_hash=clause_proposal.source_text_hash,
+                source_span_ids=clause_proposal.source_span_ids,
             )
         )
 
@@ -141,6 +143,9 @@ def lower_to_agreement_ir(
                     violation_reason=norm_proposal.violation_reason,
                     indeterminate_reason=norm_proposal.indeterminate_reason,
                     indeterminate_consequence=norm_proposal.indeterminate_consequence,
+                    requirement_ids=[
+                        requirement_id(item) for item in norm_proposal.requirement_ids
+                    ],
                 )
             )
 
@@ -187,6 +192,10 @@ def lower_to_agreement_ir(
                         observation_window=proof.observation_window,
                         requires_absence_proof=proof.requires_absence_proof,
                         missing_evidence_result=_truth_value_for(proof.missing_evidence_result),
+                        requirement_ids=[
+                            requirement_id(item)
+                            for item in (proof.requirement_ids or norm_proposal.requirement_ids)
+                        ],
                     )
                 )
 
@@ -255,6 +264,16 @@ def lower_to_agreement_ir(
     # M4: Build settlement policies from settlement_effects
     settlement_policies = _lower_settlements(proposal, clauses, norms, diagnostics)
 
+    # M5: Bind the independently extracted atomic requirement ledger to AIR.
+    requirements, requirement_diagnostics = lower_atomic_requirements(
+        proposal,
+        clauses=clauses,
+        norms=norms,
+        proofs=proofs,
+        settlement_policies=settlement_policies,
+    )
+    diagnostics.extend(requirement_diagnostics)
+
     agreement = AgreementIR(
         agreement_id=compilation_id,
         source_hash=source_hash,
@@ -263,6 +282,7 @@ def lower_to_agreement_ir(
         predicates=predicates,
         proof_requirements=proofs,
         settlement_policies=settlement_policies,
+        requirements=requirements,
         coverage=coverage,
         diagnostics=diagnostics,
     )
@@ -598,6 +618,7 @@ def _lower_settlements(
                     eligibility_norm_ids=eligibility_norm_ids,
                     amount_expression=amount_expr,
                     source_clause_ids=[source_id],
+                    requirement_ids=[requirement_id(item) for item in settlement.requirement_ids],
                 )
             )
 
@@ -719,4 +740,11 @@ def _lower_settlement_expression(settlement: SettlementProposal) -> Expression:
 def _truth_value_for(value: str) -> Any:
     from .models import TruthValue
 
-    return TruthValue.UNKNOWN if value == "unknown" else TruthValue(value)
+    try:
+        return TruthValue(value)
+    except ValueError as exc:
+        raise LoweringError(
+            f"{value!r} is not an evidence TruthValue; "
+            "financial dispositions such as 'needs_review' belong on "
+            "NormProposal.indeterminate_consequence"
+        ) from exc

@@ -10,9 +10,35 @@
       "source_document_id": "SYNTHETIC-ORDER-FORM",
       "source_phrase": "Price: $1.50 per supported outcome",
       "expected_kind": "settlement",
-      "expected_numeric_values": ["1.50"],
+      "expected_numeric_values": [
+        "1.50"
+      ],
       "expected_fact_types": [],
-      "notes": "Controlled synthetic fixture with exhaustive expected financial semantics."
+      "notes": "Controlled synthetic fixture with exhaustive expected financial semantics.",
+      "expected_requirement_kind": "pricing",
+      "expected_requirement_data_dependencies": [
+        "contract_constant"
+      ]
+    },
+    {
+      "id": "GOLD-SYN-PRICE-AMOUNT",
+      "description": "Billed amount must equal the USD 1.50 contractual unit price",
+      "materiality": "critical_financial",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_phrase": "Price: $1.50 per supported outcome",
+      "expected_kind": "norm",
+      "expected_norm_type": "obligation",
+      "expected_consequence": "disputed",
+      "expected_automation": "executable_if_data_available",
+      "expected_numeric_values": [
+        "1.50"
+      ],
+      "expected_fact_types": [],
+      "expected_requirement_kind": "eligibility",
+      "expected_requirement_data_dependencies": [
+        "claim",
+        "contract_constant"
+      ]
     },
     {
       "id": "GOLD-SYN-PERIOD",
@@ -25,20 +51,54 @@
       "expected_consequence": "disputed",
       "expected_automation": "executable_if_data_available",
       "expected_numeric_values": [],
-      "expected_fact_types": []
+      "expected_fact_types": [],
+      "expected_requirement_kind": "timing",
+      "expected_requirement_data_dependencies": [
+        "claim",
+        "contract_constant"
+      ]
     },
     {
-      "id": "GOLD-SYN-RECONTACT-HUMAN",
-      "description": "Seven-day same-intent recontact and 24-hour human-completion exclusions",
+      "id": "GOLD-SYN-RECONTACT-7D",
+      "description": "Seven-day same-intent customer recontact exclusion",
       "materiality": "critical_financial",
       "source_document_id": "SYNTHETIC-ORDER-FORM",
-      "source_phrase": "A resolution is not billable when a human completes or materially corrects the promised work within 24 hours, or when the customer recontacts support for the same intent within seven calendar days.",
       "expected_kind": "norm",
       "expected_norm_type": "prohibition",
       "expected_consequence": "disputed",
       "expected_automation": "executable_if_data_available",
-      "expected_numeric_values": ["7", "24"],
-      "expected_fact_types": []
+      "expected_fact_types": [],
+      "source_phrase": "customer recontacts support for the same intent within seven calendar days",
+      "expected_numeric_values": [
+        "7"
+      ],
+      "expected_requirement_kind": "exclusion",
+      "expected_requirement_data_dependencies": [
+        "claim",
+        "contract_constant",
+        "customer_evidence"
+      ]
+    },
+    {
+      "id": "GOLD-SYN-HUMAN-24H",
+      "description": "24-hour human completion/material-correction exclusion",
+      "materiality": "critical_financial",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "expected_kind": "norm",
+      "expected_norm_type": "prohibition",
+      "expected_consequence": "disputed",
+      "expected_automation": "executable_if_data_available",
+      "expected_fact_types": [],
+      "source_phrase": "a human completes or materially corrects the promised work within 24 hours",
+      "expected_numeric_values": [
+        "24"
+      ],
+      "expected_requirement_kind": "exclusion",
+      "expected_requirement_data_dependencies": [
+        "claim",
+        "contract_constant",
+        "customer_evidence"
+      ]
     },
     {
       "id": "GOLD-SYN-DOWNSTREAM",
@@ -50,8 +110,37 @@
       "expected_norm_type": "obligation",
       "expected_consequence": "disputed",
       "expected_automation": "executable_if_data_available",
-      "expected_numeric_values": ["2"],
-      "expected_fact_types": []
+      "expected_numeric_values": [
+        "2"
+      ],
+      "expected_fact_types": [],
+      "expected_requirement_kind": "performance",
+      "expected_requirement_data_dependencies": [
+        "claim",
+        "contract_constant",
+        "customer_evidence"
+      ]
+    },
+    {
+      "id": "GOLD-SYN-EVIDENCE-ENVELOPE",
+      "description": "Required claim identifiers and direct closure evidence are present",
+      "materiality": "material_operational",
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_phrase": "Evidence must match the expected account and action.",
+      "expected_kind": "norm",
+      "expected_norm_type": "obligation",
+      "expected_consequence": "needs_review",
+      "expected_automation": "executable_if_data_available",
+      "expected_numeric_values": [],
+      "expected_fact_types": [
+        "ai_closed"
+      ],
+      "notes": "Separately reviewed from the identity-mismatch rule on the same source sentence.",
+      "expected_requirement_kind": "evidence",
+      "expected_requirement_data_dependencies": [
+        "claim",
+        "customer_evidence"
+      ]
     },
     {
       "id": "GOLD-SYN-IDENTITY",
@@ -63,7 +152,12 @@
       "expected_consequence": "disputed",
       "expected_automation": "executable_if_data_available",
       "expected_numeric_values": [],
-      "expected_fact_types": []
+      "expected_fact_types": [],
+      "expected_requirement_kind": "identity",
+      "expected_requirement_data_dependencies": [
+        "claim",
+        "customer_evidence"
+      ]
     },
     {
       "id": "GOLD-SYN-UNIQUENESS",
@@ -74,8 +168,15 @@
       "expected_kind": "norm",
       "expected_consequence": "disputed",
       "expected_automation": "executable_if_data_available",
-      "expected_numeric_values": ["24"],
-      "expected_fact_types": []
+      "expected_numeric_values": [
+        "24"
+      ],
+      "expected_fact_types": [],
+      "expected_requirement_kind": "uniqueness",
+      "expected_requirement_data_dependencies": [
+        "batch_claims",
+        "contract_constant"
+      ]
     }
   ]
 }

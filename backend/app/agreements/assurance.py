@@ -176,6 +176,10 @@ def assure_agreement(agreement: AgreementIR) -> CompilerAssuranceReport:
         coverage_failures.append(
             f"{report.unrepresented_material_clause_count} unrepresented material clause(s)"
         )
+    if report.unmapped_material_requirement_count:
+        coverage_failures.append(
+            f"{report.unmapped_material_requirement_count} unmapped material requirement(s)"
+        )
     checks.append(
         AssuranceCheck(
             id="material_coverage",
@@ -291,7 +295,9 @@ def assure_agreement(agreement: AgreementIR) -> CompilerAssuranceReport:
                 status="pass" if mutated_hash != predicate.canonical_hash else "fail",
                 original_hash=predicate.canonical_hash,
                 mutated_hash=mutated_hash,
-                detail="A deterministic contract-constant mutation changes the predicate fingerprint.",
+                detail=(
+                    "A deterministic contract-constant mutation changes the predicate fingerprint."
+                ),
             )
         )
     mutation_failures = [probe.id for probe in mutation_probes if probe.status == "fail"]
@@ -300,7 +306,9 @@ def assure_agreement(agreement: AgreementIR) -> CompilerAssuranceReport:
             id="metamorphic_fingerprint",
             status="fail" if mutation_failures else "pass",
             hard_gate=True,
-            summary="Supported semantic constant mutations change the compiled predicate fingerprint."
+            summary=(
+                "Supported semantic constant mutations change the compiled predicate fingerprint."
+            )
             if not mutation_failures
             else "A semantic constant mutation failed to change the predicate fingerprint.",
             details=mutation_failures,

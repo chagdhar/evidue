@@ -52,6 +52,45 @@ class EvidenceAuthority(StrEnum):
     HUMAN_ATTESTATION = "human_attestation"
 
 
+RequirementKind = Literal[
+    "eligibility",
+    "pricing",
+    "exclusion",
+    "performance",
+    "identity",
+    "uniqueness",
+    "timing",
+    "evidence",
+    "procedure",
+    "other",
+]
+RequirementMateriality = Literal["financial", "operational", "supporting", "non_material"]
+RequirementDataDependency = Literal[
+    "claim",
+    "invoice",
+    "contract_constant",
+    "batch_claims",
+    "customer_evidence",
+    "external_document",
+    "human_attestation",
+]
+RequirementDisposition = Literal[
+    "norm",
+    "settlement",
+    "manual_review",
+    "unresolved_dependency",
+    "non_operational",
+]
+RequirementBindingStatus = Literal[
+    "mapped",
+    "unmapped",
+    "invalid_binding",
+    "manual_review",
+    "unresolved_dependency",
+    "non_operational",
+]
+
+
 ExpressionOperator = Literal[
     "constant",
     "field",
@@ -205,6 +244,7 @@ class SourceClause(BaseModel):
     source_start: int | None = None
     source_end: int | None = None
     text_hash: str | None = None
+    source_span_ids: list[str] = Field(default_factory=list)
 
 
 class ClauseCoverage(BaseModel):
@@ -225,6 +265,35 @@ class CompilerDiagnostic(BaseModel):
     severity: Literal["info", "warning", "blocking"]
     message: str
     clause_ids: list[str] = Field(default_factory=list)
+
+
+class AtomicRequirement(BaseModel):
+    """One indivisible, source-grounded contractual requirement.
+
+    The requirement ledger is interpretation metadata, not executable authority.
+    Executable financial authority remains in approved norms and settlement policies.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    statement: str
+    kind: RequirementKind
+    materiality: RequirementMateriality
+    data_dependencies: list[RequirementDataDependency] = Field(default_factory=list)
+    disposition: RequirementDisposition
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    source_document_id: str
+    source_span_ids: list[str] = Field(default_factory=list)
+    source_text: str
+    source_start: int | None = None
+    source_end: int | None = None
+    source_text_hash: str | None = None
+    source_clause_ids: list[str] = Field(default_factory=list)
+    norm_ids: list[str] = Field(default_factory=list)
+    settlement_policy_ids: list[str] = Field(default_factory=list)
+    proof_requirement_ids: list[str] = Field(default_factory=list)
+    binding_status: RequirementBindingStatus = "unmapped"
 
 
 class AtomicPredicate(BaseModel):
@@ -259,6 +328,7 @@ class ProofRequirement(BaseModel):
     requires_absence_proof: bool = False
     missing_evidence_result: TruthValue = TruthValue.UNKNOWN
     conflict_result: TruthValue = TruthValue.CONFLICTING
+    requirement_ids: list[str] = Field(default_factory=list)
 
 
 class Norm(BaseModel):
@@ -281,6 +351,7 @@ class Norm(BaseModel):
     indeterminate_reason: str | None = None
     indeterminate_consequence: Literal["payable", "disputed", "needs_review"] = "needs_review"
     indeterminate_rule_id: str | None = None
+    requirement_ids: list[str] = Field(default_factory=list)
 
 
 class SettlementPolicy(BaseModel):
@@ -294,6 +365,7 @@ class SettlementPolicy(BaseModel):
     amount_expression: Expression
     source_clause_ids: list[str]
     currency: str = Field(default="USD", min_length=3, max_length=3)
+    requirement_ids: list[str] = Field(default_factory=list)
 
 
 class Fact(BaseModel):
@@ -377,6 +449,7 @@ class AgreementIR(BaseModel):
     agreement_id: str
     source_hash: str
     clauses: list[SourceClause]
+    requirements: list[AtomicRequirement] = Field(default_factory=list)
     norms: list[Norm]
     predicates: list[AtomicPredicate] = Field(default_factory=list)
     proof_requirements: list[ProofRequirement]
@@ -387,12 +460,14 @@ class AgreementIR(BaseModel):
     @model_validator(mode="after")
     def validate_references(self) -> AgreementIR:
         clause_ids = [item.id for item in self.clauses]
+        requirement_ids = [item.id for item in self.requirements]
         norm_ids = [item.id for item in self.norms]
         predicate_ids = [item.id for item in self.predicates]
         proof_ids = [item.id for item in self.proof_requirements]
         policy_ids = [item.id for item in self.settlement_policies]
         for label, values in {
             "clause": clause_ids,
+            "atomic requirement": requirement_ids,
             "norm": norm_ids,
             "predicate": predicate_ids,
             "proof requirement": proof_ids,
@@ -402,8 +477,34 @@ class AgreementIR(BaseModel):
                 raise ValueError(f"Agreement IR {label} IDs must be unique")
 
         known_clauses = set(clause_ids)
+        known_requirements = set(requirement_ids)
         known_norms = set(norm_ids)
         known_predicates = set(predicate_ids)
+        for requirement in self.requirements:
+            unknown_clauses = set(requirement.source_clause_ids) - known_clauses
+            unknown_norms = set(requirement.norm_ids) - known_norms
+            unknown_policies = set(requirement.settlement_policy_ids) - set(policy_ids)
+            unknown_proofs = set(requirement.proof_requirement_ids) - set(proof_ids)
+            if unknown_clauses:
+                raise ValueError(
+                    f"Atomic requirement {requirement.id} references unknown clauses: "
+                    f"{sorted(unknown_clauses)}"
+                )
+            if unknown_norms:
+                raise ValueError(
+                    f"Atomic requirement {requirement.id} references unknown norms: "
+                    f"{sorted(unknown_norms)}"
+                )
+            if unknown_policies:
+                raise ValueError(
+                    f"Atomic requirement {requirement.id} references unknown settlement policies: "
+                    f"{sorted(unknown_policies)}"
+                )
+            if unknown_proofs:
+                raise ValueError(
+                    f"Atomic requirement {requirement.id} references unknown proof requirements: "
+                    f"{sorted(unknown_proofs)}"
+                )
         for predicate in self.predicates:
             if predicate.norm_id not in known_norms:
                 raise ValueError(
@@ -418,6 +519,12 @@ class AgreementIR(BaseModel):
             unknown = set(norm.source_clause_ids) - known_clauses
             if unknown:
                 raise ValueError(f"Norm {norm.id} references unknown clauses: {sorted(unknown)}")
+            unknown_requirements = set(norm.requirement_ids) - known_requirements
+            if unknown_requirements:
+                raise ValueError(
+                    f"Norm {norm.id} references unknown atomic requirements: "
+                    f"{sorted(unknown_requirements)}"
+                )
         predicate_by_id = {item.id: item for item in self.predicates}
         for requirement in self.proof_requirements:
             if requirement.norm_id not in known_norms:
@@ -433,6 +540,12 @@ class AgreementIR(BaseModel):
             predicate = predicate_by_id.get(requirement.predicate_id)
             if predicate is not None and predicate.norm_id != requirement.norm_id:
                 raise ValueError(f"Proof requirement {requirement.id} predicate/norm mismatch")
+            unknown_requirements = set(requirement.requirement_ids) - known_requirements
+            if unknown_requirements:
+                raise ValueError(
+                    f"Proof requirement {requirement.id} references unknown atomic requirements: "
+                    f"{sorted(unknown_requirements)}"
+                )
         for item in self.coverage:
             if item.clause_id not in known_clauses:
                 raise ValueError(f"Coverage references unknown clause {item.clause_id}")
@@ -453,6 +566,12 @@ class AgreementIR(BaseModel):
                 raise ValueError(
                     f"Settlement policy {policy.id} references unknown clauses: "
                     f"{sorted(unknown_clauses)}"
+                )
+            unknown_requirements = set(policy.requirement_ids) - known_requirements
+            if unknown_requirements:
+                raise ValueError(
+                    f"Settlement policy {policy.id} references unknown atomic requirements: "
+                    f"{sorted(unknown_requirements)}"
                 )
         for diagnostic in self.diagnostics:
             unknown = set(diagnostic.clause_ids) - known_clauses
@@ -482,6 +601,9 @@ class ConformanceReport(BaseModel):
     orphan_proof_requirement_count: int = 0
     proof_requirement_count: int
     settlement_policy_count: int
+    atomic_requirement_count: int = 0
+    mapped_atomic_requirement_count: int = 0
+    unmapped_material_requirement_count: int = 0
     blocking_diagnostic_count: int
     approvable: bool
     coverage_percent: float

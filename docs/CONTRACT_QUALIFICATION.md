@@ -14,10 +14,12 @@ The live native compiler follows this path:
 ```text
 raw contract bytes
   -> document-integrity / transport-decoding checks
-  -> deterministic source spans
-  -> provider-independent structured LLM inference
-  -> strict Pydantic validation
-  -> deterministic source-span binding
+  -> deterministic sentence-sized source spans
+  -> independent atomic-requirement extraction
+  -> deterministic requirement source binding
+  -> AIR proposal pass constrained by the authoritative requirement ledger
+  -> strict Pydantic + semantic validation
+  -> deterministic requirement/AIR binding assurance
   -> Agreement IR lowering + assurance
   -> human approval / immutable AIR version
   -> deterministic evidence/fact evaluation
@@ -47,7 +49,7 @@ Review status is explicit:
 - `provisional_engineering_gold` — useful for engineering evaluation, but not independently reviewed and never sufficient for a release-level pass.
 - `human_reviewed` — reviewed controlled truth. `qualification_passed=true` additionally requires `exhaustive_financial_terms=true`.
 
-Gold can describe material source phrases, expected rule/settlement type, automation classification, numeric parameters, evidence facts, forbidden numeric interpretations, redacted/unknown parameters, required diagnostics, and terms that must remain non-executable.
+Gold can describe material source phrases, expected atomic-requirement kind and data dependencies, expected rule/settlement type, automation classification, numeric parameters, evidence facts, forbidden numeric interpretations, redacted/unknown parameters, required diagnostics, and terms that must remain non-executable.
 
 ### Hard safety gates
 
@@ -61,6 +63,12 @@ Aggregate scores must not hide financially dangerous errors. Qualification fails
 - failed deterministic compiler assurance.
 
 A high average score does not override a hard failure.
+
+### Atomic completeness and qualification v3
+
+Clause-level coverage is not sufficient: one source clause can contain several independently testable financial conditions. The native compiler therefore carries an atomic requirement ledger through AIR lowering. Qualification reports source recall, atomic-requirement recall, semantic fidelity, numeric-parameter fidelity, and automation fidelity separately. A term is not considered found merely because an unrelated rule cites the same clause.
+
+See `docs/ATOMIC_REQUIREMENT_LEDGER.md` for the requirement-to-AIR binding and data-dependency gates.
 
 ## Redaction policy
 
@@ -175,11 +183,13 @@ PYTHONPATH=backend uv run python scripts/qualify_contract.py \
 
 ## One-command proof
 
-Run the offline proof kernel:
+Run the normal offline proof kernel with its Python quality-tool bootstrap:
 
 ```bash
-./scripts/evidue-proof.sh core
+./scripts/check-fast.sh
 ```
+
+`evidue-proof.sh` remains the low-level runner used by the wrapper scripts.
 
 This generates:
 
@@ -196,11 +206,25 @@ Run live provider qualification separately:
 ./scripts/evidue-proof.sh live --provider gemini --model "$GEMINI_MODEL"
 ```
 
-For a complete repository gate in a fully bootstrapped checkout:
+For safe mechanical Python cleanup followed by the complete offline repository gate:
 
 ```bash
-./scripts/evidue-proof.sh full --provider gemini --model "$GEMINI_MODEL"
+./scripts/fix-and-check.sh
 ```
+
+For a complete offline repository gate (dependencies are bootstrapped automatically):
+
+```bash
+./scripts/check-all.sh
+```
+
+For the complete repository gate plus pinned live-provider qualification:
+
+```bash
+./scripts/check-release.sh --provider gemini --model "$GEMINI_MODEL"
+```
+
+`full` never calls an LLM provider. `release` is the explicit mode that adds live qualification, preventing external provider availability from being confused with deterministic product correctness.
 
 ## What qualification does not prove
 

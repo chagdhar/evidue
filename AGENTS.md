@@ -216,3 +216,40 @@ Do not add generic AI gradients, sparkle motifs, excessive cards, glass effects,
 or decorative charts. Preserve the primary workflow:
 
 Decision → Findings → Contract rules → Evidence
+
+## Contract compiler safety boundary
+
+The contract compiler is a two-pass interpretation system:
+
+1. source-grounded Atomic Contract Requirement Ledger;
+2. AIR proposal constrained by that ledger;
+3. deterministic lowering, coverage/data-dependency assurance, human approval;
+4. deterministic adjudication and settlement.
+
+Rules for compiler work:
+
+- One atomic requirement represents one independently testable contractual proposition.
+- Do not collapse several `and` / `or` / `unless` / `except` branches into one generic norm when they can independently change money.
+- Every executable norm and settlement policy must bind to its atomic requirement.
+- Claim/invoice/batch data must be evaluated directly and must not become indeterminate because unrelated external evidence is absent.
+- Customer-evidence conditions require proof requirements.
+- Missing, collapsed, source-mismatched, or unsafe material requirement bindings must block AIR approval.
+- Invalid model artifacts are discarded fail-closed after bounded repair; never invent replacement executable semantics.
+- Qualification must distinguish source coverage from atomic-requirement coverage and full semantic fidelity.
+
+See `docs/ATOMIC_REQUIREMENT_LEDGER.md` and `docs/CONTRACT_QUALIFICATION.md` before changing compiler semantics.
+
+## Handoff quality gate
+
+Do not hand a user a repository and ask them to clean up formatter, linter, or routine test failures.
+Before any code handoff, the implementing agent must run the repository wrappers and fix failures itself.
+
+Normal commands:
+
+- `./scripts/check-fast.sh` — bootstrap Python quality tools and run the offline verification kernel.
+- `./scripts/check-all.sh` — bootstrap all dependencies and run Ruff, the complete backend suite, frontend lint/tests/build, and Playwright E2E.
+- `./scripts/fix-and-check.sh` — apply only Ruff's safe mechanical fixes, format, lint, and rerun the offline kernel.
+- `./scripts/check-live.sh ...` — pinned live-provider qualification only.
+- `./scripts/check-release.sh ...` — complete offline gate plus pinned live-provider qualification.
+
+`full` must never call an LLM provider. Live-provider availability must not be confused with deterministic product correctness. Never use Ruff `--unsafe-fixes` as a blanket cleanup step. If a check cannot be executed because the execution environment cannot obtain dependencies, report that limitation explicitly rather than claiming it passed.

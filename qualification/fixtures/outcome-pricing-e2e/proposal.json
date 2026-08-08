@@ -11,6 +11,201 @@
     }
   ],
   "definitions": [],
+  "requirements": [
+    {
+      "id": "PRICE-AMOUNT",
+      "statement": "The billed amount for a supported outcome must equal USD 1.50.",
+      "kind": "eligibility",
+      "materiality": "financial",
+      "data_dependencies": [
+        "claim",
+        "contract_constant"
+      ],
+      "disposition": "norm",
+      "parameters": {
+        "expected_amount": "1.50"
+      },
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "Price: $1.50 per supported outcome",
+      "source_start": 143,
+      "source_end": 177,
+      "source_text_hash": "b879908549280319e4c7200063c29b707f2768656cf155eb89567d1dee40969c",
+      "review_notes": []
+    },
+    {
+      "id": "PRICE-RATE",
+      "statement": "Each eligible supported outcome is priced at USD 1.50.",
+      "kind": "pricing",
+      "materiality": "financial",
+      "data_dependencies": [
+        "contract_constant"
+      ],
+      "disposition": "settlement",
+      "parameters": {
+        "unit_price": "1.50",
+        "currency": "USD"
+      },
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "Price: $1.50 per supported outcome",
+      "source_start": 143,
+      "source_end": 177,
+      "source_text_hash": "b879908549280319e4c7200063c29b707f2768656cf155eb89567d1dee40969c",
+      "review_notes": []
+    },
+    {
+      "id": "BILLING-PERIOD",
+      "statement": "The claim must fall inside the June 2026 billing period.",
+      "kind": "timing",
+      "materiality": "financial",
+      "data_dependencies": [
+        "claim",
+        "contract_constant"
+      ],
+      "disposition": "norm",
+      "parameters": {
+        "start": "2026-06-01",
+        "end_exclusive": "2026-07-01"
+      },
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "Billing period: 2026-06-01 through 2026-06-30",
+      "source_start": 97,
+      "source_end": 142,
+      "source_text_hash": "89480f10f9068df47011f28b475a5d452be9f3dd2ee1bffcf68103f3907297d8",
+      "review_notes": []
+    },
+    {
+      "id": "RECONTACT-7D",
+      "statement": "A same-intent customer recontact within seven calendar days makes the resolution non-billable.",
+      "kind": "exclusion",
+      "materiality": "financial",
+      "data_dependencies": [
+        "claim",
+        "contract_constant",
+        "customer_evidence"
+      ],
+      "disposition": "norm",
+      "parameters": {
+        "window_value": 7,
+        "window_unit": "calendar_days"
+      },
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "A resolution is not billable when a human completes or materially corrects the promised work within 24 hours, or when the customer recontacts support for the same intent within seven calendar days.",
+      "source_start": 253,
+      "source_end": 450,
+      "source_text_hash": "1dfac135209e992c91394f3cba140fb3794ee69b45a457f25e911c65f125b5c5",
+      "review_notes": []
+    },
+    {
+      "id": "HUMAN-24H",
+      "statement": "Human completion or material correction within 24 hours makes the resolution non-billable.",
+      "kind": "exclusion",
+      "materiality": "financial",
+      "data_dependencies": [
+        "claim",
+        "contract_constant",
+        "customer_evidence"
+      ],
+      "disposition": "norm",
+      "parameters": {
+        "window_value": 24,
+        "window_unit": "hours"
+      },
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "A resolution is not billable when a human completes or materially corrects the promised work within 24 hours, or when the customer recontacts support for the same intent within seven calendar days.",
+      "source_start": 253,
+      "source_end": 450,
+      "source_text_hash": "1dfac135209e992c91394f3cba140fb3794ee69b45a457f25e911c65f125b5c5",
+      "review_notes": []
+    },
+    {
+      "id": "DOWNSTREAM-2H",
+      "statement": "The promised downstream action must complete successfully within two hours.",
+      "kind": "performance",
+      "materiality": "financial",
+      "data_dependencies": [
+        "claim",
+        "contract_constant",
+        "customer_evidence"
+      ],
+      "disposition": "norm",
+      "parameters": {
+        "window_value": 2,
+        "window_unit": "hours"
+      },
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "A promised downstream action must complete successfully within two hours.",
+      "source_start": 179,
+      "source_end": 252,
+      "source_text_hash": "581fb17ae1644dc2ba478db45321b478f1924846e9af45da9284c740cdc346b3",
+      "review_notes": []
+    },
+    {
+      "id": "EVIDENCE-ENVELOPE",
+      "statement": "The claim must have the identifiers and direct closure evidence needed for attribution.",
+      "kind": "evidence",
+      "materiality": "operational",
+      "data_dependencies": [
+        "claim",
+        "customer_evidence"
+      ],
+      "disposition": "norm",
+      "parameters": {},
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "Evidence must match the expected account and action.",
+      "source_start": 451,
+      "source_end": 503,
+      "source_text_hash": "ad0e0e1792ad96aa31615f48781736880d4725fbaccd541dbeaa1ed75a473ea7",
+      "review_notes": []
+    },
+    {
+      "id": "IDENTITY-MATCH",
+      "statement": "Operational evidence must match the expected account and action.",
+      "kind": "identity",
+      "materiality": "financial",
+      "data_dependencies": [
+        "claim",
+        "customer_evidence"
+      ],
+      "disposition": "norm",
+      "parameters": {},
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "Evidence must match the expected account and action.",
+      "source_start": 451,
+      "source_end": 503,
+      "source_text_hash": "ad0e0e1792ad96aa31615f48781736880d4725fbaccd541dbeaa1ed75a473ea7",
+      "review_notes": []
+    },
+    {
+      "id": "UNIQUENESS-24H",
+      "statement": "Only the earliest otherwise-payable same-customer same-intent outcome inside 24 hours is billable.",
+      "kind": "uniqueness",
+      "materiality": "financial",
+      "data_dependencies": [
+        "batch_claims",
+        "contract_constant"
+      ],
+      "disposition": "norm",
+      "parameters": {
+        "window_value": 24,
+        "window_unit": "hours"
+      },
+      "source_document_id": "SYNTHETIC-ORDER-FORM",
+      "source_span_ids": [],
+      "source_text": "Only the earliest otherwise-payable outcome is billable for the same customer and normalized intent inside the 24-hour attribution window.",
+      "source_start": 504,
+      "source_end": 642,
+      "source_text_hash": "8a9e969aaa84a6f73edc430405b7253cb3df9e1721f5c813e451df04fe7272c9",
+      "review_notes": []
+    }
+  ],
   "clauses": [
     {
       "clause_id": "R7",
@@ -85,7 +280,10 @@
               "identity_keys": [],
               "observation_window": {},
               "requires_absence_proof": false,
-              "missing_evidence_result": "unknown"
+              "missing_evidence_result": "unknown",
+              "requirement_ids": [
+                "EVIDENCE-ENVELOPE"
+              ]
             }
           ],
           "violation_reason_code": "R7",
@@ -93,7 +291,10 @@
           "indeterminate_reason_code": "MISSING_EVIDENCE",
           "indeterminate_reason": "Required evidence is unavailable or conflicting",
           "confidence": 1.0,
-          "ambiguity_notes": []
+          "ambiguity_notes": [],
+          "requirement_ids": [
+            "EVIDENCE-ENVELOPE"
+          ]
         }
       ],
       "settlement_effects": [],
@@ -138,7 +339,10 @@
           "indeterminate_reason_code": "MISSING_EVIDENCE",
           "indeterminate_reason": "Required evidence is unavailable or conflicting",
           "confidence": 1.0,
-          "ambiguity_notes": []
+          "ambiguity_notes": [],
+          "requirement_ids": [
+            "PRICE-AMOUNT"
+          ]
         }
       ],
       "settlement_effects": [
@@ -149,7 +353,10 @@
             "unit_price": "1.50"
           },
           "source_clause_id": "R0",
-          "description": "Contractual per-outcome rate"
+          "description": "Contractual per-outcome rate",
+          "requirement_ids": [
+            "PRICE-RATE"
+          ]
         }
       ],
       "automation_classification": "executable_if_data_available",
@@ -194,7 +401,10 @@
           "indeterminate_reason_code": "MISSING_EVIDENCE",
           "indeterminate_reason": "Required evidence is unavailable or conflicting",
           "confidence": 1.0,
-          "ambiguity_notes": []
+          "ambiguity_notes": [],
+          "requirement_ids": [
+            "BILLING-PERIOD"
+          ]
         }
       ],
       "settlement_effects": [],
@@ -258,7 +468,10 @@
               "identity_keys": [],
               "observation_window": {},
               "requires_absence_proof": false,
-              "missing_evidence_result": "unknown"
+              "missing_evidence_result": "unknown",
+              "requirement_ids": [
+                "RECONTACT-7D"
+              ]
             }
           ],
           "violation_reason_code": "R1",
@@ -266,7 +479,10 @@
           "indeterminate_reason_code": "MISSING_EVIDENCE",
           "indeterminate_reason": "Required evidence is unavailable or conflicting",
           "confidence": 1.0,
-          "ambiguity_notes": []
+          "ambiguity_notes": [],
+          "requirement_ids": [
+            "RECONTACT-7D"
+          ]
         }
       ],
       "settlement_effects": [],
@@ -325,7 +541,10 @@
               "identity_keys": [],
               "observation_window": {},
               "requires_absence_proof": false,
-              "missing_evidence_result": "unknown"
+              "missing_evidence_result": "unknown",
+              "requirement_ids": [
+                "HUMAN-24H"
+              ]
             }
           ],
           "violation_reason_code": "R2",
@@ -333,7 +552,10 @@
           "indeterminate_reason_code": "MISSING_EVIDENCE",
           "indeterminate_reason": "Required evidence is unavailable or conflicting",
           "confidence": 1.0,
-          "ambiguity_notes": []
+          "ambiguity_notes": [],
+          "requirement_ids": [
+            "HUMAN-24H"
+          ]
         }
       ],
       "settlement_effects": [],
@@ -392,7 +614,10 @@
               "identity_keys": [],
               "observation_window": {},
               "requires_absence_proof": false,
-              "missing_evidence_result": "unknown"
+              "missing_evidence_result": "unknown",
+              "requirement_ids": [
+                "DOWNSTREAM-2H"
+              ]
             }
           ],
           "violation_reason_code": "R3",
@@ -400,7 +625,10 @@
           "indeterminate_reason_code": "MISSING_EVIDENCE",
           "indeterminate_reason": "Required evidence is unavailable or conflicting",
           "confidence": 1.0,
-          "ambiguity_notes": []
+          "ambiguity_notes": [],
+          "requirement_ids": [
+            "DOWNSTREAM-2H"
+          ]
         }
       ],
       "settlement_effects": [],
@@ -460,7 +688,10 @@
               "identity_keys": [],
               "observation_window": {},
               "requires_absence_proof": false,
-              "missing_evidence_result": "unknown"
+              "missing_evidence_result": "unknown",
+              "requirement_ids": [
+                "IDENTITY-MATCH"
+              ]
             }
           ],
           "violation_reason_code": "R5",
@@ -468,7 +699,10 @@
           "indeterminate_reason_code": "MISSING_EVIDENCE",
           "indeterminate_reason": "Required evidence is unavailable or conflicting",
           "confidence": 1.0,
-          "ambiguity_notes": []
+          "ambiguity_notes": [],
+          "requirement_ids": [
+            "IDENTITY-MATCH"
+          ]
         }
       ],
       "settlement_effects": [],
@@ -524,7 +758,10 @@
           "indeterminate_reason_code": "MISSING_EVIDENCE",
           "indeterminate_reason": "Required evidence is unavailable or conflicting",
           "confidence": 1.0,
-          "ambiguity_notes": []
+          "ambiguity_notes": [],
+          "requirement_ids": [
+            "UNIQUENESS-24H"
+          ]
         }
       ],
       "settlement_effects": [],

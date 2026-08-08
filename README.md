@@ -77,11 +77,12 @@ a $2,520 recommended deduction.
 The demo no longer treats Python constants as the source of truth for billing terms.
 It implements the complete control boundary Evidue needs in production:
 
-1. A server-owned, provider-independent compiler converts natural-language contract clauses into a constrained structured proposal.
-2. The model cites deterministic source-span IDs; Evidue binds the proposal back to original contract bytes and hashes.
-3. Pydantic and compiler assurance reject malformed, unsupported, ungrounded, or unsafe structure.
-4. The proposal remains `pending_approval` until a human approves an immutable AIR version.
-5. Reconciliation loads that approved version and runs the deterministic interpreter; no LLM decides line status or payable dollars.
+1. A server-owned, provider-independent interpretation pass decomposes material source language into an atomic requirement ledger.
+2. The model cites deterministic source-span IDs; Evidue binds every requirement back to original contract bytes and hashes.
+3. A second compiler pass maps those authoritative requirements to constrained AIR norms, settlement policies, and proof requirements without silently merging or dropping them.
+4. Pydantic plus deterministic requirement/binding assurance rejects malformed, ungrounded, collapsed, unmapped, or data-source-incompatible semantics.
+5. The proposal remains `pending_approval` until a human approves an immutable AIR version.
+6. Reconciliation loads that approved version and runs the deterministic interpreter; no LLM decides line status or payable dollars.
 
 The repository includes validated recorded proposals so technical previews and the core proof suite work offline. Live compilation uses server-side provider credentials configured by the Evidue operator, never by the customer.
 
@@ -278,13 +279,17 @@ PYTHONPATH=backend uv run python scripts/qualify_contract.py \
   --output /tmp/evidue-contract-qualification.json --exit-zero-on-review
 ```
 
-For the reproducible offline verification kernel:
+For normal development, use the one-command gates:
 
 ```bash
-./scripts/evidue-proof.sh core
+./scripts/check-fast.sh       # bootstrap Python quality tools + offline verification kernel
+./scripts/check-all.sh        # bootstrap everything + lint + backend + frontend + E2E
+./scripts/fix-and-check.sh     # safe Python fixes, then the complete offline repository gate
+./scripts/check-live.sh --provider gemini --model "$GEMINI_MODEL"
+./scripts/check-release.sh --provider gemini --model "$GEMINI_MODEL"
 ```
 
-It generates `artifacts/validation/latest.json` and `latest.md` from actual test/qualification results. See [docs/CONTRACT_QUALIFICATION.md](docs/CONTRACT_QUALIFICATION.md) and [docs/LEAP_REPORT.md](docs/LEAP_REPORT.md).
+`check-all.sh` is deliberately offline with respect to LLM providers; `fix-and-check.sh` first applies safe Python formatting/lint fixes and then runs that same complete offline gate. `check-release.sh` adds pinned live-provider qualification. The wrappers fail fast on syntax/hygiene/Ruff errors before expensive tests, and long backend/browser gates stream progress instead of appearing hung. Both generate `artifacts/validation/latest.json` and `latest.md`. See [docs/CONTRACT_QUALIFICATION.md](docs/CONTRACT_QUALIFICATION.md), [docs/ATOMIC_REQUIREMENT_LEDGER.md](docs/ATOMIC_REQUIREMENT_LEDGER.md), and [docs/LEAP_REPORT.md](docs/LEAP_REPORT.md).
 
 
 ## Generalized agreement runtime

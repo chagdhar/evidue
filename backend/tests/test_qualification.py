@@ -141,8 +141,8 @@ def test_qualification_scores_financial_materiality_and_exact_parameters():
     assert result["qualification_passed"] is True
 
     changed = _agreement(rate="1.75")
-    # Keep gold phrase grounded by updating source text to contain 1.50 would mask the semantic mismatch;
-    # instead create a gold label that expects the actual clause but a different financial parameter.
+    # Updating source text to contain 1.50 would mask the semantic mismatch. Instead,
+    # create a gold label that expects the actual clause but a different financial parameter.
     changed_gold = gold.model_copy(deep=True)
     changed_gold.terms[1].source_phrase = "charged at USD 1.75"
     result = score_agreement(changed, changed_gold)
@@ -435,3 +435,38 @@ def test_sec_pack_gold_loads_against_real_decoded_contract():
     normalized_source = " ".join(source.split())
     for term in pack.gold.terms:
         assert " ".join(term.source_phrase.split()) in normalized_source, term.id
+
+
+def test_requirement_aware_scoring_does_not_cross_credit_same_source_clause() -> None:
+    import json
+    from pathlib import Path
+
+    from app.agreements.qualification import compile_pack_proposal, load_pack
+
+    pack_root = (
+        Path(__file__).resolve().parents[2] / "qualification" / "fixtures" / "outcome-pricing-e2e"
+    )
+    pack = load_pack(pack_root)
+    proposal = json.loads((pack_root / "proposal.json").read_text())
+    agreement = compile_pack_proposal(pack, proposal).model_copy(deep=True)
+
+    identity_norm = next(norm for norm in agreement.norms if norm.id == "NORM-R5")
+    identity_norm.consequence = "payable"
+
+    scored = score_agreement(agreement, pack.gold)
+    terms = {item["id"]: item for item in scored["terms"]}
+
+    identity = terms["GOLD-SYN-IDENTITY"]
+    evidence_envelope = terms["GOLD-SYN-EVIDENCE-ENVELOPE"]
+
+    assert identity["source_covered"] is True
+    assert identity["atomic_requirement_covered"] is True
+    assert identity["semantic_match"] is False
+    assert identity["found"] is False
+    assert identity["requirement_ids"] == ["REQ-IDENTITY-MATCH"]
+    assert "consequence mismatch (expected disputed)" in identity["issues"]
+
+    # The separate R7 evidence-envelope norm shares the same source sentence but
+    # must not mask the identity rule's semantic failure.
+    assert evidence_envelope["semantic_match"] is True
+    assert evidence_envelope["requirement_ids"] == ["REQ-EVIDENCE-ENVELOPE"]

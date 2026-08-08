@@ -16,8 +16,10 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -29,37 +31,98 @@ SEC_QUALIFICATION = ARTIFACT_DIR / "sec-demandtec-target.json"
 LIVE_SYNTHETIC_QUALIFICATION = ARTIFACT_DIR / "synthetic-e2e-live.json"
 
 
+def _signal_process_group(pid: int, sig: signal.Signals) -> None:
+    try:
+        os.killpg(pid, sig)
+    except ProcessLookupError:
+        return
+
+
 def _run(
     label: str,
     command: list[str],
     *,
     env: dict[str, str] | None = None,
     required: bool = True,
+    stream: bool = False,
+    timeout_seconds: int | None = None,
 ) -> dict[str, Any]:
     merged = os.environ.copy()
     merged["PYTHONPATH"] = str(ROOT / "backend")
     if env:
         merged.update(env)
     started = datetime.now(UTC)
-    proc = subprocess.run(
-        command,
-        cwd=ROOT,
-        env=merged,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
-    )
-    output = proc.stdout.strip()
-    status = "passed" if proc.returncode == 0 else ("failed" if required else "warning")
-    print(f"[{status.upper():7}] {label}")
-    if proc.returncode != 0 and output:
+    if timeout_seconds is None:
+        timeout_seconds = int(os.getenv("EVIDUE_PROOF_STEP_TIMEOUT_SECONDS", "300"))
+
+    print(f"[RUNNING] {label}", flush=True)
+    timed_out = False
+    output = ""
+
+    if stream:
+        process = subprocess.Popen(
+            command,
+            cwd=ROOT,
+            env=merged,
+            text=True,
+            start_new_session=True,
+        )
+        try:
+            returncode = process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _signal_process_group(process.pid, signal.SIGTERM)
+            try:
+                returncode = process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                _signal_process_group(process.pid, signal.SIGKILL)
+                returncode = process.wait(timeout=5)
+        finally:
+            _signal_process_group(process.pid, signal.SIGTERM)
+    else:
+        with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as output_file:
+            process = subprocess.Popen(
+                command,
+                cwd=ROOT,
+                env=merged,
+                text=True,
+                stdout=output_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            try:
+                returncode = process.wait(timeout=timeout_seconds)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                _signal_process_group(process.pid, signal.SIGTERM)
+                try:
+                    returncode = process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    _signal_process_group(process.pid, signal.SIGKILL)
+                    returncode = process.wait(timeout=5)
+            finally:
+                # Some test/server libraries can leave child processes behind after
+                # their parent exits. Kill the isolated step process group so those
+                # children cannot keep proof-runner file descriptors open.
+                _signal_process_group(process.pid, signal.SIGTERM)
+
+            output_file.seek(0)
+            output = output_file.read().strip()
+
+    if timed_out:
+        timeout_message = f"Step timed out after {timeout_seconds}s"
+        output = f"{timeout_message}\n{output}" if output else timeout_message
+        returncode = 124
+
+    status = "passed" if returncode == 0 else ("failed" if required else "warning")
+    print(f"[{status.upper():7}] {label}", flush=True)
+    if returncode != 0 and output:
         print(output[-4000:])
     return {
         "label": label,
         "status": status,
         "required": required,
-        "returncode": proc.returncode,
+        "returncode": returncode,
         "command": command,
         "started_at": started.isoformat(),
         "duration_seconds": round((datetime.now(UTC) - started).total_seconds(), 3),
@@ -83,6 +146,11 @@ def _controlled_summary(report: dict[str, Any] | None) -> dict[str, Any]:
         "qualification_passed": report.get("qualification_passed"),
         "gold_review_status": report.get("pack", {}).get("gold_review_status"),
         "critical_financial_term_recall_percent": run.get("critical_financial_term_recall_percent"),
+        "source_recall_percent": run.get("source_recall_percent"),
+        "atomic_requirement_recall_percent": run.get("atomic_requirement_recall_percent"),
+        "semantic_fidelity_percent": run.get("semantic_fidelity_percent"),
+        "numeric_parameter_fidelity_percent": run.get("numeric_parameter_fidelity_percent"),
+        "automation_fidelity_percent": run.get("automation_fidelity_percent"),
         "hard_failures": run.get("hard_failures", []),
         "financial_scenarios_passed": scenarios.get("passed"),
         "financial_conservation_passed": scenarios.get("conservation_passed"),
@@ -140,6 +208,17 @@ def _markdown(report: dict[str, Any]) -> str:
                     "- Critical financial-term recall: "
                     f"**{controlled.get('critical_financial_term_recall_percent')}%**"
                 ),
+                f"- Source recall: **{controlled.get('source_recall_percent')}%**",
+                (
+                    "- Atomic requirement recall: "
+                    f"**{controlled.get('atomic_requirement_recall_percent')}%**"
+                ),
+                f"- Semantic fidelity: **{controlled.get('semantic_fidelity_percent')}%**",
+                (
+                    "- Numeric parameter fidelity: "
+                    f"**{controlled.get('numeric_parameter_fidelity_percent')}%**"
+                ),
+                f"- Automation fidelity: **{controlled.get('automation_fidelity_percent')}%**",
                 f"- Hard safety failures: **{len(controlled.get('hard_failures', []))}**",
                 f"- Financial scenarios: **{controlled.get('financial_scenario_count')}**",
                 f"- Financial scenarios passed: **{controlled.get('financial_scenarios_passed')}**",
@@ -152,6 +231,31 @@ def _markdown(report: dict[str, Any]) -> str:
         )
     else:
         lines.append("- NOT MEASURED")
+
+    live_controlled = report.get("live_controlled_qualification", {"available": False})
+    if live_controlled.get("available"):
+        lines.extend(["", "## Live controlled compiler qualification", ""])
+        lines.extend(
+            [
+                f"- Qualification passed: **{live_controlled.get('qualification_passed')}**",
+                (
+                    "- Critical financial-term recall: "
+                    f"**{live_controlled.get('critical_financial_term_recall_percent')}%**"
+                ),
+                (
+                    "- Atomic requirement recall: "
+                    f"**{live_controlled.get('atomic_requirement_recall_percent')}%**"
+                ),
+                f"- Semantic fidelity: **{live_controlled.get('semantic_fidelity_percent')}%**",
+                (
+                    "- Numeric parameter fidelity: "
+                    f"**{live_controlled.get('numeric_parameter_fidelity_percent')}%**"
+                ),
+                f"- Automation fidelity: **{live_controlled.get('automation_fidelity_percent')}%**",
+                f"- Hard failures: **{len(live_controlled.get('hard_failures', []))}**",
+                f"- Semantic stability: `{live_controlled.get('semantic_stability')}`",
+            ]
+        )
 
     lines.extend(["", "## Real executed-contract qualification", ""])
     if sec.get("available"):
@@ -206,15 +310,25 @@ def _write_report(mode: str, steps: list[dict[str, Any]]) -> dict[str, Any]:
     required_failures = [item for item in steps if item["required"] and item["status"] == "failed"]
     required_passes = [item for item in steps if item["required"] and item["status"] == "passed"]
     controlled = _controlled_summary(_load_json(CORE_QUALIFICATION))
-    sec = _sec_summary(_load_json(SEC_QUALIFICATION))
+    live_controlled = (
+        _controlled_summary(_load_json(LIVE_SYNTHETIC_QUALIFICATION))
+        if mode in {"live", "release"}
+        else {"available": False}
+    )
+    sec = (
+        _sec_summary(_load_json(SEC_QUALIFICATION))
+        if mode in {"live", "release"}
+        else {"available": False, "status": "not_measured"}
+    )
     report = {
-        "report_version": "evidue-proof-2",
+        "report_version": "evidue-proof-3",
         "generated_at": datetime.now(UTC).isoformat(),
         "mode": mode,
         "status": "passed" if not required_failures else "failed",
         "required_checks_passed": len(required_passes),
         "required_checks_failed": len(required_failures),
         "controlled_contract_to_dollar": controlled,
+        "live_controlled_qualification": live_controlled,
         "real_contract_structural_qualification": sec,
         "steps": steps,
         "limitations": [
@@ -241,9 +355,19 @@ def _core_steps(*, full: bool) -> list[dict[str, Any]]:
         )
     )
 
+    steps.append(
+        _run(
+            "Repository hygiene",
+            [python, "scripts/check-repo-hygiene.py"],
+        )
+    )
+
     proof_tests = [
         "backend/tests/test_document_ingestion.py",
         "backend/tests/test_source_span_grounding.py",
+        "backend/tests/test_atomic_requirements.py",
+        "backend/tests/test_native_semantic_repair.py",
+        "backend/tests/test_fail_closed_semantic_artifacts.py",
         "backend/tests/test_providers.py",
         "backend/tests/test_compiler_consensus.py",
         "backend/tests/test_financial_impact.py",
@@ -260,10 +384,13 @@ def _core_steps(*, full: bool) -> list[dict[str, Any]]:
     steps.append(
         _run(
             "Verification-kernel tests",
-            [python, "-m", "pytest", *proof_tests, "-q", "--tb=short"],
+            [python, "scripts/run-backend-tests.py", *proof_tests],
+            stream=True,
+            timeout_seconds=int(os.getenv("EVIDUE_VERIFICATION_SUITE_TIMEOUT_SECONDS", "600")),
         )
     )
 
+    CORE_QUALIFICATION.unlink(missing_ok=True)
     steps.append(
         _run(
             "Controlled contract-to-dollar qualification",
@@ -310,21 +437,64 @@ def _core_steps(*, full: bool) -> list[dict[str, Any]]:
     else:
         print("[WARNING] Ruff unavailable; static Ruff gate not measured in core mode")
 
+    if full and any(step["required"] and step["status"] == "failed" for step in steps):
+        print("[SKIPPED] Full-suite gates because a prerequisite check failed.", flush=True)
+        return steps
+
     if full:
-        steps.append(
-            _run(
-                "Complete backend tests",
-                [python, "-m", "pytest", "backend/tests", "-q", "--tb=short"],
-            )
+        backend_timeout = int(os.getenv("EVIDUE_BACKEND_SUITE_TIMEOUT_SECONDS", "900"))
+        backend_step = _run(
+            "Complete backend tests",
+            [python, "scripts/run-backend-tests.py"],
+            stream=True,
+            timeout_seconds=backend_timeout,
         )
+        steps.append(backend_step)
+        if backend_step["status"] == "failed":
+            print("[SKIPPED] Frontend gates because backend tests failed.", flush=True)
+            return steps
+
         if (ROOT / "frontend" / "node_modules").is_dir() and shutil.which("npm"):
             steps.extend(
                 [
-                    _run("Frontend lint", ["npm", "--prefix", "frontend", "run", "lint"]),
-                    _run("Frontend tests", ["npm", "--prefix", "frontend", "test", "--", "--run"]),
-                    _run("Frontend build", ["npm", "--prefix", "frontend", "run", "build"]),
+                    _run(
+                        "Frontend lint",
+                        ["npm", "--prefix", "frontend", "run", "lint"],
+                        stream=True,
+                    ),
+                    _run(
+                        "Frontend tests",
+                        ["npm", "--prefix", "frontend", "test"],
+                        stream=True,
+                    ),
+                    _run(
+                        "Frontend build",
+                        ["npm", "--prefix", "frontend", "run", "build"],
+                        stream=True,
+                    ),
                 ]
             )
+            if (ROOT / "node_modules").is_dir():
+                steps.append(
+                    _run(
+                        "Browser end-to-end tests",
+                        ["npm", "run", "e2e"],
+                        stream=True,
+                    )
+                )
+            else:
+                steps.append(
+                    {
+                        "label": "Browser end-to-end dependency gate",
+                        "status": "failed",
+                        "required": True,
+                        "returncode": 127,
+                        "command": ["npm", "ci"],
+                        "started_at": datetime.now(UTC).isoformat(),
+                        "duration_seconds": 0.0,
+                        "output_tail": "root node_modules is unavailable",
+                    }
+                )
         else:
             steps.append(
                 {
@@ -343,6 +513,8 @@ def _core_steps(*, full: bool) -> list[dict[str, Any]]:
 
 def _live_steps(provider: str, model: str | None) -> list[dict[str, Any]]:
     python = sys.executable
+    LIVE_SYNTHETIC_QUALIFICATION.unlink(missing_ok=True)
+    SEC_QUALIFICATION.unlink(missing_ok=True)
     common = ["--provider", provider]
     if model:
         common += ["--model", model]
@@ -390,16 +562,18 @@ def _live_steps(provider: str, model: str | None) -> list[dict[str, Any]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run Evidue's reproducible proof suite")
-    parser.add_argument("mode", choices=["core", "live", "full"], nargs="?", default="core")
+    parser.add_argument(
+        "mode", choices=["core", "full", "live", "release"], nargs="?", default="core"
+    )
     parser.add_argument("--provider", default=os.getenv("EVIDUE_LLM_PRIMARY", "gemini"))
     parser.add_argument("--model", default=None)
     args = parser.parse_args()
 
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     steps: list[dict[str, Any]] = []
-    if args.mode in {"core", "full"}:
-        steps.extend(_core_steps(full=args.mode == "full"))
-    if args.mode in {"live", "full"}:
+    if args.mode in {"core", "full", "release"}:
+        steps.extend(_core_steps(full=args.mode in {"full", "release"}))
+    if args.mode in {"live", "release"}:
         steps.extend(_live_steps(args.provider, args.model))
 
     report = _write_report(args.mode, steps)

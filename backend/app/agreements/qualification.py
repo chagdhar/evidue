@@ -46,6 +46,8 @@ class QualificationGoldTerm(BaseModel):
     source_document_id: str
     source_phrase: str = Field(min_length=3)
     expected_kind: ExpectedKind
+    expected_requirement_kind: str | None = None
+    expected_requirement_data_dependencies: list[str] = Field(default_factory=list)
     expected_norm_type: str | None = None
     expected_consequence: str | None = None
     expected_automation: str | None = None
@@ -400,39 +402,125 @@ def _numeric_literals(payload: Any) -> set[str]:
     return values
 
 
+def _normalized_text(value: str) -> str:
+    return " ".join(value.lower().split())
+
+
 def _source_matches(agreement: AgreementIR, term: QualificationGoldTerm) -> list[str]:
-    phrase = " ".join(term.source_phrase.lower().split())
+    phrase = _normalized_text(term.source_phrase)
     matches: list[str] = []
     for clause in agreement.clauses:
         if clause.document_id != term.source_document_id:
             continue
-        text = " ".join(clause.text.lower().split())
-        if phrase in text:
+        if phrase in _normalized_text(clause.text):
             matches.append(clause.id)
     return matches
 
 
-def _term_result(agreement: AgreementIR, term: QualificationGoldTerm) -> dict[str, Any]:
-    clause_ids = _source_matches(agreement, term)
-    norms = [
-        norm for norm in agreement.norms if set(norm.source_clause_ids).intersection(clause_ids)
+def _requirement_source_matches(agreement: AgreementIR, term: QualificationGoldTerm) -> list[Any]:
+    """Return atomic requirements grounded in the gold source phrase.
+
+    A clause can contain several independent financial requirements. Matching at the
+    requirement layer prevents one generic norm on that clause from receiving credit
+    for every requirement in the clause.
+    """
+
+    phrase = _normalized_text(term.source_phrase)
+    candidates = [
+        requirement
+        for requirement in agreement.requirements
+        if requirement.source_document_id == term.source_document_id
+        and (
+            phrase in _normalized_text(requirement.source_text)
+            or _normalized_text(requirement.source_text) in phrase
+        )
     ]
-    policies = [
-        policy
-        for policy in agreement.settlement_policies
-        if set(policy.source_clause_ids).intersection(clause_ids)
-    ]
+
+    expected_disposition = {
+        "norm": "norm",
+        "settlement": "settlement",
+        "manual_or_unsupported": None,
+        "source_only": None,
+    }[term.expected_kind]
+    if expected_disposition is not None:
+        disposition_matches = [
+            item for item in candidates if item.disposition == expected_disposition
+        ]
+        if disposition_matches:
+            candidates = disposition_matches
+
+    if term.expected_numeric_values:
+        numeric_matches = [
+            item
+            for item in candidates
+            if all(
+                _contains_numeric(item.model_dump(mode="json"), expected)
+                for expected in term.expected_numeric_values
+            )
+        ]
+        if numeric_matches:
+            candidates = numeric_matches
+
+    return candidates
+
+
+def _candidate_term_semantics(
+    agreement: AgreementIR,
+    term: QualificationGoldTerm,
+    *,
+    clause_ids: list[str],
+    requirement_id: str | None,
+) -> dict[str, Any]:
+    """Score one requirement/artifact candidate without cross-crediting sibling rules."""
+
+    if requirement_id is None:
+        norms = [
+            norm for norm in agreement.norms if set(norm.source_clause_ids).intersection(clause_ids)
+        ]
+        policies = [
+            policy
+            for policy in agreement.settlement_policies
+            if set(policy.source_clause_ids).intersection(clause_ids)
+        ]
+    else:
+        norms = [norm for norm in agreement.norms if requirement_id in norm.requirement_ids]
+        policies = [
+            policy
+            for policy in agreement.settlement_policies
+            if requirement_id in policy.requirement_ids
+        ]
+
+    norm_ids = {norm.id for norm in norms}
     proof_fact_types = {
         fact_type
         for proof in agreement.proof_requirements
-        if proof.norm_id in {norm.id for norm in norms}
+        if proof.norm_id in norm_ids
+        and (requirement_id is None or requirement_id in proof.requirement_ids)
         for fact_type in proof.acceptable_fact_types
     }
-
     issues: list[str] = []
-    found = bool(clause_ids)
-    if not found:
-        issues.append("source clause not represented")
+    requirement = (
+        next((item for item in agreement.requirements if item.id == requirement_id), None)
+        if requirement_id is not None
+        else None
+    )
+    if (
+        term.expected_requirement_kind
+        and requirement is not None
+        and requirement.kind != term.expected_requirement_kind
+    ):
+        issues.append(
+            f"atomic requirement kind mismatch (expected {term.expected_requirement_kind})"
+        )
+    if term.expected_requirement_data_dependencies and requirement is not None:
+        expected_dependencies = set(term.expected_requirement_data_dependencies)
+        actual_dependencies = set(requirement.data_dependencies)
+        if actual_dependencies != expected_dependencies:
+            issues.append(
+                "atomic requirement data dependency mismatch: expected "
+                f"{sorted(expected_dependencies)}, got {sorted(actual_dependencies)}"
+            )
+
     if term.expected_kind == "norm" and not norms:
         issues.append("expected contract rule missing")
     if term.expected_kind == "settlement" and not policies:
@@ -511,23 +599,114 @@ def _term_result(agreement: AgreementIR, term: QualificationGoldTerm) -> dict[st
     if missing_diagnostics:
         issues.append("missing expected diagnostic(s): " + ", ".join(missing_diagnostics))
 
+    expected_artifact_present = not (
+        (term.expected_kind == "norm" and not norms)
+        or (term.expected_kind == "settlement" and not policies)
+    )
+    return {
+        "requirement_id": requirement_id,
+        "norms": norms,
+        "policies": policies,
+        "issues": issues,
+        "numeric_mismatches": numeric_mismatches,
+        "forbidden_numeric": forbidden_numeric,
+        "numeric_literals": numeric_literals,
+        "missing_diagnostics": missing_diagnostics,
+        "expected_artifact_present": expected_artifact_present,
+    }
+
+
+def _term_result(agreement: AgreementIR, term: QualificationGoldTerm) -> dict[str, Any]:
+    clause_ids = _source_matches(agreement, term)
+    source_covered = bool(clause_ids)
+    ledger_present = bool(agreement.requirements)
+    requirement_matches = _requirement_source_matches(agreement, term) if ledger_present else []
+    atomic_requirement_covered = bool(requirement_matches) if ledger_present else source_covered
+
+    candidate_results: list[dict[str, Any]] = []
+    if ledger_present:
+        candidate_results = [
+            _candidate_term_semantics(
+                agreement,
+                term,
+                clause_ids=clause_ids,
+                requirement_id=requirement.id,
+            )
+            for requirement in requirement_matches
+        ]
+    else:
+        candidate_results = [
+            _candidate_term_semantics(
+                agreement,
+                term,
+                clause_ids=clause_ids,
+                requirement_id=None,
+            )
+        ]
+
+    passing_candidates = [
+        item
+        for item in candidate_results
+        if item["expected_artifact_present"] and not item["issues"]
+    ]
+    if passing_candidates:
+        selected = min(
+            passing_candidates,
+            key=lambda item: item["requirement_id"] or "",
+        )
+    elif candidate_results:
+        selected = min(
+            candidate_results,
+            key=lambda item: (len(item["issues"]), item["requirement_id"] or ""),
+        )
+    else:
+        selected = {
+            "requirement_id": None,
+            "norms": [],
+            "policies": [],
+            "issues": [],
+            "numeric_mismatches": list(term.expected_numeric_values),
+            "forbidden_numeric": [],
+            "numeric_literals": set(),
+            "missing_diagnostics": list(term.expected_diagnostic_codes),
+            "expected_artifact_present": term.expected_kind not in {"norm", "settlement"},
+        }
+
+    issues = list(selected["issues"])
+    if not source_covered:
+        issues.insert(0, "source clause not represented")
+    if ledger_present and not atomic_requirement_covered:
+        issues.insert(0, "atomic requirement missing")
+
+    semantic_match = (
+        source_covered
+        and atomic_requirement_covered
+        and selected["expected_artifact_present"]
+        and not issues
+    )
+    selected_requirement_id = selected["requirement_id"]
+    selected_requirement_ids = [selected_requirement_id] if selected_requirement_id else []
+
     return {
         "id": term.id,
         "description": term.description,
         "materiality": term.materiality,
         "source_document_id": term.source_document_id,
         "source_clause_ids": clause_ids,
-        "norm_ids": [item.id for item in norms],
-        "settlement_policy_ids": [item.id for item in policies],
-        "found": found
-        and not (
-            (term.expected_kind == "norm" and not norms)
-            or (term.expected_kind == "settlement" and not policies)
-        ),
-        "numeric_mismatches": numeric_mismatches,
-        "forbidden_numeric_values_found": forbidden_numeric,
-        "numeric_literals": sorted(numeric_literals),
-        "missing_diagnostics": missing_diagnostics,
+        "requirement_ids": selected_requirement_ids,
+        "candidate_requirement_ids": sorted(item.id for item in requirement_matches),
+        "norm_ids": [item.id for item in selected["norms"]],
+        "settlement_policy_ids": [item.id for item in selected["policies"]],
+        "source_covered": source_covered,
+        "atomic_requirement_covered": atomic_requirement_covered,
+        "semantic_match": semantic_match,
+        # Compatibility alias. Unlike qualification v2, found means complete
+        # semantic fidelity for one atomic requirement, never aggregate clause overlap.
+        "found": semantic_match,
+        "numeric_mismatches": selected["numeric_mismatches"],
+        "forbidden_numeric_values_found": selected["forbidden_numeric"],
+        "numeric_literals": sorted(selected["numeric_literals"]),
+        "missing_diagnostics": selected["missing_diagnostics"],
         "issues": issues,
     }
 
@@ -576,7 +755,15 @@ def score_agreement(agreement: AgreementIR, gold: QualificationGold | None) -> d
 
     terms = [_term_result(agreement, term) for term in gold.terms]
     critical = [item for item in terms if item["materiality"] in {"critical", "critical_financial"}]
-    critical_found = [item for item in critical if item["found"] and not item["issues"]]
+    critical_found = [item for item in critical if item["semantic_match"]]
+    source_covered = [item for item in critical if item["source_covered"]]
+    requirement_covered = [item for item in critical if item["atomic_requirement_covered"]]
+    numeric_faithful = [item for item in critical if not item["numeric_mismatches"]]
+    automation_faithful = [
+        item
+        for item in critical
+        if not any("automation mismatch" in issue for issue in item["issues"])
+    ]
     numeric_mismatches = [
         {"id": item["id"], "values": item["numeric_mismatches"]}
         for item in terms
@@ -606,21 +793,12 @@ def score_agreement(agreement: AgreementIR, gold: QualificationGold | None) -> d
         )
 
     critical_recall = 100.0 if not critical else len(critical_found) / len(critical) * 100
+    source_recall = 100.0 if not critical else len(source_covered) / len(critical) * 100
+    requirement_recall = 100.0 if not critical else len(requirement_covered) / len(critical) * 100
+    numeric_fidelity = 100.0 if not critical else len(numeric_faithful) / len(critical) * 100
+    automation_fidelity = 100.0 if not critical else len(automation_faithful) / len(critical) * 100
     dangerous_term_failures = [
-        {"id": item["id"], "issues": item["issues"]}
-        for item in terms
-        if item["materiality"] in {"critical", "critical_financial"}
-        and any(
-            marker in issue
-            for issue in item["issues"]
-            for marker in (
-                "numeric parameter mismatch",
-                "forbidden numeric interpretation",
-                "redacted/unknown parameter",
-                "silently made automatic",
-                "remain non-executable",
-            )
-        )
+        {"id": item["id"], "issues": item["issues"]} for item in critical if item["issues"]
     ]
     hard_failures: list[dict[str, Any]] = []
     if unsupported_executable:
@@ -663,6 +841,11 @@ def score_agreement(agreement: AgreementIR, gold: QualificationGold | None) -> d
             "critical_term_count": len(critical),
             "critical_term_pass_count": len(critical_found),
             "critical_financial_term_recall_percent": round(critical_recall, 1),
+            "source_recall_percent": round(source_recall, 1),
+            "atomic_requirement_recall_percent": round(requirement_recall, 1),
+            "semantic_fidelity_percent": round(critical_recall, 1),
+            "numeric_parameter_fidelity_percent": round(numeric_fidelity, 1),
+            "automation_fidelity_percent": round(automation_fidelity, 1),
             "unsupported_executable_financial_rules": unsupported_executable,
             "critical_numeric_parameter_mismatches": numeric_mismatches,
             "silent_subjective_automation": silent_automation,

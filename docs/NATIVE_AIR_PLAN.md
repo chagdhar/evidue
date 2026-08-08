@@ -84,7 +84,7 @@ class ProofRequirementProposal(BaseModel):
     description: str
     fact_types: list[str]               # what evidence proves/disproves this
     preferred_authority: str
-    missing_evidence_result: Literal["unknown", "needs_review"]
+    missing_evidence_result: Literal["unknown"]
 
 class NormProposal(BaseModel):
     id: str

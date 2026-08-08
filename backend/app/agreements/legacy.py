@@ -376,7 +376,17 @@ def conformance_report(agreement: AgreementIR) -> ConformanceReport:
         for item in agreement.coverage
     )
     unrepresented = len(material) - len(covered)
-    approvable = blocking == 0 and unsupported_material == 0 and unrepresented == 0
+    unmapped_material_requirements = sum(
+        item.materiality in {"financial", "operational"}
+        and item.binding_status not in {"mapped", "manual_review"}
+        for item in agreement.requirements
+    )
+    approvable = (
+        blocking == 0
+        and unsupported_material == 0
+        and unrepresented == 0
+        and unmapped_material_requirements == 0
+    )
     percent = 100.0 if not material else round(len(covered) / len(material) * 100, 2)
     return ConformanceReport(
         agreement_id=agreement.agreement_id,
@@ -398,6 +408,11 @@ def conformance_report(agreement: AgreementIR) -> ConformanceReport:
         ),
         proof_requirement_count=len(agreement.proof_requirements),
         settlement_policy_count=len(agreement.settlement_policies),
+        atomic_requirement_count=len(agreement.requirements),
+        mapped_atomic_requirement_count=sum(
+            item.binding_status == "mapped" for item in agreement.requirements
+        ),
+        unmapped_material_requirement_count=unmapped_material_requirements,
         blocking_diagnostic_count=blocking,
         approvable=approvable,
         coverage_percent=percent,
