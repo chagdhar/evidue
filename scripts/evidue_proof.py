@@ -386,7 +386,9 @@ def _core_steps(*, full: bool) -> list[dict[str, Any]]:
             "Verification-kernel tests",
             [python, "scripts/run-backend-tests.py", *proof_tests],
             stream=True,
-            timeout_seconds=int(os.getenv("EVIDUE_VERIFICATION_SUITE_TIMEOUT_SECONDS", "600")),
+            timeout_seconds=int(
+                os.getenv("EVIDUE_VERIFICATION_SUITE_TIMEOUT_SECONDS", "600")
+            ),
         )
     )
 
