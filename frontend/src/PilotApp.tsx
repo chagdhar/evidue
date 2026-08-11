@@ -29,7 +29,7 @@ import {
   Toolbar,
   Typography,
 } from "@mui/material";
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useEvidueThemeMode } from "./templateTheme";
 import {
@@ -57,7 +57,42 @@ import {
   WorkspaceConfig,
 } from "./pilotApi";
 
-type PilotStage = "agreement" | "invoice" | "evidence" | "decision" | "export";
+export type PilotStage = "agreement" | "invoice" | "evidence" | "decision" | "export";
+
+export function isPilotEvidenceReady(
+  hasActiveInvoice: boolean,
+  evidenceRequirementCount: number,
+  verificationPlan: VerificationPlanEnvelope | null,
+) {
+  if (!hasActiveInvoice || !verificationPlan) return false;
+  if (evidenceRequirementCount === 0) return true;
+  const items = verificationPlan.plan.items;
+  return items.length > 0 && items.every((item) => item.status === "ready");
+}
+
+export function recommendedPilotStage(input: {
+  hasContract: boolean;
+  contractApproved: boolean;
+  approvedRulesStale: boolean;
+  hasInvoice: boolean;
+  evidenceReady: boolean;
+  hasReconciliation: boolean;
+  reconciliationNeedsReview: boolean;
+}): PilotStage {
+  if (!input.hasContract || !input.contractApproved || input.approvedRulesStale) return "agreement";
+  if (!input.hasInvoice) return "invoice";
+  if (!input.evidenceReady) return "evidence";
+  if (!input.hasReconciliation || input.reconciliationNeedsReview) return "decision";
+  return "export";
+}
+
+export function shouldFollowPilotRecommendation(
+  previousRecommendation: PilotStage | null,
+  nextRecommendation: PilotStage,
+  stageTouched: boolean,
+) {
+  return previousRecommendation !== nextRecommendation || !stageTouched;
+}
 
 const pilotStages: Array<{ id: PilotStage; label: string; hint: string }> = [
   { id: "agreement", label: "Agreement & rules", hint: "Define the payment policy" },
@@ -434,6 +469,7 @@ export default function PilotApp() {
   const [advanced, setAdvanced] = useState(false);
   const [activeStage, setActiveStage] = useState<PilotStage>("agreement");
   const [stageTouched, setStageTouched] = useState(false);
+  const previousRecommendedStage = useRef<PilotStage | null>(null);
 
   const refresh = useCallback(async () => {
     if (!loadPilotToken()) return;
@@ -534,32 +570,48 @@ export default function PilotApp() {
   const evidenceRequirementCount = airVersion?.finance_view?.evidence_needed?.length
     ?? airVersion?.agreement_ir?.proof_requirements?.length
     ?? 0;
-  const verificationItems = verificationPlan?.plan.items ?? [];
-  const evidenceReady = Boolean(
-    status?.active_invoice_id
-      && (evidenceRequirementCount === 0
-        || (verificationItems.length > 0 && verificationItems.every((item) => item.status === "ready"))),
+  const evidenceReady = isPilotEvidenceReady(
+    Boolean(status?.active_invoice_id),
+    evidenceRequirementCount,
+    verificationPlan,
+  );
+  const reconciliationNeedsReview = Boolean(
+    reconciliation?.determinations?.some((item) => item.status === "needs_review"),
   );
   const stageCompletion: Record<PilotStage, boolean> = {
     agreement: Boolean(contract && status?.contract_approved && !status?.approved_rules_stale),
     invoice: Boolean(status?.active_invoice_id),
     evidence: evidenceReady,
     decision: Boolean(reconciliation),
-    export: false,
+    export: Boolean(reconciliation),
   };
   const completedStages = (["agreement", "invoice", "evidence", "decision"] as PilotStage[]).filter((stage) => stageCompletion[stage]).length;
   const readinessPercent = Math.round((completedStages / 4) * 100);
 
   const recommendedStage = useMemo<PilotStage>(() => {
-    if (!contract || !status?.contract_approved || status?.approved_rules_stale) return "agreement";
-    if (!status.active_invoice_id) return "invoice";
-    if (!evidenceReady) return "evidence";
-    if (!reconciliation) return "decision";
-    return "decision";
-  }, [contract, evidenceReady, reconciliation, status]);
+    return recommendedPilotStage({
+      hasContract: Boolean(contract),
+      contractApproved: Boolean(status?.contract_approved),
+      approvedRulesStale: Boolean(status?.approved_rules_stale),
+      hasInvoice: Boolean(status?.active_invoice_id),
+      evidenceReady,
+      hasReconciliation: Boolean(reconciliation),
+      reconciliationNeedsReview,
+    });
+  }, [contract, evidenceReady, reconciliation, reconciliationNeedsReview, status]);
 
   useEffect(() => {
-    if (!stageTouched) setActiveStage(recommendedStage);
+    const recommendationChanged = previousRecommendedStage.current !== recommendedStage;
+    const shouldFollow = shouldFollowPilotRecommendation(
+      previousRecommendedStage.current,
+      recommendedStage,
+      stageTouched,
+    );
+    previousRecommendedStage.current = recommendedStage;
+    if (recommendationChanged) {
+      setStageTouched(false);
+    }
+    if (shouldFollow) setActiveStage(recommendedStage);
   }, [recommendedStage, stageTouched]);
 
   function goToStage(stage: PilotStage) {
@@ -830,7 +882,7 @@ export default function PilotApp() {
             )}
 
             {activeStage === "invoice" && (
-              <InvoiceWorkspace contract={contract} status={status} config={config} act={act} refresh={refresh} />
+              <InvoiceWorkspace contract={contract} airVersion={airVersion} status={status} config={config} act={act} refresh={refresh} />
             )}
 
             {activeStage === "evidence" && (
@@ -1116,7 +1168,12 @@ function NextAction({
   } else if (status?.active_invoice_id) {
     const planItems = verificationPlan?.plan.items ?? [];
     const missing = planItems.filter((item) => item.status !== "ready").length;
-    if ((planItems.length > 0 && missing > 0) || (planItems.length > 0 && !status.events)) {
+    if (!verificationPlan) {
+      title = "Verify the evidence plan before deciding money";
+      body = "Evidue has not loaded the approved rule-to-evidence plan yet, so it will not treat the evidence stage as complete.";
+      cta = "Review evidence readiness";
+      stage = "evidence";
+    } else if ((planItems.length > 0 && missing > 0) || (planItems.length > 0 && !status.events)) {
       title = "Close the evidence gaps before deciding money";
       body = `${missing || planItems.length} contract evidence requirement(s) are not ready. Affected claims stay in Needs review instead of being silently paid or deducted.`;
       cta = "Add required evidence";
@@ -1821,7 +1878,7 @@ function RuleReview({ agreement, financeView }: { agreement?: AgreementIRView; f
   );
 }
 
-function InvoiceWorkspace({ contract, status, config, act, refresh }: { contract: PilotContract | null; status: PilotStatus | null; config: WorkspaceConfig | null; act: (label: string, action: () => Promise<void>, success?: string) => Promise<void>; refresh: () => Promise<void> }) {
+function InvoiceWorkspace({ contract, airVersion, status, config, act, refresh }: { contract: PilotContract | null; airVersion: AIRVersion | null; status: PilotStatus | null; config: WorkspaceConfig | null; act: (label: string, action: () => Promise<void>, success?: string) => Promise<void>; refresh: () => Promise<void> }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<InvoicePreview | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
@@ -1859,7 +1916,11 @@ function InvoiceWorkspace({ contract, status, config, act, refresh }: { contract
     if (!contract || !file) throw new Error("Choose an invoice CSV first.");
     if (!mappingComplete) throw new Error("Map each required invoice field before importing.");
     if (!preview?.control_totals || !totalsReviewed) throw new Error("Review the invoice control totals and confirm they match the invoice you received before import.");
-    await pilotApi.uploadInvoice({ file, contractId: contract.id, invoiceId, periodStart: contract.period_start, periodEnd: contract.period_end, columnMapping: mapping });
+    const result = await pilotApi.uploadInvoice({ file, contractId: contract.id, invoiceId, periodStart: contract.period_start, periodEnd: contract.period_end, columnMapping: mapping });
+    const importedInvoiceId = result.invoice_id ?? invoiceId;
+    if (airVersion?.id) {
+      await pilotApi.autoVerificationPlan(airVersion.id, importedInvoiceId);
+    }
     await refresh();
   }
 
@@ -1909,6 +1970,15 @@ function InvoiceWorkspace({ contract, status, config, act, refresh }: { contract
                     <FormControlLabel sx={{ mt: 1 }} control={<Checkbox checked={totalsReviewed} onChange={(e) => setTotalsReviewed(e.target.checked)} />} label="These control totals match the invoice I received." />
                   </Paper>
                 )}
+                {(!mappingComplete || !totals || !totalsReviewed) && (
+                  <Alert severity="info">
+                    {!mappingComplete
+                      ? "Import is waiting for all required invoice columns to be mapped."
+                      : !totals
+                        ? "Import is waiting for invoice control totals to be calculated."
+                        : "Import is waiting for you to confirm that the control totals match the vendor invoice."}
+                  </Alert>
+                )}
                 <Button variant="contained" disabled={!mappingComplete || !totals || !totalsReviewed} sx={{ alignSelf: "flex-start" }} onClick={() => void act("Importing the verified invoice file", upload, "Invoice imported and normalized.")}>Import invoice</Button>
               </>
             )}
@@ -1941,17 +2011,29 @@ function EvidenceWorkspace({ status, airVersion, verificationPlan, config, act, 
     await refresh();
   }
 
+  async function rebuildVerificationPlan() {
+    if (!status?.active_invoice_id) throw new Error("Import an invoice before building the verification plan.");
+    if (!airVersion?.id) throw new Error("Approve a contract rule version before building the verification plan.");
+    await pilotApi.autoVerificationPlan(airVersion.id, status.active_invoice_id);
+    await refresh();
+  }
+
   const planItems = verificationPlan?.plan.items ?? [];
   const ready = planItems.filter((item) => item.status === "ready").length;
   const requirements = airVersion?.finance_view?.evidence_needed ?? [];
   const externalRequirements = requirements.length || airVersion?.agreement_ir?.proof_requirements?.length || 0;
-  const evidenceComplete = Boolean(status?.active_invoice_id && (externalRequirements === 0 || (planItems.length > 0 && ready === planItems.length)));
+  const evidenceComplete = isPilotEvidenceReady(Boolean(status?.active_invoice_id), externalRequirements, verificationPlan);
   const planById = new Map(planItems.map((item) => [item.proof_requirement_id, item]));
 
   return (
     <Box id="evidence">
       <Surface title="Evidence needed by the contract" eyebrow="03 · Evidence" complete={evidenceComplete}>
-        {!status?.active_invoice_id ? <Alert severity="info">Import an invoice first.</Alert> : externalRequirements === 0 ? (
+        {!status?.active_invoice_id ? <Alert severity="info">Import an invoice first.</Alert> : !verificationPlan ? (
+          <Stack spacing={1.5}>
+            <Alert severity="info">The approved verification plan has not loaded yet. Evidue will not treat evidence as complete until the plan exists.</Alert>
+            <Button variant="outlined" sx={{ alignSelf: "flex-start" }} onClick={() => void act("Building the evidence verification plan", rebuildVerificationPlan, "Verification plan rebuilt from the approved contract and current evidence sources.")}>Build verification plan</Button>
+          </Stack>
+        ) : externalRequirements === 0 ? (
           <Alert severity="success">These approved contract rules do not require external customer-system evidence. Continue to reconciliation.</Alert>
         ) : (
           <Stack spacing={2.5}>
@@ -2061,12 +2143,23 @@ function DecisionWorkspace({
   const [rationale, setRationale] = useState("Confirmed from source identifiers");
 
   async function loadIdentityReview() {
-    if (!status?.active_invoice_id) return;
-    setReviewItems((await pilotApi.unmatched(status.active_invoice_id)).items);
+    if (!status?.active_invoice_id) throw new Error("Import an invoice before reviewing evidence identity matches.");
+    const result = await pilotApi.unmatched(status.active_invoice_id);
+    setReviewItems(result.items);
+    if (!result.items.length && (status.suggested_matches ?? 0) + status.unresolved_events > 0) {
+      await refresh();
+    }
   }
   async function choose(item: ReviewItem) {
-    if (!status?.active_invoice_id || !item.event_id) return;
+    if (!status?.active_invoice_id) throw new Error("Import an invoice before matching evidence.");
+    if (!item.event_id) throw new Error("This evidence item has no event identifier and cannot be matched manually.");
     const next = (await pilotApi.candidates(status.active_invoice_id, item.event_id)).candidates;
+    if (!next.length) {
+      setSelected(null);
+      setCandidates([]);
+      setClaimId("");
+      throw new Error("No invoice-line candidates were found for this evidence record. Check the source identifiers or remove the unusable evidence record.");
+    }
     setSelected(item); setCandidates(next); setClaimId(next[0]?.claim_id ?? "");
   }
   async function confirm() {
@@ -2100,8 +2193,13 @@ function DecisionWorkspace({
                 <Alert severity="warning">{(status.suggested_matches ?? 0) + status.unresolved_events} evidence record(s) need identity review. Suggestions never affect money until you confirm them.</Alert>
                 <Button variant="outlined" sx={{ alignSelf: "flex-start" }} onClick={() => void act("Loading evidence that needs identity review", loadIdentityReview)}>Review unmatched evidence</Button>
                 {reviewItems.map((item) => <Paper key={String(item.event_id)} variant="outlined" sx={{ p: 2 }}><Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}><Box sx={{ flex: 1 }}><Typography fontWeight={700}>{String(item.event_type ?? "Evidence")}</Typography><Typography variant="body2" color="text.secondary">{String(item.match_reason ?? "No authoritative identity match")}</Typography></Box><Button onClick={() => void act("Finding possible invoice-line matches", () => choose(item))}>Match manually</Button></Stack></Paper>)}
-                {selected && <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={2}><Typography fontWeight={750}>Confirm evidence → invoice line</Typography><TextField select label="Invoice line" value={claimId} onChange={(e) => setClaimId(e.target.value)}>{candidates.map((candidate) => <MenuItem key={candidate.claim_id} value={candidate.claim_id}>{String(candidate.outcome_id ?? candidate.claim_id)} · {String(candidate.reason ?? "candidate")}</MenuItem>)}</TextField><TextField label="Why this match is correct" value={rationale} onChange={(e) => setRationale(e.target.value)} /><Button variant="contained" onClick={() => void act("Recording the confirmed evidence match", confirm, "Manual identity decision recorded in the audit trail.")}>Confirm match</Button></Stack></Paper>}
+                {selected && <Paper variant="outlined" sx={{ p: 2 }}><Stack spacing={2}><Typography fontWeight={750}>Confirm evidence → invoice line</Typography><TextField select label="Invoice line" value={claimId} onChange={(e) => setClaimId(e.target.value)}>{candidates.map((candidate) => <MenuItem key={candidate.claim_id} value={candidate.claim_id}>{String(candidate.outcome_id ?? candidate.claim_id)} · {String(candidate.reason ?? "candidate")}</MenuItem>)}</TextField><TextField label="Why this match is correct" value={rationale} onChange={(e) => setRationale(e.target.value)} /><Button variant="contained" disabled={!claimId || rationale.trim().length < 3} onClick={() => void act("Recording the confirmed evidence match", confirm, "Manual identity decision recorded in the audit trail.")}>Confirm match</Button></Stack></Paper>}
               </>
+            )}
+            {!reconciliation && ((status.suggested_matches ?? 0) + status.unresolved_events > 0) && (
+              <Alert severity="info">
+                Run reconciliation is blocked until the {(status.suggested_matches ?? 0) + status.unresolved_events} unmatched evidence record(s) above are resolved or removed.
+              </Alert>
             )}
             {!reconciliation && <Button variant="contained" size="large" sx={{ alignSelf: "flex-start" }} disabled={(status.suggested_matches ?? 0) + status.unresolved_events > 0} onClick={() => void act("Matching claims to the approved rules and evidence", reconcile, "Reconciliation completed from the approved contract version.")}>Run reconciliation</Button>}
             {reconciliation && (

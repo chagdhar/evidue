@@ -246,6 +246,19 @@ export default function FinanceWorkspace() {
     }
   }
 
+  async function downloadDispute(item: ProductDisputeCase) {
+    setBusy(`Preparing ${item.case_number} PDF`);
+    setError("");
+    try {
+      await pilotApi.downloadProductDispute(item.id);
+      setNotice(`${item.case_number} PDF package downloaded.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not export dispute package");
+    } finally {
+      setBusy("");
+    }
+  }
+
   if (!overview && busy) {
     return <Box sx={{ minHeight: "100vh", display: "grid", placeItems: "center" }}><CircularProgress /></Box>;
   }
@@ -298,6 +311,7 @@ export default function FinanceWorkspace() {
               <Card><CardContent>
                 <Typography variant="h6" fontWeight={750}>Operating queue</Typography>
                 <Typography color="text.secondary" sx={{ mb: 2 }}>Each invoice advances from deterministic reconciliation to exception review, approval, and dispute.</Typography>
+                {!overview.invoices.length && <Alert severity="info" sx={{ mb: 2 }}>No invoices are available yet. Import and reconcile an invoice in Ingestion & verification to create the first finance work item.</Alert>}
                 <TableContainer><Table size="small"><TableHead><TableRow><TableCell>Vendor</TableCell><TableCell>Period</TableCell><TableCell>Invoice</TableCell><TableCell align="right">Submitted</TableCell><TableCell align="right">Payable</TableCell><TableCell align="right">Review</TableCell><TableCell>Status</TableCell><TableCell /></TableRow></TableHead><TableBody>
                   {overview.invoices.map((invoice) => <TableRow key={invoice.invoice_id}><TableCell>{invoice.vendor}</TableCell><TableCell>{date(invoice.billing_period_start)} – {date(invoice.billing_period_end)}</TableCell><TableCell><Typography component="code" variant="caption">{invoice.invoice_id}</Typography></TableCell><TableCell align="right">{invoice.submitted_amount ? money(invoice.submitted_amount, currency) : "—"}</TableCell><TableCell align="right">{invoice.recommended_payable_amount ? money(invoice.recommended_payable_amount, currency) : "—"}</TableCell><TableCell align="right">{invoice.open_review_amount ? money(invoice.open_review_amount, currency) : "—"}</TableCell><TableCell><Chip size="small" label={invoice.statement_status.replaceAll("_", " ")} color={statusColor(invoice.statement_status)} /></TableCell><TableCell>{invoice.latest_run_id && <Button size="small" onClick={() => void openSettlement(invoice)}>Open</Button>}</TableCell></TableRow>)}
                 </TableBody></Table></TableContainer>
@@ -309,6 +323,7 @@ export default function FinanceWorkspace() {
             <Card><CardContent>
               <Typography variant="h5" fontWeight={750}>Vendor engagements</Typography>
               <Typography color="text.secondary" sx={{ mb: 2 }}>Recurring commercial relationships, not a single active invoice.</Typography>
+              {!overview.vendors.length && <Alert severity="info" sx={{ mb: 2 }}>No vendor engagements exist yet. Add an agreement in Ingestion & verification to create one automatically.</Alert>}
               <TableContainer><Table><TableHead><TableRow><TableCell>Vendor</TableCell><TableCell>Contracts</TableCell><TableCell>Invoices</TableCell><TableCell align="right">Submitted</TableCell><TableCell align="right">Machine payable</TableCell><TableCell align="right">Disputed</TableCell><TableCell>Open reviews</TableCell></TableRow></TableHead><TableBody>
                 {overview.vendors.map((vendor) => <TableRow key={vendor.id}><TableCell><Typography fontWeight={700}>{vendor.name}</Typography><Chip size="small" label={vendor.status} color="success" variant="outlined" /></TableCell><TableCell>{vendor.contracts}</TableCell><TableCell>{vendor.invoices}</TableCell><TableCell align="right">{money(vendor.submitted_amount, currency)}</TableCell><TableCell align="right">{money(vendor.machine_payable_amount, currency)}</TableCell><TableCell align="right">{money(vendor.machine_disputed_amount, currency)}</TableCell><TableCell>{vendor.open_review_cases}</TableCell></TableRow>)}
               </TableBody></Table></TableContainer>
@@ -321,6 +336,7 @@ export default function FinanceWorkspace() {
                 <Box><Typography variant="h5" fontWeight={750}>Exception review queue</Typography><Typography color="text.secondary">Human judgment is recorded separately from the deterministic result.</Typography></Box>
                 <Chip label={`${openReviews.length} unresolved`} color={openReviews.length ? "warning" : "success"} />
               </Stack>
+              {!reviews.length && <Alert severity="success" sx={{ mb: 2 }}>There are no finance review cases in this workspace.</Alert>}
               <TableContainer><Table><TableHead><TableRow><TableCell>Outcome</TableCell><TableCell>Reason</TableCell><TableCell>Priority</TableCell><TableCell align="right">Exposure</TableCell><TableCell>Status</TableCell><TableCell>Decision</TableCell></TableRow></TableHead><TableBody>
                 {reviews.map((item) => <TableRow key={item.id}><TableCell><Typography component="code" variant="caption">{item.outcome_id}</Typography></TableCell><TableCell><Typography fontWeight={650}>{item.reason_code}</Typography><Typography variant="body2" color="text.secondary">{item.reason}</Typography></TableCell><TableCell><Chip size="small" label={item.priority} color={item.priority === "critical" || item.priority === "high" ? "error" : "default"} /></TableCell><TableCell align="right">{money(item.exposure_amount, currency)}</TableCell><TableCell><Chip size="small" label={item.status.replaceAll("_", " ")} color={statusColor(item.status)} /></TableCell><TableCell>{item.status === "open" || item.status === "escalated" ? <Stack direction="row" spacing={0.5}><Button size="small" color="success" onClick={() => setReviewDialog({ item, decision: "payable" })}>Pay</Button><Button size="small" color="error" onClick={() => setReviewDialog({ item, decision: "disputed" })}>Dispute</Button><Button size="small" onClick={() => setReviewDialog({ item, decision: "escalated" })}>Escalate</Button></Stack> : <Typography variant="caption">{item.latest_decision?.decision ?? "Resolved"}</Typography>}</TableCell></TableRow>)}
               </TableBody></Table></TableContainer>
@@ -371,7 +387,7 @@ export default function FinanceWorkspace() {
                 <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "2fr 1fr auto" }, gap: 1.25, alignItems: "start" }}>
                   <TextField label="Vendor response / case note" value={vendorResponse[item.id] ?? item.vendor_response} onChange={(event) => setVendorResponse((current) => ({ ...current, [item.id]: event.target.value }))} multiline minRows={2} />
                   <FormControl fullWidth><InputLabel>Next status</InputLabel><Select label="Next status" value={disputeStatus[item.id] ?? ""} onChange={(event) => setDisputeStatus((current) => ({ ...current, [item.id]: event.target.value as ProductDisputeStatus }))}>{["ready", "sent", "vendor_responded", "under_review", "accepted", "partially_accepted", "rejected", "closed"].map((status) => <MenuItem key={status} value={status}>{status.replaceAll("_", " ")}</MenuItem>)}</Select></FormControl>
-                  <Stack spacing={0.75}><Button variant="contained" disabled={!disputeStatus[item.id] || Boolean(busy)} onClick={() => void transitionDispute(item)}>Update case</Button><Button variant="outlined" onClick={() => void pilotApi.downloadProductDispute(item.id)}>Export PDF package</Button></Stack>
+                  <Stack spacing={0.75}><Button variant="contained" disabled={!disputeStatus[item.id] || Boolean(busy)} onClick={() => void transitionDispute(item)}>Update case</Button><Button variant="outlined" disabled={Boolean(busy)} onClick={() => void downloadDispute(item)}>Export PDF package</Button></Stack>
                 </Box>
                 {item.vendor_response && <Alert severity="info" sx={{ mt: 1.5 }}>Vendor response recorded {date(item.vendor_response_at)}: {item.vendor_response}</Alert>}
                 <TableContainer sx={{ mt: 2 }}><Table size="small"><TableHead><TableRow><TableCell>Outcome</TableCell><TableCell>Reason</TableCell><TableCell>Source</TableCell><TableCell align="right">Amount</TableCell></TableRow></TableHead><TableBody>{item.items.slice(0, 25).map((line) => <TableRow key={line.id}><TableCell>{line.outcome_id}</TableCell><TableCell>{line.reason_code}<Typography variant="caption" display="block" color="text.secondary">{line.reason}</Typography></TableCell><TableCell>{line.source}</TableCell><TableCell align="right">{money(line.amount, currency)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>

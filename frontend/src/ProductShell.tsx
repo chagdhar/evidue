@@ -218,7 +218,7 @@ export function OverviewPage() {
             <Button variant="outlined" onClick={() => navigate("/demo/data-sources?source=payment_processor&inspect=1")}>Inspect example evidence</Button>
             <Button
               variant="contained"
-              disabled={running}
+              disabled={running || (!summary && status.public_demo)}
               onClick={summary ? () => navigate("/demo/invoices/current") : runReconciliation}
             >
               {running ? "Reconciling…" : summary ? "Open full decision" : status.public_demo ? "Decision unavailable" : "Run June reconciliation"}
@@ -226,6 +226,11 @@ export function OverviewPage() {
           </Stack>
         }
       />
+      {!summary && status.public_demo && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          This public preview is read-only. Open a private pilot workspace to run a new reconciliation; the public demo only exposes recorded deterministic results.
+        </Alert>
+      )}
       {actionError && <Alert severity="error" sx={{ mb: 2 }}>{actionError}</Alert>}
 
       <Card className="overview-command-card">
