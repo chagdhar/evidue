@@ -1,1 +1,0 @@
-"""Contact-submission delivery adapters."""
