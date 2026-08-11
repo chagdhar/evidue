@@ -1,7 +1,9 @@
 import csv
+import hashlib
 import io
 import logging
 import os
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -33,7 +35,14 @@ from app.api.schemas import (
 from app.contact.body_limit import ContactBodyLimitMiddleware
 from app.contact.google_sheets import contact_sheet_configured, deliver_contact_submission
 from app.contact.protection import enforce_contact_protection, release_contact_reservation
+from app.contracts.compiler import (
+    DEFAULT_CONTRACT_PATH,
+    compile_with_gemini,
+    load_recorded_proposal,
+    to_rule_program,
+)
 from app.db import repository
+from app.domain.models import RuleProgram
 from app.product.router import router as product_router
 from app.upload.pilot_db import initialize_pilot_database
 from app.upload.router import router as pilot_router
@@ -96,6 +105,44 @@ PUBLIC_DEMO_MESSAGE = (
     "Public technical preview: shared state is read-only, but selected rule validation "
     "and deterministic evaluations can be rerun safely."
 )
+
+PUBLIC_TRY_LIVE_WINDOW_SECONDS = 7 * 24 * 60 * 60
+PUBLIC_TRY_SESSION_SECONDS = 30 * 60
+_public_try_live_usage: dict[str, float] = {}
+_public_try_sessions: dict[str, tuple[float, str, RuleProgram, dict[str, object]]] = {}
+_public_try_lock = threading.Lock()
+
+
+def _public_try_client_key(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    host = forwarded or (request.client.host if request.client else "unknown")
+    return hashlib.sha256(host.encode("utf-8")).hexdigest()
+
+
+def _public_try_cleanup(now: float) -> None:
+    expired = [
+        session_id
+        for session_id, (created_at, _client_key, _program, _meta) in _public_try_sessions.items()
+        if now - created_at > PUBLIC_TRY_SESSION_SECONDS
+    ]
+    for session_id in expired:
+        _public_try_sessions.pop(session_id, None)
+
+
+def _public_try_rules(proposal) -> list[dict[str, object]]:
+    return [
+        {
+            "id": rule.id,
+            "title": rule.title,
+            "description": rule.description,
+            "clause_text": rule.clause_text,
+            "operation": rule.operation,
+            "evidence_required": list(rule.evidence_required),
+            "consequence": rule.consequence,
+            "priority": rule.priority,
+        }
+        for rule in sorted(proposal.rules, key=lambda item: item.priority)
+    ]
 
 
 def public_demo_enabled() -> bool:
@@ -305,6 +352,117 @@ def run_public_reconciliation_sample() -> dict[str, object]:
     return {**result, "duration_ms": round((time.perf_counter() - started_at) * 1000)}
 
 
+@app.post("/api/public-demo/try/analyze")
+def analyze_public_try(request: Request) -> dict[str, object]:
+    """Compile the bundled synthetic contract without mutating authoritative state.
+
+    A visitor gets at most one live Gemini compilation per network per seven days.
+    Additional runs replay the validated recorded Gemini proposal so the deterministic
+    part of the demo remains available without signup or API-cost abuse.
+    """
+    started_at = time.perf_counter()
+    client_key = _public_try_client_key(request)
+    now = time.time()
+    contract_text = DEFAULT_CONTRACT_PATH.read_text()
+    model_configured = bool(os.getenv("GEMINI_API_KEY"))
+    with _public_try_lock:
+        _public_try_cleanup(now)
+        last_live = _public_try_live_usage.get(client_key)
+        live_available = model_configured and (
+            last_live is None or now - last_live >= PUBLIC_TRY_LIVE_WINDOW_SECONDS
+        )
+        if live_available:
+            # Reserve before making the request so concurrent clicks cannot fan out model calls.
+            _public_try_live_usage[client_key] = now
+
+    fallback_reason: str | None = None
+    if live_available:
+        try:
+            result = compile_with_gemini(
+                contract_text,
+                "CONTRACT-ACME-NOVA-2026",
+                "Acme-Nova-Outcome-Pricing-Order-Form.pdf",
+            )
+            mode = "live_gemini"
+        except (RuntimeError, ValueError) as exc:
+            fallback_reason = (
+                f"Live compiler unavailable; replaying the validated recorded proposal: {exc}"
+            )
+            result = load_recorded_proposal(contract_text)
+            mode = "recorded_replay"
+    else:
+        result = load_recorded_proposal(contract_text)
+        mode = "recorded_replay"
+        if not model_configured:
+            fallback_reason = "Live Gemini is not configured on this deployment."
+        else:
+            fallback_reason = "This network already used its weekly live compiler run."
+
+    session_id = f"TRY-{uuid.uuid4().hex[:16].upper()}"
+    approval_ready = bool(result.proposal.approval_ready)
+    program: RuleProgram | None = None
+    if approval_ready:
+        program = to_rule_program(
+            result.proposal,
+            compilation_id=session_id,
+            version=1,
+            source_hash=result.source_hash,
+        )
+        metadata: dict[str, object] = {
+            "mode": mode,
+            "live_model_call": bool(result.live_model_call),
+            "compiler_version": result.proposal.compiler_version,
+            "model": result.proposal.model,
+            "source_hash": result.source_hash,
+        }
+        with _public_try_lock:
+            _public_try_sessions[session_id] = (now, client_key, program, metadata)
+
+    return {
+        "sandbox_id": session_id if program else None,
+        "contract_text": contract_text,
+        "contract_id": result.proposal.contract_id,
+        "source_document": result.proposal.source_document,
+        "source_hash": result.source_hash,
+        "mode": mode,
+        "live_model_call": bool(result.live_model_call),
+        "model": result.proposal.model,
+        "compiler_version": result.proposal.compiler_version,
+        "approval_required": True,
+        "approval_ready": approval_ready,
+        "rules": _public_try_rules(result.proposal),
+        "diagnostics": [item.model_dump(mode="json") for item in result.proposal.diagnostics],
+        "fallback_reason": fallback_reason,
+        "session_expires_in_seconds": PUBLIC_TRY_SESSION_SECONDS,
+        "duration_ms": round((time.perf_counter() - started_at) * 1000),
+    }
+
+
+@app.post("/api/public-demo/try/{sandbox_id}/approve-and-reconcile")
+def approve_public_try(sandbox_id: str, request: Request) -> dict[str, object]:
+    """Record explicit demo approval and run the real deterministic engine in memory."""
+    started_at = time.perf_counter()
+    client_key = _public_try_client_key(request)
+    now = time.time()
+    with _public_try_lock:
+        _public_try_cleanup(now)
+        entry = _public_try_sessions.get(sandbox_id)
+    if entry is None:
+        raise HTTPException(404, "This Try Evidue session expired. Analyze the contract again.")
+    _created_at, owner_key, program, metadata = entry
+    if owner_key != client_key:
+        raise HTTPException(403, "This Try Evidue session belongs to another browser network.")
+    result = repository.public_reconciliation_sample(program=program)
+    return {
+        **result,
+        "sandbox_id": sandbox_id,
+        "human_approval_recorded": True,
+        "compiler_mode": metadata["mode"],
+        "live_model_call": metadata["live_model_call"],
+        "duration_ms": round((time.perf_counter() - started_at) * 1000),
+    }
+
+
 @app.get("/api/contracts/current/compilations")
 def contract_compilations() -> list[dict[str, object]]:
     return repository.list_compilations()
@@ -416,6 +574,8 @@ dist = Path(__file__).parents[2] / "frontend_dist"
 
 @app.head("/contact", include_in_schema=False)
 @app.get("/contact", include_in_schema=False)
+@app.head("/try", include_in_schema=False)
+@app.get("/try", include_in_schema=False)
 @app.get("/demo/lab", include_in_schema=False)
 @app.get("/demo/outcome-ledger", include_in_schema=False)
 @app.get("/demo/vendor-preflight", include_in_schema=False)

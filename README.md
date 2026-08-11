@@ -3,10 +3,10 @@
 Evidue independently reconciles outcome-priced AI-agent vendor invoices against
 contractual billing rules and customer-owned operational evidence.
 
-This repository contains both the protected product workflow (`/pilot`) and the
-synthetic public narrative demo (`/demo`). The product path accepts operator-
-provided agreements, invoices, and customer-side evidence; the demo path uses
-fictional Acme Commerce / Nova Support AI data only.
+This repository contains the protected product workflow (`/pilot`), a no-signup public
+product trial (`/try`), and the deeper synthetic reference workspace (`/demo`). The
+product path accepts operator-provided agreements, invoices, and customer-side evidence;
+the public surfaces use fictional Acme Commerce / Nova Support AI data only.
 
 ## Run the product locally
 
@@ -72,8 +72,17 @@ The demo setup rebuilds the disposable synthetic database, installs dependencies
 seeds the headline fixture, and runs the fast validation suite. See
 [SETUP.md](SETUP.md) for manual and Docker instructions.
 
-Open <http://localhost:5173/demo>. The backend API is available at
-<http://localhost:8000/api/health>.
+Open <http://localhost:5173/try> for the public no-signup product trial. It walks a
+visitor through contract analysis, explicit human approval, and a 100-claim in-memory
+deterministic reconciliation before showing the conversation CTA. Open
+<http://localhost:5173/demo> for the deeper reference workspace. The backend API is
+available at <http://localhost:8000/api/health>.
+
+The `/try` flow never accepts customer data and never mutates `/pilot` or the authoritative
+demo reconciliation. If a server-side Gemini key is configured, one live compiler run is
+allowed per network per seven days; later runs transparently replay the validated recorded
+model proposal while continuing to execute the real deterministic reconciliation engine.
+See [docs/PUBLIC_TRY_DEMO.md](docs/PUBLIC_TRY_DEMO.md).
 
 The golden path starts with a submitted $15,000 invoice. Click **Run
 reconciliation** to invoke the backend engine. It evaluates all 10,000 claims,
@@ -152,7 +161,8 @@ Railway deployment.
 - `/pilot` — protected agreement/invoice/evidence and verification workbench
 - `/pilot/finance` — protected vendor, review, settlement approval, trust, and dispute operations
 - `/pilot/config` — protected workspace configuration
-- `/demo` — finance control overview
+- `/try` — no-signup, synthetic, human-approved public reconciliation trial
+- `/demo` — deeper synthetic finance-control reference workspace
 - `/demo/invoices` — recurring invoice operations
 - `/demo/invoices/current` — complete working June reconciliation
 - `/demo/contracts/current` — contract clause-to-rule control center

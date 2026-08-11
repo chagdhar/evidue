@@ -2,7 +2,7 @@ import { Box, Button, Typography } from "@mui/material";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { api, PublicConfig } from "./api";
-import { betaFormUrl, track } from "./analytics";
+import { track } from "./analytics";
 import { contactHref } from "./contact";
 
 type Props = { compact?: boolean };
@@ -32,38 +32,20 @@ export function BetaApplicationCTA({ compact = false }: Props) {
   const config = useContext(PublicConfigContext);
 
   if (config === null) return null;
-  if (!config.beta_form_configured || !config.beta_form_url) {
-    if (!config.contact_form_configured) {
-      return <Button variant={compact ? "text" : "outlined"} href={contactHref}>Email Dharun</Button>;
-    }
-    return (
-      <Button
-        component={RouterLink}
-        to="/contact"
-        variant={compact ? "text" : "outlined"}
-        onClick={() => track("contact_clicked")}
-      >
-        Send product feedback
-      </Button>
-    );
+  if (!config.contact_form_configured) {
+    return <Button variant={compact ? "text" : "outlined"} href={contactHref}>{compact ? "Contact" : "Talk to us"}</Button>;
   }
   return (
     <Box className={compact ? "beta-cta compact" : "beta-cta"}>
-      {!compact && <Typography color="text.secondary">Reviewing or evaluating outcome-priced AI vendors? Tell me how your company verifies those charges today.</Typography>}
+      {!compact && <Typography color="text.secondary">Paying an AI vendor by outcome, resolution, action, or usage? Tell us how your team verifies those charges today.</Typography>}
       <Button
+        component={RouterLink}
+        to="/contact"
         variant={compact ? "contained" : "outlined"}
-        href={betaFormUrl(config.beta_form_url)}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={() => track("beta_form_opened")}
+        onClick={() => track("talk_to_us_clicked")}
       >
-        Apply for the Evidue beta
+        {compact ? "Contact" : "Talk to us"}
       </Button>
-      {!compact && config.contact_form_configured && (
-        <Button component={RouterLink} to="/contact" variant="text" onClick={() => track("contact_clicked")}>
-          Send product feedback
-        </Button>
-      )}
     </Box>
   );
 }
@@ -72,8 +54,8 @@ export function FeedbackCTA() {
   const config = usePublicConfig();
   if (config === null) return null;
   return config.contact_form_configured ? (
-    <Button component={RouterLink} to="/contact" variant="text" onClick={() => track("contact_clicked")}>
-      Send product feedback
+    <Button component={RouterLink} to="/contact" variant="text" onClick={() => track("talk_to_us_clicked")}>
+      Talk to us
     </Button>
   ) : <Button href={contactHref} variant="text">Email Dharun</Button>;
 }

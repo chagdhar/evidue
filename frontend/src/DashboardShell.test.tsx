@@ -29,7 +29,7 @@ it("keeps contact and landing-page navigation available in the demo header", asy
     </MemoryRouter>,
   );
 
-  const contact = await screen.findByRole("link", { name: "Send product feedback" });
+  const contact = await screen.findByRole("link", { name: "Contact" });
   expect(contact.closest("header")).not.toBeNull();
   expect(contact).toHaveAttribute("href", "/contact");
   expect(screen.getByRole("link", { name: "Back to landing page" })).toHaveAttribute("href", "/");

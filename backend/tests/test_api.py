@@ -165,6 +165,47 @@ def test_public_stateless_actions_use_the_bundled_program():
     assert sample["representative_findings"][2]["outcome_id"] == "OUT-004821"
 
 
+def test_try_evidue_is_no_signup_ephemeral_and_human_approved(monkeypatch):
+    monkeypatch.setenv("EVIDUE_PUBLIC_DEMO", "true")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with TestClient(app) as client:
+        before = client.get("/api/reconciliations/current").json()
+        analysis = client.post("/api/public-demo/try/analyze")
+        assert analysis.status_code == 200
+        payload = analysis.json()
+        assert payload["mode"] == "recorded_replay"
+        assert payload["live_model_call"] is False
+        assert payload["approval_required"] is True
+        assert payload["approval_ready"] is True
+        assert len(payload["rules"]) == 8
+        assert payload["sandbox_id"].startswith("TRY-")
+
+        result = client.post(f"/api/public-demo/try/{payload['sandbox_id']}/approve-and-reconcile")
+        assert result.status_code == 200
+        decision = result.json()
+        assert decision["human_approval_recorded"] is True
+        assert decision["sample_size"] == 100
+        assert decision["payable_outcomes"] == 83
+        assert decision["disputed_outcomes"] == 17
+        assert decision["submitted_amount"] == "150.00"
+        assert decision["confirmed_payable_amount"] == "124.50"
+        assert decision["recommended_deduction"] == "25.50"
+
+        # The public sandbox must not replace or mutate the authoritative workspace decision.
+        after = client.get("/api/reconciliations/current").json()
+        assert after["claimed_outcomes"] == before["claimed_outcomes"] == 10_000
+        assert after["confirmed_payable_amount"] == before["confirmed_payable_amount"]
+        assert client.post("/api/reconciliations").status_code == 403
+
+
+def test_try_evidue_rejects_unknown_session(monkeypatch):
+    monkeypatch.setenv("EVIDUE_PUBLIC_DEMO", "true")
+    with TestClient(app) as client:
+        response = client.post("/api/public-demo/try/TRY-NOT-REAL/approve-and-reconcile")
+        assert response.status_code == 404
+        assert "expired" in response.json()["detail"].lower()
+
+
 def test_public_http_routes_block_mutation_and_allow_safe_actions(monkeypatch):
     monkeypatch.setenv("EVIDUE_PUBLIC_DEMO", "true")
     with TestClient(app) as client:

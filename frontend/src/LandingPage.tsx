@@ -135,8 +135,8 @@ export default function LandingPage() {
             <Stack direction="row" spacing={1} alignItems="center">
               {status?.public_demo && <Chip label="Public technical preview" size="small" className="landing-preview-chip" />}
               <BetaApplicationCTA compact />
-              <Button variant="text" endIcon={<TemplateIcon name="arrow" size={16} />} onClick={() => navigate("/demo/invoices/current")}>
-                Open workspace
+              <Button variant="text" endIcon={<TemplateIcon name="arrow" size={16} />} onClick={() => navigate("/try")}>
+                Try Evidue
               </Button>
             </Stack>
           </Box>
@@ -158,8 +158,8 @@ export default function LandingPage() {
                 </Typography>
               )}
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1.1} sx={{ mt: 3 }}>
-                <Button variant="contained" size="large" endIcon={<TemplateIcon name="arrow" size={17} />} onClick={() => navigate("/demo/invoices/current")}>
-                  {invoice ? `Open the ${formatWholeUsd(invoice.submitted_amount)} reconciliation` : "Open the reconciliation"}
+                <Button variant="contained" size="large" endIcon={<TemplateIcon name="arrow" size={17} />} onClick={() => navigate("/try")}>
+                  Try the reconciliation — no signup
                 </Button>
                 <Button variant="text" size="large" onClick={() => navigate(`/demo/invoices/current?outcome=${encodeURIComponent(status?.demo_outcome_id ?? "OUT-004821")}`)}>
                   Inspect one disputed outcome

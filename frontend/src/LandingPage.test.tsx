@@ -83,20 +83,15 @@ it("states the product and financial result plainly with working launch calls to
   expect(
     await screen.findByText("This technical preview reconciles 10,000 synthetic outcomes and determines that $12,480 of a $15,000 invoice is payable."),
   ).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Open the \$15,000 reconciliation/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Try the reconciliation — no signup" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Inspect one disputed outcome" })).toBeInTheDocument();
-  const betaLink = await screen.findByRole("link", { name: "Apply for the Evidue beta" });
-  expect(betaLink).toHaveAttribute(
-    "href",
-    "https://tally.so/r/test-form?source=unknown&campaign=railway_beta&demo_version=hn_demo",
-  );
-  expect(betaLink).toHaveAttribute("target", "_blank");
-  expect(betaLink).toHaveAttribute("rel", "noopener noreferrer");
-  await userEvent.click(betaLink);
-  expect(track).toHaveBeenCalledWith("beta_form_opened");
+  const contactLink = await screen.findByRole("link", { name: "Contact" });
+  expect(contactLink).toHaveAttribute("href", "/contact");
+  await userEvent.click(contactLink);
+  expect(track).toHaveBeenCalledWith("talk_to_us_clicked");
   expect(screen.queryByText("Join the beta waitlist")).not.toBeInTheDocument();
   expect(screen.queryByText("Give feedback")).not.toBeInTheDocument();
-  expect(betaLink.closest("header")).not.toBeNull();
+  expect(contactLink.closest("header")).not.toBeNull();
   expect(document.querySelector(".landing-cta-band")).not.toBeInTheDocument();
 });
 
@@ -115,9 +110,7 @@ it("falls back to direct contact when no beta form is configured", async () => {
 
   render(<LandingPage />, { wrapper: Wrapper });
 
-  const contacts = await screen.findAllByRole("link", { name: "Send product feedback" });
-  const contact = contacts.find((link) => link.closest("header"));
-  if (!contact) throw new Error("Expected feedback link in the persistent header");
+  const contact = await screen.findByRole("link", { name: "Contact" });
   expect(contact).toHaveAttribute("href", "/contact");
   expect(contact.closest("header")).not.toBeNull();
   expect(screen.queryByRole("link", { name: "Apply for the Evidue beta" })).not.toBeInTheDocument();

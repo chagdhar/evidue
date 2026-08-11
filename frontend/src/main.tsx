@@ -16,6 +16,7 @@ import LandingPage from "./LandingPage";
 import ContactPage from "./ContactPage";
 import PilotApp from "./PilotApp";
 import FinanceWorkspace from "./FinanceWorkspace";
+import TryEviduePage from "./TryEviduePage";
 import { PublicConfigProvider } from "./BetaApplicationCTA";
 import "./style.css";
 
@@ -26,6 +27,7 @@ createRoot(document.getElementById("root")!).render(
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/try" element={<TryEviduePage />} />
           <Route path="/pilot" element={<PilotApp />} />
           <Route path="/pilot/config" element={<PilotApp />} />
           <Route path="/pilot/finance" element={<FinanceWorkspace />} />

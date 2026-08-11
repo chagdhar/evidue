@@ -24,7 +24,7 @@ const initialSubmission: ContactSubmission = {
   name: "",
   email: "",
   company: "",
-  discussionType: "Product feedback",
+  discussionType: "Invoice review",
   message: "",
 };
 
@@ -38,7 +38,7 @@ function ContactHeader() {
         </RouterLink>
         <Stack direction="row" spacing={1}>
           <Button component={RouterLink} to="/" color="inherit">Back to landing page</Button>
-          <Button component={RouterLink} to="/demo/invoices/current" variant="contained">Open workspace</Button>
+          <Button component={RouterLink} to="/try" variant="contained">Try Evidue</Button>
         </Stack>
       </Container>
     </Box>
@@ -98,10 +98,10 @@ export default function ContactPage() {
       <ContactHeader />
       <Container maxWidth="lg" className="contact-container contact-layout">
         <Box className="contact-intro">
-          <Typography className="contact-overline">Send product feedback</Typography>
-          <Typography component="h1">Tell me what you think.</Typography>
+          <Typography className="contact-overline">Talk to us</Typography>
+          <Typography component="h1">How does your team verify AI-vendor charges?</Typography>
           <Typography className="contact-lede">
-            Share feedback on the demo, describe an invoice-review problem, or start a conversation. Beta qualification is handled separately through the beta application.
+            If your company pays an AI vendor by outcome, resolution, action, or usage, tell us how the invoice is checked today. We are looking for real workflows, including cases where nobody verifies it.
           </Typography>
           <Box className="contact-expectations">
             <Typography variant="h5">Useful topics</Typography>
@@ -120,7 +120,7 @@ export default function ContactPage() {
           </Paper>
         ) : !config.contact_form_configured ? (
           <Paper className="contact-form contact-form-status" role="status">
-            <Typography variant="h4">Feedback form unavailable.</Typography>
+            <Typography variant="h4">Conversation form unavailable.</Typography>
             <Typography>The private feedback sheet is not connected, so this form cannot safely deliver a response right now.</Typography>
             <Button href={contactHref} variant="contained">Email Dharun</Button>
           </Paper>
@@ -128,7 +128,7 @@ export default function ContactPage() {
           <Paper className="contact-form contact-form-success" role="status">
             <TemplateIcon name="check" size={30} />
             <Typography variant="h4">Response received.</Typography>
-            <Typography>Your feedback has been added to my private feedback sheet. I’ll follow up using the email you provided.</Typography>
+            <Typography>Your message has been added to my private research sheet. I’ll follow up using the email you provided.</Typography>
             <Button component={RouterLink} to="/" variant="outlined">Return to the landing page</Button>
           </Paper>
         ) : (
@@ -144,7 +144,7 @@ export default function ContactPage() {
               aria-hidden="true"
             />
             <Box className="contact-form-heading">
-              <Typography variant="h4">Send feedback</Typography>
+              <Typography variant="h4">Start a conversation</Typography>
               <Typography>Five short fields. Required fields are marked with an asterisk.</Typography>
             </Box>
 
@@ -177,7 +177,7 @@ export default function ContactPage() {
               label="I confirm this message contains no confidential or customer data."
             />
             <Button type="submit" variant="contained" size="large" disabled={!safeToShare || submitting} endIcon={<TemplateIcon name="arrow" size={17} />}>
-              {submitting ? "Submitting…" : "Submit feedback"}
+              {submitting ? "Submitting…" : "Talk to us"}
             </Button>
           </Paper>
         )}

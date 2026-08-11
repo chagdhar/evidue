@@ -5,14 +5,14 @@ const environment = (import.meta as ImportMeta & { env: AnalyticsEnvironment }).
 const key = environment.VITE_POSTHOG_KEY?.trim();
 const host = environment.VITE_POSTHOG_HOST?.replace(/\/$/, "").trim();
 
-export type AttributionSource = "hacker_news" | "yc_demo" | "direct_outreach" | "unknown";
+export type AttributionSource = "hacker_news" | "indie_hackers" | "yc_demo" | "direct_outreach" | "unknown";
 export const CONTACT_CAMPAIGN = "railway_beta" as const;
 export const DEMO_VERSION = "hn_demo" as const;
 
 function source(): AttributionSource {
   const storageKey = "evidue-attribution-source";
   const current = new URLSearchParams(window.location.search).get("source");
-  const allowed = new Set(["hacker_news", "yc_demo", "direct_outreach"]);
+  const allowed = new Set(["hacker_news", "indie_hackers", "yc_demo", "direct_outreach"]);
   if (current && allowed.has(current)) sessionStorage.setItem(storageKey, current);
   const stored = sessionStorage.getItem(storageKey);
   return stored && allowed.has(stored) ? (stored as Exclude<AttributionSource, "unknown">) : "unknown";

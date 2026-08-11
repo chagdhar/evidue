@@ -35,7 +35,9 @@ class ContactSubmissionRequest(StrictModel):
     discussion_type: Literal["Product feedback", "Invoice review", "Partnership", "Other"]
     message: str = Field(min_length=10, max_length=4_000)
     confirmed_no_confidential_data: Literal[True]
-    attribution_source: Literal["hacker_news", "yc_demo", "direct_outreach", "unknown"]
+    attribution_source: Literal[
+        "hacker_news", "indie_hackers", "yc_demo", "direct_outreach", "unknown"
+    ]
     campaign: Literal["railway_beta"]
     demo_version: Literal["hn_demo"]
     submission_id: UUID

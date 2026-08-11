@@ -23,7 +23,7 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
-it("shows a short, privacy-aware feedback form only when delivery is configured", async () => {
+it("shows a short, privacy-aware conversation form only when delivery is configured", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation(() => response({
     beta_form_configured: true,
     beta_form_url: "https://tally.so/r/test-form",
@@ -31,14 +31,14 @@ it("shows a short, privacy-aware feedback form only when delivery is configured"
   }));
   render(<ContactPage />, { wrapper: Wrapper });
 
-  expect(await screen.findByRole("heading", { name: "Tell me what you think." })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "How does your team verify AI-vendor charges?" })).toBeInTheDocument();
   expect(screen.getByLabelText("Name *")).toBeRequired();
   expect(screen.getByLabelText("Email *")).toBeRequired();
   expect(screen.getByLabelText("Company *")).toBeRequired();
   expect(screen.getByLabelText("Message *")).toBeRequired();
   expect(screen.getByText(/stored in a private Google Sheet and used only for Evidue product research and follow-up/i)).toBeInTheDocument();
   expect(screen.queryByLabelText(/monthly/i)).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Submit feedback" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Talk to us" })).toBeDisabled();
 
   const user = userEvent.setup();
   await user.tab();
@@ -67,7 +67,7 @@ it("submits attribution and backend-enforced privacy confirmation once", async (
   await user.click(screen.getByRole("checkbox", {
     name: "I confirm this message contains no confidential or customer data.",
   }));
-  await user.dblClick(screen.getByRole("button", { name: "Submit feedback" }));
+  await user.dblClick(screen.getByRole("button", { name: "Talk to us" }));
 
   await screen.findByRole("heading", { name: "Response received." });
   const submissionCalls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/api/contact-submissions"));
@@ -76,7 +76,7 @@ it("submits attribution and backend-enforced privacy confirmation once", async (
   expect(payload).toMatchObject({
     email: "alex@example.com",
     company: "Acme Commerce",
-    discussion_type: "Product feedback",
+    discussion_type: "Invoice review",
     confirmed_no_confidential_data: true,
     attribution_source: "hacker_news",
     campaign: "railway_beta",
@@ -86,7 +86,7 @@ it("submits attribution and backend-enforced privacy confirmation once", async (
   expect(payload.submission_id).toMatch(/^[0-9a-f-]{36}$/);
   expect(payload.browser_session_id).toMatch(/^[0-9a-f-]{36}$/);
   expect(payload.form_started_at).toContain("T");
-  expect(screen.queryByRole("button", { name: "Submit feedback" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Talk to us" })).not.toBeInTheDocument();
 });
 
 it("shows and focuses a generic fallback when the backend fails", async () => {
@@ -108,7 +108,7 @@ it("shows and focuses a generic fallback when the backend fails", async () => {
   await user.type(screen.getByLabelText("Company *"), "Acme Commerce");
   await user.type(screen.getByLabelText("Message *"), "I have useful product feedback to share.");
   await user.click(screen.getByRole("checkbox"));
-  await user.click(screen.getByRole("button", { name: "Submit feedback" }));
+  await user.click(screen.getByRole("button", { name: "Talk to us" }));
 
   const errorText = await screen.findByText(/Your response could not be submitted right now/);
   const alert = errorText.closest('[role="alert"]');
@@ -127,7 +127,7 @@ it("shows an email fallback before any form work when storage is unavailable", a
   }));
   render(<ContactPage />, { wrapper: Wrapper });
 
-  expect(await screen.findByRole("heading", { name: "Feedback form unavailable." })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Conversation form unavailable." })).toBeInTheDocument();
   expect(screen.queryByLabelText("Name *")).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Email Dharun" })).toHaveAttribute("href", expect.stringContaining("mailto:"));
 });

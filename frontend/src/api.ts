@@ -23,7 +23,7 @@ export type ContactSubmissionPayload = {
   discussion_type: string;
   message: string;
   confirmed_no_confidential_data: true;
-  attribution_source: "hacker_news" | "yc_demo" | "direct_outreach" | "unknown";
+  attribution_source: "hacker_news" | "indie_hackers" | "yc_demo" | "direct_outreach" | "unknown";
   campaign: "railway_beta";
   demo_version: "hn_demo";
   submission_id: string;
@@ -241,6 +241,43 @@ export type PublicReconciliationSample = {
   duration_ms: number;
 };
 
+export type PublicTryRule = {
+  id: string;
+  title: string;
+  description: string;
+  clause_text: string;
+  operation: string;
+  evidence_required: string[];
+  consequence: "payable" | "disputed" | "needs_review";
+  priority: number;
+};
+
+export type PublicTryAnalysis = {
+  sandbox_id: string | null;
+  contract_text: string;
+  contract_id: string;
+  source_document: string;
+  source_hash: string;
+  mode: "live_gemini" | "recorded_replay";
+  live_model_call: boolean;
+  model: string;
+  compiler_version: string;
+  approval_required: boolean;
+  approval_ready: boolean;
+  rules: PublicTryRule[];
+  diagnostics: Array<{ code: string; severity: string; message: string }>;
+  fallback_reason: string | null;
+  session_expires_in_seconds: number;
+  duration_ms: number;
+};
+
+export type PublicTryResult = PublicReconciliationSample & {
+  sandbox_id: string;
+  human_approval_recorded: boolean;
+  compiler_mode: string;
+  live_model_call: boolean;
+};
+
 export type DataSource = {
   id: string;
   name: string;
@@ -370,6 +407,13 @@ export const api = {
     }),
   publicReconciliationSample: () =>
     request<PublicReconciliationSample>("/public-demo/reconciliations/sample", { method: "POST" }),
+  analyzePublicTry: () =>
+    request<PublicTryAnalysis>("/public-demo/try/analyze", { method: "POST" }),
+  approvePublicTry: (sandboxId: string) =>
+    request<PublicTryResult>(
+      `/public-demo/try/${encodeURIComponent(sandboxId)}/approve-and-reconcile`,
+      { method: "POST" },
+    ),
   reset: (scenarioId = "headline") =>
     request<DemoStatus>(
       `/demo/reset?scenario_id=${encodeURIComponent(scenarioId)}`,

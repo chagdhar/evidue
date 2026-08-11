@@ -793,10 +793,17 @@ def public_outcome_evaluation(outcome_id: str) -> dict[str, object]:
     }
 
 
-def public_reconciliation_sample(limit: int = 100) -> dict[str, object]:
-    """Evaluate a stable subset against the approved program without persisting anything."""
+def public_reconciliation_sample(
+    limit: int = 100, *, program: RuleProgram | None = None
+) -> dict[str, object]:
+    """Evaluate a stable subset without persisting anything.
+
+    When ``program`` is provided it is an ephemeral, schema-validated rule program
+    produced by the public Try Evidue flow and explicitly approved by the visitor.
+    The database's authoritative compilation is never changed.
+    """
     with SessionLocal() as session:
-        program = _active_rule_program(session)
+        selected_program = program or _active_rule_program(session)
         determinations = session.execute(
             select(OutcomeClaimRow, OutcomeDeterminationRow)
             .join(
@@ -842,7 +849,7 @@ def public_reconciliation_sample(limit: int = 100) -> dict[str, object]:
             )
             for row in claims
         ],
-        program=program,
+        program=selected_program,
     )
     disputed = [result for result in results if result.status == "disputed"]
     return {
@@ -869,10 +876,10 @@ def public_reconciliation_sample(limit: int = 100) -> dict[str, object]:
             for rule_id in ("R1", "R2", "R3", "R4", "R5")
         ],
         "sampling_method": "Deterministic stratified sample: 83 payable; 7 R1, 4 R2, 3 R3, 2 R4, and 1 R5 disputes.",
-        "compilation_id": program.compilation_id,
-        "program_version": program.version,
-        "source_hash": program.source_hash,
-        "engine_version": program.engine_version,
+        "compilation_id": selected_program.compilation_id,
+        "program_version": selected_program.version,
+        "source_hash": selected_program.source_hash,
+        "engine_version": selected_program.engine_version,
     }
 
 
