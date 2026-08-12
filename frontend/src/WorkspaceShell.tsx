@@ -1,6 +1,7 @@
 import { Box, Button, Chip, CircularProgress, Divider, Stack, Typography } from "@mui/material";
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import GuidedTour, { GuidedTourStep } from "./GuidedTour";
 
 export type WorkspaceSection = "overview" | "invoices" | "review" | "vendors" | "settings";
 
@@ -24,6 +25,33 @@ const navItems: Array<{
   { id: "review", label: "Review queue", eyebrow: "Resolve open decisions", path: "/workspace/review" },
   { id: "vendors", label: "Vendors", eyebrow: "Track commercial history", path: "/workspace/vendors" },
   { id: "settings", label: "Settings", eyebrow: "Workspace controls", path: "/workspace/settings" },
+];
+
+const WORKSPACE_TOUR_STEPS: GuidedTourStep[] = [
+  {
+    selector: '[data-tour="workspace-nav"]',
+    kicker: "NAVIGATION",
+    title: "This is the finance workspace",
+    body: "Move between the invoice register, open review decisions, vendor history, and workspace controls without leaving the financial-control context.",
+  },
+  {
+    selector: '[data-tour="workspace-context"]',
+    kicker: "CUSTOMER AUTHORITY",
+    title: "The workspace is customer-controlled",
+    body: "Contract authority, evidence, approvals, and financial actions belong to the customer workspace — not to the vendor being reconciled.",
+  },
+  {
+    selector: '[data-tour="workspace-header"]',
+    kicker: "CURRENT CONTROL",
+    title: "Each page answers one finance question",
+    body: "The header tells you the control surface you are in and the decision it is designed to help finance make.",
+  },
+  {
+    selector: '[data-tour="workspace-content"]',
+    kicker: "WORK AREA",
+    title: "Work from invoice to evidence to action",
+    body: "The main panel contains the operational record: financial totals, contract authority, customer evidence, review decisions, and vendor-facing actions.",
+  },
 ];
 
 const sectionCopy: Record<WorkspaceSection, { eyebrow: string; title: string; detail: string }> = {
@@ -63,11 +91,12 @@ export default function WorkspaceShell({
   children,
 }: Props) {
   const navigate = useNavigate();
+  const [tutorialReplay, setTutorialReplay] = useState(0);
   const copy = sectionCopy[active];
 
   return (
     <Box className="workspace-root">
-      <Box component="aside" className="workspace-sidebar">
+      <Box component="aside" className="workspace-sidebar" data-tour="workspace-nav">
         <Button
           color="inherit"
           onClick={() => navigate("/workspace")}
@@ -81,7 +110,7 @@ export default function WorkspaceShell({
           </Box>
         </Button>
 
-        <Box className="workspace-context-card">
+        <Box className="workspace-context-card" data-tour="workspace-context">
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
             <Typography className="workspace-context-label">Customer workspace</Typography>
             <Box className="workspace-private-dot" aria-hidden="true" />
@@ -125,13 +154,16 @@ export default function WorkspaceShell({
       </Box>
 
       <Box className="workspace-main">
-        <Box component="header" className="workspace-topbar">
+        <Box component="header" className="workspace-topbar" data-tour="workspace-header">
           <Box sx={{ minWidth: 0 }}>
             <Typography className="workspace-page-eyebrow">{copy.eyebrow}</Typography>
             <Typography component="h1" className="workspace-page-title">{copy.title}</Typography>
             <Typography className="workspace-page-detail">{copy.detail}</Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ flex: "0 0 auto" }}>
+            <Button color="inherit" onClick={() => setTutorialReplay((value) => value + 1)} className="workspace-utility-button">
+              Show tutorial
+            </Button>
             {busy && (
               <Chip
                 size="small"
@@ -152,7 +184,12 @@ export default function WorkspaceShell({
             )}
           </Stack>
         </Box>
-        <Box className="workspace-content">{children}</Box>
+        <Box className="workspace-content" data-tour="workspace-content">{children}</Box>
+      <GuidedTour
+        storageKey="evidue.workspace-tour.v1"
+        steps={WORKSPACE_TOUR_STEPS}
+        replayToken={tutorialReplay}
+      />
       </Box>
     </Box>
   );

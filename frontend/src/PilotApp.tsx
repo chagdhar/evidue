@@ -1693,7 +1693,7 @@ function InvoiceWorkspace({ contract, airVersion, status, config, act, refresh }
                 <TableContainer sx={{ border: 1, borderColor: "divider", borderRadius: 2, maxHeight: 260 }}><Table size="small"><TableHead><TableRow>{preview.headers.map((header) => <TableCell key={header}>{header}</TableCell>)}</TableRow></TableHead><TableBody>{preview.sample_rows.slice(0, 3).map((row, index) => <TableRow key={index}>{preview.headers.map((header) => <TableCell key={header}>{row[header]}</TableCell>)}</TableRow>)}</TableBody></Table></TableContainer>
                 {!totals && <Button variant="outlined" disabled={!mappingComplete} sx={{ alignSelf: "flex-start" }} onClick={() => void act("Calculating invoice control totals", calculateTotals)}>Review invoice totals</Button>}
                 {totals && (
-                  <Paper variant="outlined" sx={(theme) => ({ p: 2.5, borderRadius: 2, bgcolor: theme.palette.mode === "dark" ? "#1B2040" : "#EEF6FA", borderColor: "primary.main" })}>
+                  <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, bgcolor: "background.paper", borderColor: "divider", borderLeft: "4px solid", borderLeftColor: "primary.main" }}>
                     <Typography variant="overline" color="primary.main">Control-total check</Typography>
                     <Typography variant="h6" fontWeight={760}>Does this match the invoice you received?</Typography>
                     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", md: "repeat(4, 1fr)" }, gap: 1.5, mt: 2 }}>
@@ -1854,7 +1854,7 @@ function ReconciliationDeltaView({ delta, currency = "USD" }: { delta: Reconcili
   const disputeBefore = Number(delta.recommended_deduction_before || 0);
   const disputeAfter = Number(delta.recommended_deduction_after || 0);
   return (
-    <Paper variant="outlined" sx={(theme) => ({ p: 2.25, borderRadius: 2, bgcolor: theme.palette.mode === "dark" ? "#1B2040" : "#EEF6FA", borderColor: "primary.main" })}>
+    <Paper variant="outlined" sx={{ p: 2.25, borderRadius: 2, bgcolor: "background.paper", borderColor: "divider", borderLeft: "4px solid", borderLeftColor: "primary.main" }}>
       <Typography variant="overline" color="primary.main">New evidence changed the decision</Typography>
       <Typography variant="subtitle1" fontWeight={800}>What changed since the previous run</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>{delta.changed_outcomes} claim(s) changed because the available evidence or matching state changed.</Typography>

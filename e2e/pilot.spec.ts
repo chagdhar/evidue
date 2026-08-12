@@ -12,6 +12,12 @@ test("a first-time finance user can complete the invoice-centered protected prod
   await expect(page.getByRole("button", { name: "Invoices" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("heading", { name: /Get to a defensible payable amount/i })).toBeVisible();
 
+  // First-time users see the guided workspace tour before interacting with the product.
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Skip tour" })).toBeVisible();
+  await page.getByRole("button", { name: "Skip tour" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
   // Workspace configuration remains available without exposing server-managed secrets.
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL(/\/workspace\/settings$/);

@@ -3,14 +3,20 @@ import { expect, test } from "@playwright/test";
 test("public Try Evidue carries the full proof path without a separate demo", async ({ page }) => {
   await page.goto("/try");
 
+  await expect(page.getByRole("dialog", { name: "Start with the vendor invoice" })).toBeVisible();
+  await page.getByRole("button", { name: "Skip tour" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
   await expect(page.getByRole("heading", { name: /Nova AI billed Acme \$150 for 100 outcomes/i })).toBeVisible();
   await page.getByRole("button", { name: "Verify the invoice" }).click();
+  await expect(page.getByRole("button", { name: "Verify the invoice" })).toHaveCount(0);
+  await expect(page.getByText("CONTRACT INTERPRETED", { exact: true })).toBeVisible();
 
   const proposalHeading = page.getByRole("heading", { name: "Turn source language into explicit payment rules." });
   await expect(proposalHeading).toBeVisible();
   await expect(proposalHeading).toBeInViewport();
   await expect(page.getByText("No same-intent recontact", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Review proposed rules" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Review proposed rules/i })).toBeVisible();
 
   await page.getByRole("button", { name: /Approve 8 contract rules/i }).click();
   const verifyClaims = page.getByRole("button", { name: "Verify 100 claims" });

@@ -11,6 +11,7 @@ function response(body: unknown) {
 afterEach(() => {
   vi.restoreAllMocks();
   sessionStorage.clear();
+  window.localStorage.clear();
 });
 
 it("delivers one successful reconciliation before asking for contact", async () => {
@@ -100,10 +101,13 @@ it("delivers one successful reconciliation before asking for contact", async () 
 
   expect(screen.getByRole("heading", { name: /Nova AI billed Acme \$150 for 100 outcomes/i })).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Share your workflow" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("dialog", { name: "Start with the vendor invoice" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Skip tour" }));
 
   await user.click(screen.getByRole("button", { name: "Verify the invoice" }));
   expect(await screen.findByText("No same-intent recontact")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Review proposed rules" })).toBeInTheDocument();
+  expect(screen.getByText("CONTRACT INTERPRETED", { exact: true })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Review proposed rules/i })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Re-read contract" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Approve 1 contract rule" }));
   await user.click(screen.getByRole("button", { name: "Verify 100 claims" }));

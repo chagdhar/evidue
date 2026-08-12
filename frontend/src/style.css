@@ -3367,3 +3367,452 @@ html[data-evidue-mode="light"] body { background: #eeeae1; }
 .try-v4-page .try-v4-result-head {
   scroll-margin-top: 96px;
 }
+
+/* Evidue Airwallex-inspired system v3 — exact selectors from the current frontend.
+   UI/UX only. Neutral finance canvas, dark workspace navigation, explicit AA contrast. */
+:root {
+  --aw3-bg: #f7f8fa;
+  --aw3-surface: #ffffff;
+  --aw3-soft: #fbfbfc;
+  --aw3-sidebar: #161a1d;
+  --aw3-sidebar-hover: #202529;
+  --aw3-sidebar-active: #292f34;
+  --aw3-text: #17191c;
+  --aw3-text-2: #3c4249;
+  --aw3-muted: #5e6470;
+  --aw3-subtle: #7b828b;
+  --aw3-border: #e3e5e8;
+  --aw3-border-strong: #d2d5d9;
+  --aw3-primary: #5b35d5;
+  --aw3-primary-hover: #4a28b8;
+  --aw3-primary-soft: #f1edff;
+  --aw3-success: #12645f;
+  --aw3-success-soft: #e8f4f1;
+  --aw3-danger: #963b3b;
+  --aw3-danger-soft: #fff0ef;
+  --aw3-warning: #7a5314;
+  --aw3-warning-soft: #fff5df;
+}
+
+html, body, #root { background: var(--aw3-bg) !important; color: var(--aw3-text) !important; }
+body { font-size: 16px !important; line-height: 1.5 !important; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+/* Public chrome */
+.landing-v3-page, .try-v4-page, .contact-page { background: var(--aw3-bg) !important; color: var(--aw3-text) !important; }
+.landing-v3-header, .try-v3-header, .contact-header {
+  background: rgba(255,255,255,.98) !important;
+  color: var(--aw3-text) !important;
+  border-bottom: 1px solid var(--aw3-border) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+.landing-v3-header .MuiTypography-root, .try-v3-header .MuiTypography-root, .contact-header .MuiTypography-root,
+.landing-v3-header a, .try-v3-header a, .contact-header a { color: var(--aw3-text) !important; }
+.landing-v3-mark, .try-v3-mark { color: #fff !important; background: var(--aw3-primary) !important; border-color: var(--aw3-primary) !important; }
+
+/* Public hero: white, quiet, high contrast. */
+.landing-v4-hero, .try-v4-hero, .landing-v3-final-cta {
+  background: var(--aw3-surface) !important;
+  color: var(--aw3-text) !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--aw3-border) !important;
+  box-shadow: none !important;
+}
+.landing-v4-hero-copy h1, .try-v4-hero-copy h1,
+.landing-v4-hero .MuiTypography-root, .try-v4-hero .MuiTypography-root,
+.landing-v3-final-cta .MuiTypography-root { color: var(--aw3-text) !important; }
+.landing-v4-lede, .try-v4-lede { color: var(--aw3-muted) !important; font-size: 1rem !important; line-height: 1.65 !important; }
+.try-v4-question { color: var(--aw3-primary) !important; }
+.landing-v4-trust-row { color: var(--aw3-muted) !important; }
+.landing-v4-trust-row b { color: var(--aw3-border-strong) !important; }
+
+/* Landing financial document */
+.landing-v4-verdict, .landing-v4-email {
+  background: var(--aw3-surface) !important;
+  color: var(--aw3-text) !important;
+  border: 1px solid var(--aw3-border) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+.landing-v4-document-head, .landing-v4-email-head {
+  background: var(--aw3-soft) !important;
+  color: var(--aw3-text) !important;
+  border-bottom: 1px solid var(--aw3-border) !important;
+}
+.landing-v4-document-head strong, .landing-v4-email-head strong { color: var(--aw3-text) !important; }
+.landing-v4-document-head small, .landing-v4-document-head .ledger-provenance, .landing-v4-email-head span { color: var(--aw3-muted) !important; }
+.landing-v4-decision-state { color: var(--aw3-primary) !important; background: var(--aw3-primary-soft) !important; border-color: #d8ceff !important; }
+.landing-v4-source-row { background: #fff !important; border-color: var(--aw3-border) !important; }
+.landing-v4-source-row.verified { background: var(--aw3-success-soft) !important; }
+.landing-v4-source-row.disputed { background: var(--aw3-danger-soft) !important; }
+.landing-v4-source-row.review { background: var(--aw3-warning-soft) !important; }
+.landing-v4-document-foot, .landing-v4-email-actions { background: var(--aw3-soft) !important; border-color: var(--aw3-border) !important; }
+.landing-v4-flow-section, .landing-v4-proof-section, .landing-v4-equation-section, .landing-v4-boundary, .landing-v4-action-section {
+  background: var(--aw3-bg) !important; color: var(--aw3-text) !important; border-color: var(--aw3-border) !important;
+}
+
+/* Try invoice card: remove navy box treatment. */
+.try-v4-challenge {
+  background: var(--aw3-surface) !important;
+  color: var(--aw3-text) !important;
+  border: 1px solid var(--aw3-border) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+.try-v4-challenge-head {
+  background: var(--aw3-soft) !important;
+  color: var(--aw3-text) !important;
+  border-bottom: 1px solid var(--aw3-border) !important;
+  font-size: .8125rem !important;
+}
+.try-v4-challenge-head span, .try-v4-challenge-head b { color: var(--aw3-text) !important; }
+.try-v4-vendor-claim span, .try-v4-amount-due span, .try-v4-resolved-label { color: var(--aw3-muted) !important; font-size: .8125rem !important; }
+.try-v4-vendor-claim strong, .try-v4-amount-due strong { color: var(--aw3-text) !important; }
+.try-v4-amount-due small, .try-v4-challenge-note { color: var(--aw3-muted) !important; font-size: .8125rem !important; }
+.try-v4-challenge-note { background: var(--aw3-soft) !important; border-color: var(--aw3-border) !important; }
+.try-v4-resolved-label { color: var(--aw3-success) !important; background: var(--aw3-success-soft) !important; border-color: #cfe2dc !important; }
+
+/* Try layout */
+.try-v4-body { background: var(--aw3-bg) !important; color: var(--aw3-text) !important; padding-top: 30px !important; }
+.try-v4-rail {
+  position: sticky !important; top: 72px !important; z-index: 10 !important;
+  background: var(--aw3-surface) !important; border: 1px solid var(--aw3-border) !important; border-radius: 8px !important; overflow: hidden;
+}
+.try-v4-rail > div { background: #fff !important; border-color: var(--aw3-border) !important; }
+.try-v4-rail > div > span { color: var(--aw3-muted) !important; background: #fff !important; border-color: var(--aw3-border-strong) !important; font-size: .75rem !important; }
+.try-v4-rail > div > strong { color: var(--aw3-muted) !important; font-size: .8125rem !important; }
+.try-v4-rail > div > b { background: #fff !important; color: var(--aw3-subtle) !important; }
+.try-v4-rail > div.active { background: var(--aw3-primary-soft) !important; box-shadow: inset 0 -3px 0 var(--aw3-primary) !important; }
+.try-v4-rail > div.active > span, .try-v4-rail > div.done > span {
+  color: #fff !important; background: var(--aw3-primary) !important; border-color: var(--aw3-primary) !important;
+}
+.try-v4-rail > div.active > strong { color: #4f2dbb !important; }
+.try-v4-flow-intro { color: var(--aw3-text) !important; }
+.try-v4-flow-intro > h2 { color: var(--aw3-text) !important; }
+.try-v4-step { border-color: var(--aw3-border) !important; }
+.try-v4-step-rail { border-color: var(--aw3-border) !important; }
+/* Exact fix for the small dark-blue numbered box whose text was being overridden. */
+.try-v4-step-rail > span {
+  color: #fff !important;
+  background: var(--aw3-primary) !important;
+  border: 1px solid var(--aw3-primary) !important;
+  border-radius: 6px !important;
+  font-size: .75rem !important;
+}
+.try-v4-step-rail > strong { color: var(--aw3-primary) !important; font-size: .8125rem !important; }
+.try-v4-step-rail > small { color: var(--aw3-muted) !important; font-size: .8125rem !important; }
+.try-v4-step-body h2 { color: var(--aw3-text) !important; }
+.try-v4-step-copy, .try-v3-muted { color: var(--aw3-muted) !important; font-size: .9375rem !important; }
+
+/* Rule ledger */
+.try-v4-proposal-meta, .try-v4-rule-ledger, .try-v4-rule-row, .try-v4-approval-action,
+.try-v4-result-shell, .try-v5-receipt, .try-v5-provenance, .try-v5-raw-proof, .try-v5-audit-details {
+  background: var(--aw3-surface) !important; color: var(--aw3-text) !important; border-color: var(--aw3-border) !important; box-shadow: none !important;
+}
+.try-v4-proposal-meta { background: var(--aw3-soft) !important; font-size: .8125rem !important; }
+.try-v4-rule-source { background: var(--aw3-soft) !important; border-color: var(--aw3-border) !important; }
+.try-v4-rule-source > span, .try-v4-rule-authority > span { color: var(--aw3-muted) !important; font-size: .8125rem !important; }
+.try-v4-rule-source blockquote { color: var(--aw3-text-2) !important; font-size: .9375rem !important; line-height: 1.6 !important; }
+.try-v4-rule-authority { background: #fff !important; border-left: 3px solid var(--aw3-primary) !important; }
+.try-v4-rule-authority > span { color: var(--aw3-primary) !important; }
+.try-v4-rule-authority strong { color: var(--aw3-text) !important; font-size: .95rem !important; }
+.try-v4-rule-authority p { color: var(--aw3-muted) !important; font-size: .875rem !important; line-height: 1.55 !important; }
+.try-v4-rule-authority small { color: var(--aw3-danger) !important; font-size: .8125rem !important; }
+.try-v4-approval-action > div > span { color: var(--aw3-muted) !important; font-size: .8125rem !important; }
+.try-v4-approval-action > div > strong { color: var(--aw3-text) !important; font-size: .9375rem !important; }
+
+/* Control loop components: no dark-blue fill. */
+.decision-flow, .authority-boundary-v2, .decision-equation, .decision-ledger {
+  background: var(--aw3-surface) !important; border-color: var(--aw3-border) !important; box-shadow: none !important;
+}
+.decision-flow-stage { background: #fff !important; border-color: var(--aw3-border) !important; }
+.decision-flow-index { color: var(--aw3-primary) !important; background: var(--aw3-primary-soft) !important; border-color: #d8ceff !important; }
+.decision-flow-copy > span { color: var(--aw3-primary) !important; font-size: .8125rem !important; }
+.decision-flow-copy > strong { color: var(--aw3-text) !important; font-size: .9375rem !important; }
+.decision-flow-copy > small { color: var(--aw3-muted) !important; font-size: .8125rem !important; }
+.decision-flow-arrow { color: var(--aw3-subtle) !important; background: #fff !important; border-color: var(--aw3-border) !important; }
+.authority-boundary-v2 > div { background: #fff !important; }
+.authority-boundary-v2 > div.human { background: var(--aw3-primary-soft) !important; }
+.authority-boundary-v2 > div > strong { color: var(--aw3-text) !important; font-size: .9375rem !important; }
+.authority-boundary-v2 > div > small { color: var(--aw3-muted) !important; font-size: .8125rem !important; }
+
+/* Result / inspection */
+.try-v4-result-head {
+  background: #fff !important; color: var(--aw3-text) !important; border-bottom: 1px solid var(--aw3-border) !important;
+  box-shadow: inset 4px 0 0 var(--aw3-primary) !important;
+}
+.try-v4-result-head h2 { color: var(--aw3-text) !important; }
+.try-v4-result-head p:not(.try-v3-kicker) { color: var(--aw3-muted) !important; font-size: .9375rem !important; }
+.try-v4-result-state { color: #4f2dbb !important; background: var(--aw3-primary-soft) !important; border-color: #d8ceff !important; font-size: .75rem !important; }
+.try-v3-result-money span, .try-v3-result-money small { color: var(--aw3-muted) !important; font-size: .8125rem !important; }
+.try-v3-result-money strong { color: var(--aw3-text) !important; }
+.try-v3-result-money .is-dispute strong { color: var(--aw3-danger) !important; }
+.try-v3-result-detail strong { color: var(--aw3-text) !important; font-size: .9375rem !important; }
+.try-v3-result-detail p:not(.try-v3-kicker), .try-v3-contact p:not(.try-v3-kicker) { color: var(--aw3-muted) !important; font-size: .875rem !important; }
+.try-v5-inspection-heading > span, .try-v5-receipt dt, .try-v5-provenance-row span, .try-v5-provenance-row small,
+.try-v5-raw-proof > summary, .try-v5-audit-details > summary, .try-v5-audit-grid span { color: var(--aw3-muted) !important; font-size: .8125rem !important; }
+.try-v5-receipt dd, .try-v5-provenance-row strong, .try-v5-audit-grid strong, .try-v5-audit-grid code { color: var(--aw3-text) !important; font-size: .8125rem !important; }
+.try-v5-raw-record { background: #fff !important; }
+.try-v5-raw-record pre, .try-v5-dispute-copy { background: var(--aw3-soft) !important; color: var(--aw3-text-2) !important; border-color: var(--aw3-border) !important; font-size: .8125rem !important; }
+.try-v5-dispute-package {
+  background: #fff !important; color: var(--aw3-text) !important; border-color: var(--aw3-border) !important;
+  border-left: 4px solid var(--aw3-danger) !important;
+}
+.try-v5-dispute-package-head h3 { color: var(--aw3-text) !important; }
+.try-v5-dispute-package-head p:not(.try-v3-kicker) { color: var(--aw3-muted) !important; font-size: .875rem !important; }
+
+/* Hero progression */
+.try-v4-hero-progress { background: var(--aw3-primary-soft) !important; color: #4f2dbb !important; border: 1px solid #d8ceff !important; border-radius: 8px !important; }
+.try-v4-hero-progress > span, .try-v4-hero-progress > strong { color: #4f2dbb !important; }
+
+/* Workspace shell closely follows the provided Airwallex reference. */
+.workspace-root { background: var(--aw3-bg) !important; }
+.workspace-sidebar { background: var(--aw3-sidebar) !important; color: #eef1f3 !important; border-right: 1px solid #252a2f !important; box-shadow: none !important; }
+.workspace-brand, .workspace-brand .MuiTypography-root, .workspace-context-name, .workspace-sidebar-footer-title { color: #fff !important; }
+.workspace-brand-caption, .workspace-context-label, .workspace-context-detail, .workspace-nav-label, .workspace-nav-detail { color: #aeb4bb !important; }
+.workspace-context-card { background: #1d2226 !important; color: #eef1f3 !important; border: 1px solid #30363b !important; border-radius: 6px !important; box-shadow: none !important; }
+.workspace-nav-item { color: #d4d8dc !important; background: transparent !important; border-radius: 5px !important; }
+.workspace-nav-item:hover { background: var(--aw3-sidebar-hover) !important; }
+.workspace-nav-item.active { background: var(--aw3-sidebar-active) !important; color: #fff !important; box-shadow: inset 3px 0 0 var(--aw3-primary) !important; }
+.workspace-nav-item.active .workspace-nav-title, .workspace-nav-item.active .workspace-nav-detail { color: #fff !important; }
+.workspace-topbar { background: #fff !important; color: var(--aw3-text) !important; border-bottom: 1px solid var(--aw3-border) !important; box-shadow: none !important; }
+.workspace-page-eyebrow { color: var(--aw3-primary) !important; font-size: .8125rem !important; }
+.workspace-page-title { color: var(--aw3-text) !important; font-size: clamp(1.8rem, 3vw, 2.35rem) !important; letter-spacing: -.035em !important; }
+.workspace-page-detail { color: var(--aw3-muted) !important; font-size: .875rem !important; }
+.workspace-main, .workspace-content, .workspace-page-frame { background: var(--aw3-bg) !important; color: var(--aw3-text) !important; }
+
+.finance-surface, .data-table-panel, .finance-stat-strip, .invoice-case-header, .queue-filter-bar, .recommended-action-panel,
+.workspace-control-grammar, .case-lifecycle, .decision-separation-panel, .action-panel {
+  background: #fff !important; color: var(--aw3-text) !important; border: 1px solid var(--aw3-border) !important; border-radius: 8px !important; box-shadow: none !important;
+}
+.finance-surface-header { background: #fff !important; border-bottom: 1px solid var(--aw3-border) !important; }
+.finance-surface-header .section-kicker, .section-kicker { color: var(--aw3-primary) !important; font-size: .75rem !important; letter-spacing: .055em !important; }
+.finance-surface-header h5, .workspace-section-heading h5, .invoice-case-header h4 { color: var(--aw3-text) !important; }
+.workspace-section-heading p, .finance-surface-header p { color: var(--aw3-muted) !important; font-size: .875rem !important; }
+
+/* Exact blue-box repair: current inline-sx panels are now white in TSX; keep any residual info panels readable. */
+.workspace-main .MuiAlert-standardInfo, .workspace-main .MuiAlert-outlinedInfo,
+.contact-main .MuiAlert-standardInfo, .try-v4-body .MuiAlert-standardInfo {
+  background: #f3f6fb !important; color: #243d5a !important; border-color: #d9e2ee !important;
+}
+.workspace-main .MuiAlert-standardInfo .MuiAlert-message, .workspace-main .MuiAlert-standardInfo .MuiAlert-icon,
+.contact-main .MuiAlert-standardInfo .MuiAlert-message, .try-v4-body .MuiAlert-standardInfo .MuiAlert-message { color: #243d5a !important; }
+
+/* Inline metrics: previously 9–11px; bring them to finance-product scale. */
+.inline-metric { padding: 14px 0 !important; border-color: var(--aw3-border) !important; }
+.inline-metric-label { color: var(--aw3-muted) !important; font-size: .8125rem !important; line-height: 1.4 !important; }
+.inline-metric-value { color: var(--aw3-text) !important; font-size: 1.25rem !important; line-height: 1.25 !important; font-weight: 700 !important; }
+.inline-metric-help { color: var(--aw3-muted) !important; font-size: .8125rem !important; line-height: 1.4 !important; }
+.inline-metric.primary .inline-metric-value { color: var(--aw3-primary) !important; }
+.inline-metric.success .inline-metric-value { color: var(--aw3-success) !important; }
+.inline-metric.warning .inline-metric-value { color: var(--aw3-warning) !important; }
+.inline-metric.error .inline-metric-value, .inline-metric.danger .inline-metric-value { color: var(--aw3-danger) !important; }
+
+/* Workspace auth flow was another navy island; normalize it. */
+.workspace-auth-decision-flow .decision-flow, .workspace-auth-decision-flow .decision-flow-stage {
+  background: #fff !important; color: var(--aw3-text) !important; border-color: var(--aw3-border) !important;
+}
+.workspace-auth-decision-flow .decision-flow-copy > strong { color: var(--aw3-text) !important; }
+.workspace-auth-decision-flow .decision-flow-copy > span { color: var(--aw3-primary) !important; }
+.workspace-auth-decision-flow .decision-flow-arrow { background: #fff !important; color: var(--aw3-subtle) !important; border-color: var(--aw3-border) !important; }
+
+/* Stats / tables */
+.finance-stat-strip { gap: 0 !important; overflow: hidden !important; }
+.finance-stat-strip > * { padding: 18px 22px !important; border-right: 1px solid var(--aw3-border) !important; }
+.finance-stat-strip > *:last-child { border-right: 0 !important; }
+.finance-stat-label, .finance-stat-detail { color: var(--aw3-muted) !important; font-size: .8125rem !important; }
+.finance-stat-value { color: var(--aw3-text) !important; font-size: 1.55rem !important; font-weight: 700 !important; }
+.data-table-panel .MuiTableCell-root { color: var(--aw3-text) !important; border-bottom-color: var(--aw3-border) !important; }
+.data-table-panel .MuiTableCell-head { background: var(--aw3-soft) !important; color: var(--aw3-muted) !important; font-size: .8125rem !important; font-weight: 650 !important; text-transform: none !important; letter-spacing: 0 !important; }
+.data-table-panel .MuiTableRow-root:hover { background: #faf9ff !important; }
+
+/* Contact */
+.contact-main { background: var(--aw3-bg) !important; color: var(--aw3-text) !important; }
+.contact-form-shell, .contact-progress, .contact-intent-option { background: #fff !important; color: var(--aw3-text) !important; border-color: var(--aw3-border) !important; box-shadow: none !important; }
+.contact-overline, .contact-section-kicker { color: var(--aw3-primary) !important; }
+.contact-lede, .contact-stage-copy, .contact-privacy-copy, .contact-expectations p { color: var(--aw3-muted) !important; font-size: .9375rem !important; }
+.contact-intent-copy strong { color: var(--aw3-text) !important; }
+.contact-intent-copy span { color: var(--aw3-muted) !important; }
+
+/* MUI controls */
+.MuiButton-root { min-height: 40px !important; border-radius: 6px !important; box-shadow: none !important; text-transform: none !important; font-size: .9rem !important; font-weight: 650 !important; letter-spacing: 0 !important; }
+.MuiButton-containedPrimary, .MuiButton-contained { background: var(--aw3-primary) !important; color: #fff !important; border-color: var(--aw3-primary) !important; }
+.MuiButton-containedPrimary:hover, .MuiButton-contained:hover { background: var(--aw3-primary-hover) !important; }
+.MuiButton-outlined { background: #fff !important; color: var(--aw3-text) !important; border-color: var(--aw3-border-strong) !important; }
+.MuiButton-outlined:hover { background: var(--aw3-soft) !important; }
+.MuiButton-text { color: var(--aw3-primary) !important; }
+.MuiOutlinedInput-root { background: #fff !important; color: var(--aw3-text) !important; border-radius: 6px !important; }
+.MuiInputBase-input, .MuiInputLabel-root { color: var(--aw3-text) !important; }
+.MuiFormHelperText-root { color: var(--aw3-muted) !important; }
+
+/* Status semantics stay financial, not decorative. */
+.status-approved, .status-substantiated, .determination-substantiated, .financial-positive { color: var(--aw3-success) !important; }
+.status-disputed, .status-contradicted, .determination-contradicted, .financial-negative { color: var(--aw3-danger) !important; }
+.status-review, .status-needs-review, .determination-review { color: var(--aw3-warning) !important; }
+
+/* Typography floor. */
+.try-v4-page small, .try-v4-page code, .try-v4-page dt, .try-v4-page dd,
+.try-v4-page .try-v3-kicker, .try-v4-page .decision-ledger-label, .try-v4-page .decision-ledger-synthetic,
+.try-v4-page .decision-ledger-section-title > span, .try-v4-page .decision-ledger-event > span,
+.try-v4-page .decision-ledger-event > small, .try-v4-page .try-v5-raw-record-head span,
+.try-v4-page .try-v5-raw-record > small, .try-v4-page .try-v5-raw-record > code {
+  font-size: .8125rem !important; line-height: 1.45 !important;
+}
+.decision-ledger-event > strong, .decision-ledger-outcome strong { font-size: .9rem !important; }
+
+/* Keep the guided-flow mechanics already in TSX; styling only. */
+.try-v4-hero-grid { transition: min-height .16s ease, padding .16s ease !important; }
+.try-v4-hero.is-active .try-v4-hero-grid { min-height: 0 !important; padding-top: 22px !important; padding-bottom: 22px !important; }
+.try-v4-hero.is-active .try-v4-question, .try-v4-hero.is-active .try-v4-lede { display: none !important; }
+.try-v3-section-head, [data-try-target="verify"], .try-v4-result-head { scroll-margin-top: 96px !important; }
+
+@media (max-width: 900px) { .try-v4-rail { position: static !important; } }
+@media (max-width: 760px) {
+  body { font-size: 15px !important; }
+  .try-v4-step-rail > span { width: 30px; height: 30px; }
+}
+
+
+/* Guided tutorial overlay — isolated from the product theme. */
+.evidue-tour-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  pointer-events: none;
+}
+
+.evidue-tour-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 17, 20, 0.66);
+  pointer-events: auto;
+}
+
+.evidue-tour-backdrop.has-target {
+  background: transparent;
+}
+
+.evidue-tour-spotlight {
+  position: fixed;
+  z-index: 2001;
+  border: 2px solid #8c6cff;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow:
+    0 0 0 9999px rgba(13, 17, 20, 0.66),
+    0 0 0 3px rgba(140, 108, 255, 0.22),
+    0 8px 30px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  transition: top 120ms ease, left 120ms ease, width 120ms ease, height 120ms ease;
+}
+
+.evidue-tour-card.MuiPaper-root {
+  position: fixed;
+  z-index: 2002;
+  margin: 0;
+  padding: 20px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: #ffffff !important;
+  color: #17191c !important;
+  border: 1px solid #dfe2e6 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.28) !important;
+  pointer-events: auto;
+}
+
+.evidue-tour-card :is(h1, h2, h3, p, span, strong, small, label) {
+  color: #17191c !important;
+}
+
+.evidue-tour-kicker.MuiTypography-root {
+  color: #5b35d5 !important;
+  font-size: 0.75rem !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em !important;
+}
+
+.evidue-tour-count.MuiTypography-root {
+  color: #676d75 !important;
+  font-size: 0.78rem !important;
+  line-height: 1.35 !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.evidue-tour-title.MuiTypography-root {
+  margin: 0 0 7px !important;
+  color: #17191c !important;
+  font-size: 1.12rem !important;
+  line-height: 1.3 !important;
+  font-weight: 750 !important;
+  letter-spacing: -0.015em !important;
+}
+
+.evidue-tour-body.MuiTypography-root {
+  color: #505761 !important;
+  font-size: 0.92rem !important;
+  line-height: 1.58 !important;
+}
+
+.evidue-tour-progress {
+  display: flex;
+  gap: 5px;
+}
+
+.evidue-tour-progress > span {
+  flex: 1 1 0;
+  height: 3px;
+  border-radius: 99px;
+  background: #e4e6e9;
+}
+
+.evidue-tour-progress > span.active {
+  background: #6b45e6;
+}
+
+.evidue-tour-card .MuiButton-root {
+  min-height: 38px !important;
+}
+
+.evidue-tour-card .MuiButton-contained {
+  background: #5b35d5 !important;
+  color: #ffffff !important;
+}
+
+.evidue-tour-card .MuiButton-contained :is(span, strong) {
+  color: #ffffff !important;
+}
+
+.evidue-tour-card .MuiButton-outlined {
+  background: #ffffff !important;
+  color: #17191c !important;
+  border-color: #d2d5d9 !important;
+}
+
+.evidue-tour-card .MuiButton-text {
+  color: #5b35d5 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evidue-tour-spotlight {
+    transition: none;
+  }
+}
+
+@media (max-width: 719px) {
+  .evidue-tour-card.MuiPaper-root {
+    width: auto !important;
+    max-height: min(52vh, 430px);
+  }
+}
+
+[data-tour="workspace-header"] > .MuiStack-root {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* End guided tutorial overlay. */

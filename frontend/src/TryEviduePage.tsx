@@ -18,6 +18,7 @@ import {
 } from "./DecisionLedger";
 import { track } from "./analytics";
 import { formatUsd } from "./presentation";
+import GuidedTour, { GuidedTourStep } from "./GuidedTour";
 
 function Brand() {
   return (
@@ -37,7 +38,7 @@ function StageRail({ analysis, rulesApproved, result }: { analysis: PublicTryAna
   ] as const;
   const activeIndex = !analysis ? 0 : !rulesApproved ? 1 : !result ? 2 : 3;
   return (
-    <Box className="try-v4-rail" aria-label="Reconciliation progress">
+    <Box className="try-v4-rail" aria-label="Reconciliation progress" data-tour="try-stages">
       {stages.map(([number, label, done], index) => (
         <Box key={label} className={`${done ? "done" : ""}${index === activeIndex ? " active" : ""}`}>
           <span>{done ? "✓" : number}</span>
@@ -96,15 +97,51 @@ function shortHash(value: string | null | undefined): string {
   return value.length > 22 ? `${value.slice(0, 12)}…${value.slice(-8)}` : value;
 }
 
-function scrollToStep(element: HTMLElement | null, block: "start" | "center" = "start") {
+const TRY_TOUR_STEPS: GuidedTourStep[] = [
+  {
+    selector: '[data-tour="try-intro"]',
+    kicker: "THE SAMPLE",
+    title: "Start with the vendor invoice",
+    body: "This public example uses synthetic data. Nova AI says 100 outcomes are billable for $150. Your job is to decide what the contract and customer evidence actually support.",
+  },
+  {
+    selector: '[data-tour="try-invoice"]',
+    kicker: "THE ASSERTION",
+    title: "Treat the invoice as a claim, not a fact",
+    body: "This panel shows what the vendor billed. Evidue reconciles that assertion against approved contract authority and customer-controlled proof.",
+  },
+  {
+    selector: '[data-tour="try-stages"]',
+    kicker: "THE CONTROL LOOP",
+    title: "Follow four finance-control stages",
+    body: "Read the contract, approve the proposed payment rules, verify claims deterministically, then act on the resulting dollars.",
+  },
+  {
+    selector: '[data-tour="try-interpret"]',
+    kicker: "01 · INTERPRET",
+    title: "The model proposes rules — it does not decide payment",
+    body: "Evidue converts contract language into structured payment rules. You can inspect the source clause beside each proposal before anything becomes financial authority.",
+  },
+  {
+    selector: '[data-tour="try-authorize"]',
+    kicker: "02 · AUTHORIZE",
+    title: "Finance establishes authority",
+    body: "Nothing governs the invoice until the proposed rule set is approved. Approval versions the authority; it does not classify a single invoice claim.",
+  },
+  {
+    selector: '[data-tour="try-verify"]',
+    kicker: "03 · VERIFY",
+    title: "Deterministic code checks the evidence",
+    body: "After approval, the rules engine evaluates all 100 claims against customer-side evidence. The LLM is no longer in the decision loop.",
+  },
+];
+
+function scrollToTryTarget(element: HTMLElement | null) {
   if (!element || typeof element.scrollIntoView !== "function") return;
-  const scroll = () => element.scrollIntoView({ behavior: "smooth", block });
-  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-    window.requestAnimationFrame(() => window.requestAnimationFrame(scroll));
-    return;
-  }
-  scroll();
+  element.scrollIntoView({ behavior: "auto", block: "start" });
 }
+
+
 
 export default function TryEviduePage() {
   const [analysis, setAnalysis] = useState<PublicTryAnalysis | null>(null);
@@ -118,29 +155,32 @@ export default function TryEviduePage() {
   const [inspectionError, setInspectionError] = useState("");
   const [showContract, setShowContract] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [tutorialReplay, setTutorialReplay] = useState(0);
   const proposalHeadingRef = useRef<HTMLDivElement | null>(null);
   const verifyActionRef = useRef<HTMLButtonElement | null>(null);
   const resultHeadRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => { track("try_evidue_viewed"); }, []);
 
+  // Public Try progression: scroll only after the next UI state has rendered.
   useEffect(() => {
-    if (analysis && !rulesApproved && !result) {
-      scrollToStep(proposalHeadingRef.current);
-    }
+    if (!analysis || rulesApproved || result) return;
+    const frame = window.requestAnimationFrame(() => scrollToTryTarget(proposalHeadingRef.current));
+    return () => window.cancelAnimationFrame(frame);
   }, [analysis, rulesApproved, result]);
 
   useEffect(() => {
-    if (rulesApproved && !result) {
-      scrollToStep(verifyActionRef.current, "center");
-    }
+    if (!rulesApproved || result) return;
+    const frame = window.requestAnimationFrame(() => scrollToTryTarget(verifyActionRef.current));
+    return () => window.cancelAnimationFrame(frame);
   }, [rulesApproved, result]);
 
   useEffect(() => {
-    if (result) {
-      scrollToStep(resultHeadRef.current);
-    }
+    if (!result) return;
+    const frame = window.requestAnimationFrame(() => scrollToTryTarget(resultHeadRef.current));
+    return () => window.cancelAnimationFrame(frame);
   }, [result]);
+
 
   const deductionPercent = useMemo(() => {
     if (!result) return null;
@@ -244,35 +284,46 @@ export default function TryEviduePage() {
         <Container maxWidth={false} className="try-v3-container try-v3-header-inner">
           <Brand />
           <Stack direction="row" spacing={1}>
+            <Button color="inherit" onClick={() => setTutorialReplay((value) => value + 1)}>Show tutorial</Button>
             <Button component={RouterLink} to="/" color="inherit">Home</Button>
             <Button component={RouterLink} to="/contact" variant="outlined">Talk to us</Button>
           </Stack>
         </Container>
       </Box>
 
-      <Box className="try-v4-hero">
+      <Box className={`try-v4-hero${analysis ? " is-active" : ""}`}>
         <Container maxWidth={false} className="try-v3-container try-v4-hero-grid">
-          <Box className="try-v4-hero-copy">
+          <Box className="try-v4-hero-copy" data-tour="try-intro">
             <Typography className="try-v3-kicker">PUBLIC RECONCILIATION · SYNTHETIC DATA</Typography>
             <Typography component="h1">Nova AI billed Acme $150 for 100 outcomes.</Typography>
             <Typography className="try-v4-question">Would you pay it?</Typography>
             <Typography className="try-v4-lede">Do not trust the vendor number—or the model. Establish contract authority, then verify every claim against customer-side proof.</Typography>
-            <Button
-              variant="contained"
-              size="large"
-              onClick={() => {
-                if (analysis) {
-                  scrollToStep(proposalHeadingRef.current);
-                  return;
-                }
-                void analyze();
-              }}
-              disabled={analyzing}
-            >
-              {analyzing ? <><CircularProgress size={17} sx={{ mr: 1 }} />Reading contract…</> : analysis ? "Review proposed rules" : "Verify the invoice"}
-            </Button>
+            {!analysis ? (
+              <Button
+                variant="contained"
+                size="large"
+                onClick={() => void analyze()}
+                disabled={analyzing}
+              >
+                {analyzing
+                  ? <><CircularProgress size={17} sx={{ mr: 1 }} />Reading contract…</>
+                  : "Verify the invoice"}
+              </Button>
+            ) : (
+              <Box className="try-v4-hero-progress" aria-live="polite">
+                <span>CONTRACT INTERPRETED</span>
+                <strong>{analysis.rules.length} payment rules proposed</strong>
+                <Button
+                  variant="contained"
+                  size="large"
+                  onClick={() => scrollToTryTarget(proposalHeadingRef.current)}
+                >
+                  Review proposed rules ↓
+                </Button>
+              </Box>
+            )}
           </Box>
-          <Box className={`try-v4-challenge${result ? " resolved" : ""}`}>
+          <Box className={`try-v4-challenge${result ? " resolved" : ""}`} data-tour="try-invoice">
             <Box className="try-v4-challenge-head"><span>NOVA SUPPORT AI</span><b>INV-JUN-2026</b></Box>
             {!result ? (
               <>
@@ -301,10 +352,10 @@ export default function TryEviduePage() {
           <DecisionFlow compact />
         </Box>
 
-        <Box className="try-v4-step" data-step="01">
+        <Box className="try-v4-step" data-step="01" data-tour="try-interpret">
           <Box className="try-v4-step-rail"><span>01</span><strong>INTERPRET</strong><small>What does the contract make billable?</small></Box>
           <Box className="try-v4-step-body">
-            <Box ref={proposalHeadingRef} className="try-v3-section-head">
+            <Box ref={proposalHeadingRef} tabIndex={-1} className="try-v3-section-head">
               <Box><Typography className="try-v3-kicker">AI PROPOSAL · NOT YET AUTHORITY</Typography><Typography component="h2">Turn source language into explicit payment rules.</Typography></Box>
               <Stack direction="row" spacing={1}>
                 {analysis && <Button variant="text" onClick={() => void analyze()}>Re-read contract</Button>}
@@ -330,7 +381,7 @@ export default function TryEviduePage() {
           </Box>
         </Box>
 
-        <Box className="try-v4-step" data-step="02">
+        <Box className="try-v4-step" data-step="02" data-tour="try-authorize">
           <Box className="try-v4-step-rail"><span>02</span><strong>AUTHORIZE</strong><small>The model stops here.</small></Box>
           <Box className="try-v4-step-body">
             <Typography className="try-v3-kicker">HUMAN AUTHORITY BOUNDARY</Typography>
@@ -349,7 +400,7 @@ export default function TryEviduePage() {
           </Box>
         </Box>
 
-        <Box className="try-v4-step" data-step="03">
+        <Box className="try-v4-step" data-step="03" data-tour="try-verify">
           <Box className="try-v4-step-rail"><span>03</span><strong>VERIFY</strong><small>Now apply authority to proof.</small></Box>
           <Box className="try-v4-step-body try-v4-verification-step">
             <Box>
@@ -357,7 +408,7 @@ export default function TryEviduePage() {
               <Typography component="h2">Check 100 claims against approved rules and evidence.</Typography>
               <Typography className="try-v4-step-copy">The model is no longer in the decision loop. Every line becomes substantiated, contradicted, or insufficient evidence.</Typography>
             </Box>
-            <Button ref={verifyActionRef} variant="contained" size="large" onClick={() => void verifyClaims()} disabled={!rulesApproved || reconciling || Boolean(result)}>
+            <Button ref={verifyActionRef} data-try-target="verify" variant="contained" size="large" onClick={() => void verifyClaims()} disabled={!rulesApproved || reconciling || Boolean(result)}>
               {reconciling ? <><CircularProgress size={18} sx={{ mr: 1 }} />Checking 100 claims…</> : result ? "100 claims verified" : "Verify 100 claims"}
             </Button>
           </Box>
@@ -365,7 +416,7 @@ export default function TryEviduePage() {
 
         {result && (
           <Box className="try-v4-result-shell" data-step="04">
-            <Box ref={resultHeadRef} className="try-v4-result-head">
+            <Box ref={resultHeadRef} tabIndex={-1} className="try-v4-result-head">
               <Box>
                 <Typography className="try-v3-kicker">04 · ACT ON DOLLARS</Typography>
                 <Typography component="h2">The vendor billed $150. Evidue substantiated $124.50.</Typography>
@@ -525,6 +576,13 @@ export default function TryEviduePage() {
           </Box>
         )}
       </Container>
+      <GuidedTour
+        storageKey="evidue.try-tour.v1"
+        steps={TRY_TOUR_STEPS}
+        replayToken={tutorialReplay}
+        finishSelector='[data-tour="try-intro"]'
+        finishLabel="Try it now"
+      />
     </Box>
   );
 }
