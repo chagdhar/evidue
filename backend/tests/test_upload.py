@@ -1154,6 +1154,8 @@ def test_sample_air_and_exports_have_finance_facing_language(pilot_client):
     assert email.status_code == 200, email.text
     assert "Charges identified for dispute" in email.text
     assert "We reconciled" in email.text
+    assert "We are disputing" in email.text
+    assert "claim(s)" in email.text
 
     vendor_report = client.get(
         f"/api/pilot/reconciliations/{run_id}/exports/vendor-dispute.html",

@@ -9,7 +9,9 @@ Present Evidue as one customer product rather than a collection of demo, pilot, 
 | Route | Purpose |
 | --- | --- |
 | `/workspace` | Contract → invoice → evidence → deterministic reconciliation → export |
-| `/workspace/operations` | Exception review, settlement approval, trust fingerprints, vendor disputes |
+| `/workspace/review` | Evidence gaps, approval work, vendor action, and ready-to-settle decisions |
+| `/workspace/invoices` | Searchable invoice register and current invoice case |
+| `/workspace/vendors` | Vendor spend, exception, contract, and review history |
 | `/workspace/settings` | Workspace defaults and integration readiness |
 | `/try` | Public synthetic no-login trial; never customer data |
 | `/demo/*` | Deep synthetic reference workspace used for product inspection |

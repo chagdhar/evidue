@@ -1023,6 +1023,18 @@ def export_vendor_email(run_id: str) -> Response:
         f"Dispute on invoice {summary['invoice_id']} — "
         f"${summary['recommended_deduction']} of ${summary['submitted_amount']}"
     )
+    dispute_sentence = (
+        (
+            f"Of ${summary['submitted_amount']} billed, ${summary['confirmed_payable_amount']} "
+            f"is verified. We are disputing ${summary['recommended_deduction']} across "
+            f"{summary['disputed_outcomes']} claim(s)."
+        )
+        if int(summary.get("disputed_outcomes") or 0) > 0
+        else (
+            f"Of ${summary['submitted_amount']} billed, ${summary['confirmed_payable_amount']} "
+            "is verified. No contract-backed disputed charges were identified."
+        )
+    )
     lines = [
         f"Subject: {subject}",
         "",
@@ -1032,6 +1044,7 @@ def export_vendor_email(run_id: str) -> Response:
             "We reconciled this invoice against the payment terms in our agreement and "
             "the corresponding records in our systems."
         ),
+        dispute_sentence,
         "",
         f"Invoice: {summary['invoice_id']}",
         f"Vendor billed: ${summary['submitted_amount']}",

@@ -29,7 +29,6 @@ import {
 } from "@mui/material";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useEvidueThemeMode } from "./templateTheme";
 import WorkspaceShell from "./WorkspaceShell";
 import {
   AIRVersion,
@@ -56,7 +55,7 @@ import {
   WorkspaceConfig,
 } from "./pilotApi";
 
-export type PilotStage = "agreement" | "invoice" | "evidence" | "decision" | "export";
+export type PilotStage = "agreement" | "invoice" | "evidence" | "verification" | "review" | "export";
 
 export function isPilotEvidenceReady(
   hasActiveInvoice: boolean,
@@ -81,7 +80,8 @@ export function recommendedPilotStage(input: {
   if (!input.hasContract || !input.contractApproved || input.approvedRulesStale) return "agreement";
   if (!input.hasInvoice) return "invoice";
   if (!input.evidenceReady) return "evidence";
-  if (!input.hasReconciliation || input.reconciliationNeedsReview) return "decision";
+  if (!input.hasReconciliation) return "verification";
+  if (input.reconciliationNeedsReview) return "review";
   return "export";
 }
 
@@ -94,11 +94,12 @@ export function shouldFollowPilotRecommendation(
 }
 
 const pilotStages: Array<{ id: PilotStage; label: string; hint: string }> = [
-  { id: "agreement", label: "Contract rules", hint: "Approve what counts" },
+  { id: "agreement", label: "Contract", hint: "Approve what counts" },
   { id: "invoice", label: "Invoice", hint: "Confirm what was billed" },
   { id: "evidence", label: "Evidence", hint: "Prove what happened" },
-  { id: "decision", label: "Reconcile", hint: "Determine supported dollars" },
-  { id: "export", label: "Export & action", hint: "Move the result into AP" },
+  { id: "verification", label: "Verification", hint: "Determine supported dollars" },
+  { id: "review", label: "Review", hint: "Separate facts from action" },
+  { id: "export", label: "Commercial action", hint: "Move the result into AP" },
 ];
 
 const requiredInvoiceFields = ["outcome_id", "customer_id", "intent", "closed_at", "billed_amount"];
@@ -115,6 +116,13 @@ function errorText(error: unknown): string {
 
 function readable(value: string): string {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function financeVerificationMethod(value: string): string {
+  const normalized = value.toLowerCase();
+  if (["fully_executable", "deterministic", "automatic", "machine_executable"].includes(normalized)) return "Automatic";
+  if (["human_attestation_required", "human_review", "manual", "manual_review"].includes(normalized)) return "Manual review needed";
+  return readable(value);
 }
 
 function formatDate(value: string | undefined): string {
@@ -155,6 +163,15 @@ function evidenceSourceExamples(item: FinanceView["evidence_needed"][number], co
   return [...new Set(values)].slice(0, 4);
 }
 
+function evidenceGroupLabel(item: FinanceView["evidence_needed"][number], config: WorkspaceConfig | null): string {
+  const text = `${item.description} ${item.fact_types.join(" ")} ${item.preferred_authority}`.toLowerCase();
+  if (/support|ticket|conversation|recontact|escalat|human/.test(text)) return config?.preferred_support_system || "Support system";
+  if (/payment|refund|transaction|billing/.test(text)) return config?.preferred_payment_system || "Payments & billing";
+  if (/account|customer|identity|crm/.test(text)) return config?.preferred_crm_system || "Account mapping";
+  if (/product|fulfillment|downstream|action/.test(text)) return "Product events";
+  return "Customer system of record";
+}
+
 function Surface({
   title,
   eyebrow,
@@ -169,88 +186,25 @@ function Surface({
   action?: ReactNode;
 }) {
   return (
-    <Card
-      variant="outlined"
-      sx={{
-        borderRadius: 3,
-        overflow: "hidden",
-        bgcolor: "#151A22",
-        borderColor: "#2A313C",
-        boxShadow: "0 24px 70px rgba(0,0,0,0.26)",
-        position: "relative",
-        "&::before": {
-          content: '""',
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          background: "radial-gradient(circle at 82% 0%, rgba(124,92,252,0.10), transparent 34%)",
-        },
-      }}
-    >
-      <Box
-        sx={{
-          px: { xs: 2.25, md: 3 },
-          py: 2.2,
-          display: "flex",
-          gap: 2,
-          justifyContent: "space-between",
-          alignItems: "center",
-          bgcolor: "#171D26",
-          borderBottom: "1px solid #2A313C",
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minWidth: 0 }}>
-          <Box
-            sx={{
-              width: 9,
-              height: 38,
-              borderRadius: 99,
-              background: complete === false
-                ? "linear-gradient(180deg, #F4B860, #D98C3F)"
-                : complete === true
-                  ? "linear-gradient(180deg, #4DE0A0, #1FAA76)"
-                  : "linear-gradient(180deg, #9B8AFB, #6D54EB)",
-              boxShadow: complete === false
-                ? "0 0 22px rgba(244,184,96,.18)"
-                : complete === true
-                  ? "0 0 22px rgba(77,224,160,.16)"
-                  : "0 0 22px rgba(124,92,252,.20)",
-              flex: "0 0 auto",
-            }}
-          />
-          <Box sx={{ minWidth: 0 }}>
-            <Typography variant="overline" sx={{ color: "#8E98A8", lineHeight: 1.1 }}>{eyebrow}</Typography>
-            <Typography variant="h5" sx={{ color: "#F7F9FC", fontWeight: 760, mt: 0.25 }}>{title}</Typography>
-          </Box>
+    <Card variant="outlined" className="finance-surface">
+      <Box className="finance-surface-header">
+        <Box>
+          <Typography className="section-kicker">{eyebrow}</Typography>
+          <Typography variant="h5" fontWeight={720}>{title}</Typography>
         </Box>
         <Stack direction="row" spacing={1} alignItems="center">
           {complete !== undefined && (
             <Chip
               size="small"
+              variant="outlined"
+              color={complete ? "success" : "warning"}
               label={complete ? "Ready" : "Action needed"}
-              sx={{
-                color: complete ? "#BFF4D9" : "#FFE0A8",
-                bgcolor: complete ? "rgba(77,224,160,.10)" : "rgba(244,184,96,.10)",
-                border: `1px solid ${complete ? "rgba(77,224,160,.30)" : "rgba(244,184,96,.30)"}`,
-              }}
             />
           )}
           {action}
         </Stack>
       </Box>
-      <CardContent
-        sx={{
-          p: { xs: 2.25, md: 3 },
-          bgcolor: "#131820",
-          position: "relative",
-          zIndex: 1,
-          "&:last-child": { pb: { xs: 2.25, md: 3 } },
-        }}
-      >
-        {children}
-      </CardContent>
+      <CardContent className="finance-surface-body">{children}</CardContent>
     </Card>
   );
 }
@@ -258,30 +212,12 @@ function Surface({
 type MetricTone = "neutral" | "primary" | "success" | "warning" | "error";
 
 function Metric({ label, value, help, tone = "neutral" }: { label: string; value: string; help?: string; tone?: MetricTone }) {
-  const toneMap: Record<MetricTone, { bg: string; border: string; glow: string; value: string }> = {
-    neutral: { bg: "#1B212B", border: "#303844", glow: "transparent", value: "#F5F7FA" },
-    primary: { bg: "#211D38", border: "#5E4BC9", glow: "rgba(124,92,252,.12)", value: "#C8BFFF" },
-    success: { bg: "#152821", border: "#237B59", glow: "rgba(77,224,160,.10)", value: "#A9EEC9" },
-    warning: { bg: "#2A2419", border: "#9C6B2E", glow: "rgba(244,184,96,.10)", value: "#FFD694" },
-    error: { bg: "#2D1B21", border: "#9C4052", glow: "rgba(255,107,122,.10)", value: "#FFB0BA" },
-  };
-  const colors = toneMap[tone];
   return (
-    <Paper
-      variant="outlined"
-      sx={{
-        p: 2,
-        minWidth: 0,
-        bgcolor: colors.bg,
-        borderColor: colors.border,
-        borderRadius: 2.25,
-        boxShadow: colors.glow === "transparent" ? "none" : `0 12px 32px ${colors.glow}`,
-      }}
-    >
-      <Typography variant="caption" sx={{ color: "#8F9AAA", fontWeight: 760, letterSpacing: ".025em" }}>{label}</Typography>
-      <Typography variant="h6" noWrap sx={{ color: colors.value, fontWeight: 790, mt: 0.35, fontVariantNumeric: "tabular-nums", letterSpacing: "-.025em" }}>{value}</Typography>
-      {help && <Typography variant="caption" sx={{ color: "#738094", display: "block", mt: 0.25 }}>{help}</Typography>}
-    </Paper>
+    <Box className={`inline-metric ${tone}`}>
+      <Typography className="inline-metric-label">{label}</Typography>
+      <Typography className="inline-metric-value" title={value}>{value}</Typography>
+      {help && <Typography className="inline-metric-help">{help}</Typography>}
+    </Box>
   );
 }
 
@@ -442,13 +378,9 @@ function Determinations({ rows, currency = "USD" }: { rows: Determination[]; cur
   );
 }
 export default function PilotApp() {
-  const { mode, toggleMode } = useEvidueThemeMode();
   const location = useLocation();
   const configPage = location.pathname === "/workspace/settings" || location.pathname === "/pilot/config";
 
-  useEffect(() => {
-    if (mode !== "dark") toggleMode();
-  }, [mode, toggleMode]);
   const [token, setToken] = useState(loadPilotToken());
   const [tokenDraft, setTokenDraft] = useState(loadPilotToken());
   const [status, setStatus] = useState<PilotStatus | null>(null);
@@ -580,11 +512,12 @@ export default function PilotApp() {
     agreement: Boolean(contract && status?.contract_approved && !status?.approved_rules_stale),
     invoice: Boolean(status?.active_invoice_id),
     evidence: evidenceReady,
-    decision: Boolean(reconciliation),
+    verification: Boolean(reconciliation),
+    review: Boolean(reconciliation && !reconciliationNeedsReview),
     export: Boolean(reconciliation),
   };
-  const completedStages = (["agreement", "invoice", "evidence", "decision"] as PilotStage[]).filter((stage) => stageCompletion[stage]).length;
-  const readinessPercent = Math.round((completedStages / 4) * 100);
+  const completedStages = (["agreement", "invoice", "evidence", "verification", "review"] as PilotStage[]).filter((stage) => stageCompletion[stage]).length;
+  const readinessPercent = Math.round((completedStages / 5) * 100);
 
   const recommendedStage = useMemo<PilotStage>(() => {
     return recommendedPilotStage({
@@ -620,71 +553,36 @@ export default function PilotApp() {
 
   if (!token) {
     return (
-      <Box
-        sx={(theme) => ({
-          minHeight: "100vh",
-          display: "grid",
-          placeItems: "center",
-          px: 2,
-          py: 5,
-          bgcolor: theme.palette.mode === "dark" ? "#0D141B" : "#E9EEF2",
-        })}
-      >
-        <Paper
-          variant="outlined"
-          sx={{
-            width: "100%",
-            maxWidth: 1040,
-            overflow: "hidden",
-            borderRadius: 3,
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", md: "0.9fr 1.1fr" },
-            boxShadow: "0 26px 70px rgba(20,33,43,0.12)",
-          }}
-        >
-          <Box sx={{ bgcolor: "#0F172A", color: "#F8FAFC", p: { xs: 3.5, md: 6 }, display: "flex", flexDirection: "column", justifyContent: "space-between", minHeight: { md: 610 } }}>
-            <Box>
-              <Typography variant="overline" sx={{ color: "#A5B4FC", fontWeight: 900 }}>Evidue</Typography>
-              <Typography variant="h3" sx={{ mt: 1.5, maxWidth: 430 }}>Know what the invoice is actually worth.</Typography>
-              <Typography sx={{ mt: 2, color: "#C8D3DA", maxWidth: 460 }}>
-                Reconcile outcome-priced AI invoices against the agreement and your own operational evidence before money moves.
-              </Typography>
-            </Box>
-            <Stack spacing={1.5} sx={{ mt: 5 }}>
-              {[
-                ["01", "Contract-backed", "AI proposes the interpretation; you approve the payment rules."],
-                ["02", "Evidence-backed", "Customer-owned records prove what happened after the vendor's claim."],
-                ["03", "Deterministic dollars", "Approved rules—not an LLM—produce payable, disputed, or needs-review."],
-              ].map(([number, title, text]) => (
-                <Box key={number} sx={{ display: "grid", gridTemplateColumns: "36px 1fr", gap: 1.5, alignItems: "start" }}>
-                  <Box sx={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid #456171", display: "grid", placeItems: "center", color: "#A5B4FC", fontSize: 11, fontWeight: 800 }}>{number}</Box>
-                  <Box><Typography fontWeight={760}>{title}</Typography><Typography variant="body2" sx={{ color: "#94A3B8" }}>{text}</Typography></Box>
-                </Box>
-              ))}
-            </Stack>
-          </Box>
-          <Box sx={{ p: { xs: 3.5, md: 6 }, bgcolor: "background.paper", alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            <Typography variant="overline" color="primary.main" fontWeight={820}>Customer workspace</Typography>
-            <Typography variant="h3" fontWeight={720} sx={{ mt: 0.75 }}>Open your reconciliation workspace</Typography>
-            <Typography color="text.secondary" sx={{ mt: 1.5 }}>
-              Use your workspace access key to open customer contracts, invoice data, evidence, reconciliation history, and finance actions in one place.
+      <Box className="workspace-auth-page">
+        <Paper variant="outlined" className="workspace-auth-card">
+          <Box className="workspace-auth-context">
+            <Typography className="section-kicker">EVIDUE · CUSTOMER WORKSPACE</Typography>
+            <Typography component="h1">Know what the invoice is actually worth.</Typography>
+            <Typography>
+              Reconcile outcome-priced AI invoices against approved contract rules and customer-controlled evidence before money moves.
             </Typography>
-            <Box sx={{ mt: 3, p: 2, borderRadius: 2, bgcolor: "action.hover", border: 1, borderColor: "divider" }}>
-              <Typography variant="body2" fontWeight={700}>Authority boundary</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.4 }}>
-                AI interprets the agreement. You approve the rules. Deterministic code decides invoice money.
-              </Typography>
+            <Box className="workspace-auth-principles">
+              {[
+                ["01", "Contract-backed", "AI proposes the interpretation; finance approves the governing rules."],
+                ["02", "Evidence-backed", "Customer-owned records prove what happened after the vendor claim."],
+                ["03", "Deterministic dollars", "Approved rules—not an LLM—produce the financial determination."],
+              ].map(([number, title, text]) => (
+                <Box key={number}><span>{number}</span><div><strong>{title}</strong><p>{text}</p></div></Box>
+              ))}
             </Box>
-            {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-            <Box component="form" onSubmit={authenticate} sx={{ mt: 3 }}>
-              <Stack spacing={2}>
+          </Box>
+          <Box className="workspace-auth-form">
+            <Typography className="section-kicker">PRIVATE ACCESS</Typography>
+            <Typography component="h2">Open your reconciliation workspace</Typography>
+            <Typography>Use the access key provided for this customer workspace. The key stays in this browser session and is never placed in a URL.</Typography>
+            <Box className="workspace-auth-boundary"><strong>Authority boundary</strong><span>AI interprets the agreement. You approve the rules. Deterministic code decides invoice money.</span></Box>
+            {error && <Alert severity="error">{error}</Alert>}
+            <Box component="form" onSubmit={authenticate}>
+              <Stack spacing={1.5}>
                 <TextField label="Workspace access key" type="password" value={tokenDraft} onChange={(event) => setTokenDraft(event.target.value)} autoFocus fullWidth helperText="Provided by your Evidue workspace administrator." />
                 <Button type="submit" variant="contained" size="large">Open workspace</Button>
               </Stack>
             </Box>
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2 }}>
-              Stored in this browser session only. Never placed in a URL.
-            </Typography>
           </Box>
         </Paper>
       </Box>
@@ -695,7 +593,7 @@ export default function PilotApp() {
 
   return (
     <WorkspaceShell
-      active={configPage ? "settings" : "reconciliation"}
+      active={configPage ? "settings" : "invoices"}
       workspaceId={status?.workspace_id}
       busy={busy}
       onRefresh={() => void refresh()}
@@ -712,29 +610,16 @@ export default function PilotApp() {
         <Box
           sx={{
             width: "100%",
-            maxWidth: 1600,
+            maxWidth: 1500,
             mx: "auto",
             px: { xs: 1.5, md: 3 },
             py: { xs: 2, md: 3 },
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", lg: "238px minmax(0, 1fr)" },
-            gap: { xs: 2, lg: 2.5 },
-            alignItems: "start",
           }}
         >
-          <PilotStageRail
-            activeStage={activeStage}
-            completion={stageCompletion}
-            readinessPercent={readinessPercent}
-            completedStages={completedStages}
-            onNavigate={goToStage}
-            status={status}
-            reconciliation={reconciliation}
-          />
-
           <Stack
             spacing={2.25}
             sx={{
+              mt: 2.25,
               minWidth: 0,
               p: 0,
               borderRadius: 0,
@@ -746,57 +631,51 @@ export default function PilotApp() {
             {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
 
             {emptyWorkspace && (
-              <Paper variant="outlined" sx={{ borderRadius: 3, overflow: "hidden" }}>
-                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1.2fr 0.8fr" } }}>
-                  <Box sx={{ bgcolor: "#0F172A", color: "#F8FAFC", p: { xs: 3, md: 4.5 } }}>
-                    <Typography variant="overline" sx={{ color: "#AFA4EE" }}>First reconciliation</Typography>
-                    <Typography variant="h3" sx={{ mt: 0.8, maxWidth: 700 }}>Get to a defensible payable amount without learning Evidue first.</Typography>
-                    <Typography sx={{ mt: 1.5, color: "#CBD5E1", maxWidth: 690 }}>
-                      Start with a completed sample to see the end result, or bring your own agreement and build the decision from source terms.
-                    </Typography>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mt: 3 }}>
-                      <Button
-                        variant="contained"
-                        size="large"
-                        disabled={Boolean(busy)}
-                        onClick={() => void act("Creating sample workspace", async () => { setStageTouched(false); await pilotApi.seedSample(); await refresh(); }, "Guided sample is ready.")}
-                      >
-                        Load guided sample
-                      </Button>
-                      <Button
-                        variant="outlined"
-                        size="large"
-                        sx={{ color: "#F8FAFC", borderColor: "#64748B", "&:hover": { borderColor: "#A5B4FC", bgcolor: "rgba(255,255,255,0.04)" } }}
-                        onClick={() => { goToStage("agreement"); window.requestAnimationFrame(() => document.getElementById("contract")?.scrollIntoView({ behavior: "smooth" })); }}
-                      >
-                        Start with company data
-                      </Button>
-                    </Stack>
-                  </Box>
-                  <Box sx={{ bgcolor: "#171522", color: "#F5F7FA", p: { xs: 3, md: 4.5 }, display: "flex", flexDirection: "column", justifyContent: "center", borderLeft: { md: "1px solid #2B2840" } }}>
-                    <Typography variant="overline" sx={{ color: "#AFA4EE" }}>What the sample proves</Typography>
-                    <Stack spacing={1.3} sx={{ mt: 1.5 }}>
-                      {["One contract-backed payable line", "One evidence-backed disputed line", "One line held safely in Needs review"].map((label, index) => (
-                        <Box key={label} sx={{ display: "flex", gap: 1.2, alignItems: "center" }}>
-                          <Box sx={{ width: 27, height: 27, borderRadius: "50%", bgcolor: "#242038", border: "1px solid #4E436E", display: "grid", placeItems: "center", fontWeight: 800, color: "#C6BCFF" }}>{index + 1}</Box>
-                          <Typography variant="body2" fontWeight={690}>{label}</Typography>
-                        </Box>
-                      ))}
-                    </Stack>
-                    <Typography variant="caption" sx={{ mt: 2, color: "#7E899A" }}>Synthetic data is clearly labeled and can be reset afterward.</Typography>
-                  </Box>
+              <Paper variant="outlined" className="first-reconciliation-panel">
+                <Box className="first-reconciliation-main">
+                  <Typography className="section-kicker">FIRST RECONCILIATION</Typography>
+                  <Typography component="h2">Get to a defensible payable amount before learning the whole product.</Typography>
+                  <Typography>
+                    Load the guided sample to see a completed invoice review, or start with your own contract and customer evidence.
+                  </Typography>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
+                    <Button variant="contained" disabled={Boolean(busy)} onClick={() => void act("Creating sample workspace", async () => { setStageTouched(false); await pilotApi.seedSample(); await refresh(); }, "Guided sample is ready.")}>Load guided sample</Button>
+                    <Button variant="outlined" onClick={() => { goToStage("agreement"); window.requestAnimationFrame(() => document.getElementById("contract")?.scrollIntoView({ behavior: "smooth" })); }}>Start with company data</Button>
+                  </Stack>
+                </Box>
+                <Box className="first-reconciliation-proof">
+                  <Typography className="section-kicker">WHAT THE SAMPLE PROVES</Typography>
+                  {[
+                    ["01", "Substantiated", "One charge supported by contract and evidence"],
+                    ["02", "Contradicted", "One charge identified for dispute"],
+                    ["03", "Insufficient evidence", "One charge held safely for review"],
+                  ].map(([index, title, detail]) => (
+                    <Box key={index}><span>{index}</span><div><strong>{title}</strong><p>{detail}</p></div></Box>
+                  ))}
+                  <Typography className="first-reconciliation-note">Synthetic data only. Reset it from Settings at any time.</Typography>
                 </Box>
               </Paper>
             )}
 
             {!emptyWorkspace && (
-              <WorkspaceCommandHeader
-                contract={contract}
-                status={status}
-                reconciliation={reconciliation}
-                activeStage={activeStage}
-                readinessPercent={readinessPercent}
-              />
+              <>
+                <WorkspaceCommandHeader
+                  contract={contract}
+                  status={status}
+                  reconciliation={reconciliation}
+                  activeStage={activeStage}
+                  readinessPercent={readinessPercent}
+                />
+                <PilotStageRail
+                  activeStage={activeStage}
+                  completion={stageCompletion}
+                  readinessPercent={readinessPercent}
+                  completedStages={completedStages}
+                  onNavigate={goToStage}
+                  status={status}
+                  reconciliation={reconciliation}
+                />
+              </>
             )}
 
             {!emptyWorkspace && (
@@ -821,7 +700,7 @@ export default function PilotApp() {
               <EvidenceWorkspace status={status} airVersion={airVersion} verificationPlan={verificationPlan} config={config} act={act} refresh={refresh} />
             )}
 
-            {activeStage === "decision" && (
+            {activeStage === "verification" && (
               <>
                 <Overview status={status} reconciliation={reconciliation} />
                 <DecisionWorkspace
@@ -832,15 +711,21 @@ export default function PilotApp() {
                   act={act}
                   refresh={refresh}
                 />
+              </>
+            )}
+
+            {activeStage === "review" && (
+              <>
+                <ReviewWorkspace reconciliation={reconciliation} onNavigate={goToStage} />
                 <Surface
-                  title="Auditability and runtime details"
+                  title="Technical trail"
                   eyebrow="Advanced"
-                  action={<Button size="small" onClick={() => { setAdvanced((value) => !value); if (!advanced) void act("Loading audit history", async () => setAuditEvents((await pilotApi.auditLog()).events)); }}>{advanced ? "Hide" : "Show"}</Button>}
+                  action={<Button size="small" onClick={() => { setAdvanced((value) => !value); if (!advanced) void act("Loading audit history", async () => setAuditEvents((await pilotApi.auditLog()).events)); }}>{advanced ? "Hide technical details" : "View technical details"}</Button>}
                 >
                   <Collapse in={advanced} unmountOnExit>
                     <AdvancedDetails airVersion={airVersion} assurance={assurance} plan={verificationPlan} facts={facts} audit={auditEvents} />
                   </Collapse>
-                  {!advanced && <Typography color="text.secondary">Open the technical trail only when you need to verify rule checks, evidence derivation, immutable IDs, or workspace history.</Typography>}
+                  {!advanced && <Typography color="text.secondary">Rule hashes, evidence derivation, runtime identifiers, and audit history stay out of the finance decision until you need them.</Typography>}
                 </Surface>
               </>
             )}
@@ -859,7 +744,6 @@ function PilotStageRail({
   readinessPercent,
   completedStages,
   onNavigate,
-  status,
   reconciliation,
 }: {
   activeStage: PilotStage;
@@ -871,117 +755,45 @@ function PilotStageRail({
   reconciliation: Reconciliation | null;
 }) {
   return (
-    <Box
-      component="aside"
-      sx={{
-        position: { lg: "sticky" },
-        top: { lg: 84 },
-        color: "#DDE3EC",
-        px: { xs: 0, lg: 0.5 },
-      }}
-    >
-      <Box sx={{ px: 1.2, pb: 2.1, borderBottom: "1px solid #242B35" }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="flex-end">
-          <Box>
-            <Typography variant="overline" sx={{ color: "#777FF2" }}>Payment readiness</Typography>
-            <Typography variant="h3" sx={{ mt: 0.2, fontWeight: 780, letterSpacing: "-.055em", color: "#F7F9FC" }}>{readinessPercent}%</Typography>
+    <Paper variant="outlined" className="case-progress-shell">
+      <Box className="case-progress-summary">
+        <Box>
+          <Typography className="section-kicker">PAYMENT READINESS</Typography>
+          <Stack direction="row" spacing={1.5} alignItems="baseline">
+            <Typography variant="h5" fontWeight={800}>{readinessPercent}%</Typography>
+            <Typography variant="body2" color="text.secondary">{completedStages} of 5 controls complete</Typography>
+          </Stack>
+        </Box>
+        {reconciliation && (
+          <Box sx={{ textAlign: { sm: "right" } }}>
+            <Typography variant="caption" color="text.secondary">Verified payable</Typography>
+            <Typography variant="h6" fontWeight={800}>{money(reconciliation.confirmed_payable_amount, reconciliation.currency)}</Typography>
           </Box>
-          <Typography variant="caption" sx={{ color: "#707C8D", pb: 0.45 }}>{completedStages}/4 controls</Typography>
-        </Stack>
-        <LinearProgress
-          variant="determinate"
-          value={readinessPercent}
-          sx={{
-            mt: 1.35,
-            height: 5,
-            bgcolor: "#202731",
-            "& .MuiLinearProgress-bar": {
-              bgcolor: readinessPercent === 100 ? "#4DE0A0" : "#7C5CFC",
-              boxShadow: readinessPercent === 100 ? "0 0 18px rgba(77,224,160,.24)" : "0 0 18px rgba(124,92,252,.25)",
-            },
-          }}
-        />
+        )}
       </Box>
-
-      <Stack direction={{ xs: "row", lg: "column" }} spacing={0} sx={{ py: 1.5, overflowX: { xs: "auto", lg: "visible" } }}>
+      <LinearProgress variant="determinate" value={readinessPercent} className="case-progress-bar" />
+      <Box className="case-lifecycle" role="navigation" aria-label="Invoice verification lifecycle">
         {pilotStages.map((stage, index) => {
           const selected = stage.id === activeStage;
           const done = completion[stage.id];
-          const statusLabel = done ? "complete" : selected ? "current" : "not complete";
           return (
             <Button
               key={stage.id}
               aria-current={selected ? "step" : undefined}
-              aria-label={`${stage.label}: ${statusLabel}. ${stage.hint}`}
+              aria-label={stage.label}
               onClick={() => onNavigate(stage.id)}
-              sx={{
-                position: "relative",
-                px: 1.15,
-                py: 1.1,
-                minHeight: 58,
-                width: { xs: 190, lg: "100%" },
-                flex: { xs: "0 0 auto", lg: "1 1 auto" },
-                justifyContent: "flex-start",
-                textAlign: "left",
-                color: selected ? "#FFFFFF" : done ? "#BAC4D0" : "#758193",
-                borderRadius: 1.8,
-                bgcolor: selected ? "rgba(124,92,252,.12)" : "transparent",
-                border: selected ? "1px solid rgba(124,92,252,.22)" : "1px solid transparent",
-                "&::before": {
-                  content: '""',
-                  position: "absolute",
-                  left: 0,
-                  top: 11,
-                  bottom: 11,
-                  width: 3,
-                  borderRadius: 99,
-                  bgcolor: selected ? "#8B76FF" : "transparent",
-                  boxShadow: selected ? "0 0 18px rgba(139,118,255,.42)" : "none",
-                },
-                "&:hover": { bgcolor: selected ? "rgba(124,92,252,.16)" : "rgba(255,255,255,.035)" },
-              }}
+              className={`${selected ? "active" : ""}${done ? " complete" : ""}`}
             >
-              <Box
-                sx={{
-                  width: 27,
-                  height: 27,
-                  flex: "0 0 27px",
-                  borderRadius: "50%",
-                  display: "grid",
-                  placeItems: "center",
-                  mr: 1.15,
-                  bgcolor: done ? "#173D30" : selected ? "#7C5CFC" : "#171D25",
-                  border: `1px solid ${done ? "#2E8A67" : selected ? "#9A88FF" : "#2B333E"}`,
-                  color: done ? "#8FF0BE" : selected ? "#FFFFFF" : "#657184",
-                  fontWeight: 850,
-                  fontSize: 11,
-                }}
-              >
-                {done ? "✓" : stage.id === "export" && reconciliation ? "→" : index + 1}
-              </Box>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography variant="body2" sx={{ fontWeight: 730, color: "inherit" }}>{stage.label}</Typography>
-                <Typography variant="caption" sx={{ color: selected ? "#AFA4EE" : "#687587", display: "block", mt: 0.1 }}>{stage.hint}</Typography>
-              </Box>
+              <span className="case-step-index">{done ? "✓" : index + 1}</span>
+              <span className="case-step-copy">
+                <strong>{stage.label}</strong>
+                <small>{stage.hint}</small>
+              </span>
             </Button>
           );
         })}
-      </Stack>
-
-      <Box sx={{ mt: 1, p: 1.5, borderTop: "1px solid #242B35" }}>
-        {reconciliation ? (
-          <>
-            <Typography variant="caption" sx={{ color: "#6F7A8A" }}>Supported payable</Typography>
-            <Typography variant="h5" sx={{ mt: 0.35, color: "#A9EEC9", fontWeight: 790, fontVariantNumeric: "tabular-nums" }}>{money(reconciliation.confirmed_payable_amount, reconciliation.currency)}</Typography>
-          </>
-        ) : (
-          <>
-            <Typography variant="caption" sx={{ color: "#6F7A8A" }}>Workspace</Typography>
-            <Typography variant="body2" sx={{ mt: 0.35, color: "#A6B0BF" }}>{status?.claims ?? 0} claims · {status?.events ?? 0} evidence records</Typography>
-          </>
-        )}
       </Box>
-    </Box>
+    </Paper>
   );
 }
 
@@ -999,68 +811,46 @@ function WorkspaceCommandHeader({
   readinessPercent: number;
 }) {
   const stage = pilotStages.find((item) => item.id === activeStage);
+  const currency = reconciliation?.currency || "USD";
   return (
-    <Paper
-      variant="outlined"
-      sx={{
-        overflow: "hidden",
-        borderRadius: 3,
-        bgcolor: "#11161E",
-        borderColor: "#2B333E",
-        boxShadow: "0 30px 80px rgba(0,0,0,.28)",
-        backgroundImage: "radial-gradient(circle at 92% 15%, rgba(124,92,252,.18), transparent 28%), radial-gradient(circle at 70% 110%, rgba(42,183,255,.08), transparent 30%)",
-      }}
-    >
-      <Box sx={{ p: { xs: 2.5, md: 3 }, display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0,1.4fr) minmax(280px,.6fr)" }, gap: 3, alignItems: "end" }}>
+    <Paper variant="outlined" className="invoice-control-header">
+      <Box className="invoice-control-identity">
         <Box>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.2 }}>
-            <Chip size="small" label="CUSTOMER WORKSPACE" sx={{ color: "#B7ABFF", bgcolor: "rgba(124,92,252,.10)", border: "1px solid rgba(124,92,252,.25)", letterSpacing: ".06em", fontSize: 10 }} />
-            <Typography variant="caption" sx={{ color: "#667385" }}>{stage?.label}</Typography>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75, flexWrap: "wrap" }}>
+            <Typography className="section-kicker">ACTIVE INVOICE REVIEW</Typography>
+            <Chip size="small" variant="outlined" label={stage?.label ?? "Invoice"} />
           </Stack>
-          <Typography variant="h3" sx={{ color: "#F8FAFC", fontWeight: 790, letterSpacing: "-.05em", maxWidth: 900 }}>
-            {contract ? `${contract.customer} × ${contract.vendor}` : "Invoice reconciliation"}
+          <Typography variant="h4" fontWeight={780}>
+            {contract ? `${contract.vendor}` : "Invoice reconciliation"}
           </Typography>
-          <Typography sx={{ mt: 1, color: "#8E9AAA", maxWidth: 760 }}>
-            {contract
-              ? `Governing agreement ${formatDate(contract.period_start)} – ${formatExclusiveEnd(contract.period_end)}. Every payable dollar is tied back to approved terms and customer evidence.`
-              : "Turn contract terms, invoice claims, and customer evidence into an auditable payment decision."}
+          <Typography color="text.secondary" sx={{ mt: 0.35 }}>
+            {status?.active_invoice_id || "Invoice not loaded"}
+            {contract ? ` · ${formatDate(contract.period_start)} – ${formatExclusiveEnd(contract.period_end)}` : ""}
           </Typography>
         </Box>
-
-        <Box sx={{ borderLeft: { md: "1px solid #2B333E" }, pl: { md: 3 } }}>
-          {reconciliation ? (
-            <>
-              <Typography variant="overline" sx={{ color: "#6F7C8D" }}>Verified payable</Typography>
-              <Typography variant="h3" sx={{ color: "#A9EEC9", fontWeight: 800, mt: 0.25, fontVariantNumeric: "tabular-nums" }}>{money(reconciliation.confirmed_payable_amount, reconciliation.currency)}</Typography>
-              <Stack direction="row" spacing={1} sx={{ mt: 1.1, flexWrap: "wrap" }}>
-                <Chip size="small" label={`${money(reconciliation.recommended_deduction, reconciliation.currency)} disputed`} sx={{ color: "#FFB0BA", bgcolor: "rgba(255,107,122,.08)", border: "1px solid rgba(255,107,122,.22)" }} />
-                <Chip size="small" label={`${money(reconciliation.needs_review_amount, reconciliation.currency)} review`} sx={{ color: "#FFD694", bgcolor: "rgba(244,184,96,.08)", border: "1px solid rgba(244,184,96,.22)" }} />
-              </Stack>
-            </>
-          ) : (
-            <>
-              <Typography variant="overline" sx={{ color: "#6F7C8D" }}>Controls ready</Typography>
-              <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-                <Typography variant="h3" sx={{ color: "#C8BFFF", fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{readinessPercent}%</Typography>
-                <Typography variant="body2" sx={{ color: "#667385" }}>before payment decision</Typography>
-              </Box>
-              <Typography variant="caption" sx={{ display: "block", mt: 1, color: "#748093" }}>{status?.active_invoice_id ? "Invoice loaded" : "Invoice not yet loaded"} · {status?.events ?? 0} evidence records</Typography>
-            </>
-          )}
+        <Box className="invoice-control-status">
+          <Typography variant="caption" color="text.secondary">Payment readiness</Typography>
+          <Typography variant="h5" fontWeight={800}>{readinessPercent}%</Typography>
         </Box>
       </Box>
-      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: "1px solid #252D37" }}>
-        {[
-          ["Contract rules", status?.contract_approved ? "Approved" : "Needs review", Boolean(status?.contract_approved)],
-          ["Invoice", status?.active_invoice_id ? `${status.claims ?? 0} claims` : "Not loaded", Boolean(status?.active_invoice_id)],
-          ["Evidence", `${status?.events ?? 0} records`, Boolean(status?.events)],
-          ["Reconciliation", reconciliation ? "Complete" : "Not run", Boolean(reconciliation)],
-        ].map(([label, value, ready], index) => (
-          <Box key={String(label)} sx={{ px: 2.25, py: 1.4, borderLeft: index ? "1px solid #252D37" : "none", bgcolor: ready ? "rgba(77,224,160,.025)" : "rgba(255,255,255,.01)" }}>
-            <Typography variant="caption" sx={{ color: "#687486" }}>{label}</Typography>
-            <Typography variant="body2" sx={{ mt: 0.15, color: ready ? "#B7EED1" : "#9AA5B4", fontWeight: 700 }}>{String(value)}</Typography>
-          </Box>
-        ))}
+
+      <Box className="invoice-control-numbers">
+        <Box>
+          <span>Vendor billed</span>
+          <strong>{reconciliation ? money(reconciliation.submitted_amount, currency) : status?.active_invoice_id ? "Pending verification" : "—"}</strong>
+        </Box>
+        <Box>
+          <span>Verified payable</span>
+          <strong>{reconciliation ? money(reconciliation.confirmed_payable_amount, currency) : "—"}</strong>
+        </Box>
+        <Box>
+          <span>Identified for dispute</span>
+          <strong>{reconciliation ? money(reconciliation.recommended_deduction, currency) : "—"}</strong>
+        </Box>
+        <Box>
+          <span>Needs review</span>
+          <strong>{reconciliation ? money(reconciliation.needs_review_amount, currency) : "—"}</strong>
+        </Box>
       </Box>
     </Paper>
   );
@@ -1114,12 +904,12 @@ function NextAction({
       title = "Everything required for a deterministic decision is ready";
       body = "The approved rules, normalized invoice, and available customer evidence can now be evaluated together.";
       cta = "Review readiness";
-      stage = "decision";
+      stage = "verification";
     } else if (Number(reconciliation.needs_review_amount) > 0) {
       title = `${money(reconciliation.needs_review_amount, reconciliation.currency)} is still protected from an unsupported decision`;
       body = "Open the Needs review lines to see exactly which evidence or identity decision would resolve them.";
       cta = "Review unresolved lines";
-      stage = "decision";
+      stage = "review";
     } else {
       title = "The financial decision is complete";
       body = "Review the result, then move the corrected invoice and dispute package into your AP and vendor workflow.";
@@ -1129,41 +919,13 @@ function NextAction({
   }
 
   return (
-    <Paper
-      variant="outlined"
-      sx={{
-        overflow: "hidden",
-        borderRadius: 2.5,
-        borderColor: "#443A75",
-        bgcolor: "#171522",
-        backgroundImage: "linear-gradient(115deg, rgba(124,92,252,.17) 0%, rgba(124,92,252,.04) 42%, rgba(42,183,255,.035) 100%)",
-        boxShadow: "0 16px 48px rgba(0,0,0,.22)",
-      }}
-    >
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0,1fr) auto" }, gap: 2, p: { xs: 2.2, md: 2.5 }, alignItems: "center" }}>
-        <Box sx={{ display: "grid", gridTemplateColumns: "10px minmax(0,1fr)", gap: 1.5, alignItems: "stretch" }}>
-          <Box sx={{ borderRadius: 99, background: "linear-gradient(180deg,#A18BFF,#6D54EB)", boxShadow: "0 0 22px rgba(124,92,252,.28)" }} />
-          <Box>
-            <Typography variant="overline" sx={{ color: "#AFA4EE" }}>Next control</Typography>
-            <Typography variant="h5" sx={{ color: "#F8FAFC", fontWeight: 760, mt: 0.15 }}>{title}</Typography>
-            <Typography sx={{ mt: 0.45, color: "#8F9AAA", maxWidth: 900 }}>{body}</Typography>
-          </Box>
-        </Box>
-        <Button
-          variant="contained"
-          size="large"
-          onClick={() => onNavigate(stage)}
-          sx={{
-            minWidth: 190,
-            bgcolor: "#7C5CFC",
-            color: "#FFFFFF",
-            boxShadow: "0 10px 28px rgba(124,92,252,.24)",
-            "&:hover": { bgcolor: "#8A6DFF", boxShadow: "0 12px 34px rgba(124,92,252,.34)" },
-          }}
-        >
-          {cta}
-        </Button>
+    <Paper variant="outlined" className="recommended-action-panel">
+      <Box>
+        <Typography className="section-kicker">RECOMMENDED NEXT STEP</Typography>
+        <Typography variant="h6" fontWeight={760}>{title}</Typography>
+        <Typography color="text.secondary" sx={{ mt: 0.4, maxWidth: 880 }}>{body}</Typography>
       </Box>
+      <Button variant="contained" size="large" onClick={() => onNavigate(stage)}>{cta}</Button>
     </Paper>
   );
 }
@@ -1226,11 +988,11 @@ function PilotConfigurationPage({
 
   return (
     <Stack spacing={3}>
-      <Paper variant="outlined" sx={{ p: { xs: 3, md: 4 }, bgcolor: "#11161E", color: "#F8FAFC", borderColor: "#2B333E", borderRadius: 2.5 }}>
-        <Typography variant="overline" sx={{ color: "#A5B4FC" }} fontWeight={850}>Configuration</Typography>
-        <Typography variant="h3" fontWeight={720}>Workspace settings</Typography>
-        <Typography sx={{ mt: 1, maxWidth: 800, color: "#CBD5E1" }}>
-          Set finance-friendly defaults and preferred customer systems. Secrets stay on the server; this page never reads or stores API keys.
+      <Paper variant="outlined" className="settings-intro">
+        <Typography className="section-kicker">CONFIGURATION</Typography>
+        <Typography variant="h4" fontWeight={730}>Workspace controls</Typography>
+        <Typography color="text.secondary" sx={{ mt: 0.75, maxWidth: 800 }}>
+          Set finance defaults and preferred customer systems. Secrets stay on the server; this page never reads or stores API keys.
         </Typography>
       </Paper>
 
@@ -1248,7 +1010,7 @@ function PilotConfigurationPage({
 
       <Surface title="Preferred evidence systems" eyebrow="Evidence">
         <Typography color="text.secondary" sx={{ mb: 2 }}>
-          These names are suggestions in the evidence checklist. Contract proof requirements still determine what evidence is actually needed.
+          These names are suggestions in the evidence checklist. Contract evidence requirements still determine what evidence is actually needed.
         </Typography>
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" }, gap: 2 }}>
           <TextField label="Support system" value={draft.preferred_support_system} onChange={(e) => setDraft({ ...draft, preferred_support_system: e.target.value })} placeholder="Zendesk" />
@@ -1296,28 +1058,21 @@ function PilotConfigurationPage({
   );
 }
 
-function Overview({ status, reconciliation }: { status: PilotStatus | null; reconciliation: Reconciliation | null }) {
+export function Overview({ status, reconciliation }: { status: PilotStatus | null; reconciliation: Reconciliation | null }) {
   if (!reconciliation) {
     return (
-      <Paper
-        variant="outlined"
-        sx={(theme) => ({
-          p: { xs: 2.5, md: 3.25 },
-          borderRadius: 2.5,
-          bgcolor: theme.palette.mode === "dark" ? "#171E2A" : "#F7F7FD",
-        })}
-      >
-        <Typography variant="overline" color="primary.main">Decision preview</Typography>
-        <Typography variant="h4" fontWeight={720} sx={{ mt: 0.4 }}>The payable amount will land here.</Typography>
-        <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 760 }}>
-          Evidue does not estimate before the approved rules and required evidence are ready. Run reconciliation to produce the amount finance can act on.
+      <Paper variant="outlined" className="result-placeholder">
+        <Typography className="section-kicker">VERIFICATION RESULT</Typography>
+        <Typography variant="h5" fontWeight={730}>The financial decision will appear here.</Typography>
+        <Typography color="text.secondary" sx={{ mt: 0.75, maxWidth: 760 }}>
+          Evidue does not estimate before the approved rules and required evidence are ready. Run verification to produce the amount finance can act on.
         </Typography>
         {status && (
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} sx={{ mt: 2.25 }}>
-            <Chip variant="outlined" label={`${status.claims} invoice lines`} />
-            <Chip variant="outlined" label={`${status.events} evidence records`} />
-            <Chip variant="outlined" label={`${status.accepted_match_rate}% evidence match rate`} />
-          </Stack>
+          <Box className="result-placeholder-stats">
+            <span>{status.claims} invoice lines</span>
+            <span>{status.events} evidence records</span>
+            <span>{status.accepted_match_rate}% evidence match rate</span>
+          </Box>
         )}
       </Paper>
     );
@@ -1330,61 +1085,56 @@ function Overview({ status, reconciliation }: { status: PilotStatus | null; reco
   const payableShare = billedAmount > 0 ? (payableAmount / billedAmount) * 100 : 0;
   const disputeShare = billedAmount > 0 ? (disputeAmount / billedAmount) * 100 : 0;
   const reviewShare = billedAmount > 0 ? (reviewAmount / billedAmount) * 100 : 0;
+  const identifiedDisputePercent = billedAmount > 0 ? disputeShare : Number(reconciliation.identified_dispute_percent || 0);
+
+  const headline = [
+    ["Vendor billed", money(reconciliation.submitted_amount, reconciliation.currency), `${reconciliation.claimed_outcomes ?? 0} claimed outcomes`],
+    ["Verified payable", money(reconciliation.confirmed_payable_amount, reconciliation.currency), `${reconciliation.payable_outcomes ?? 0} substantiated`],
+    ["Identified for dispute", money(reconciliation.recommended_deduction, reconciliation.currency), `${reconciliation.disputed_outcomes ?? 0} contradicted`],
+    ["Needs review", money(reconciliation.needs_review_amount, reconciliation.currency), reviewAmount > 0 ? `${reconciliation.needs_review_outcomes ?? 0} insufficient evidence` : "No unresolved dollars"],
+  ] as const;
 
   return (
-    <Paper variant="outlined" sx={{ borderRadius: 3, overflow: "hidden", borderColor: "#263E4D" }}>
-      <Box sx={{ bgcolor: "#0F172A", color: "#F8FAFC", p: { xs: 3, md: 4 } }}>
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0,1.4fr) minmax(280px,0.6fr)" }, gap: 3, alignItems: "end" }}>
-          <Box>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5, flexWrap: "wrap" }}>
-              <Chip size="small" label="Reconciliation complete" sx={{ bgcolor: "#203746", color: "#DDEAF1", border: "1px solid #365366" }} />
-              <Typography variant="caption" sx={{ color: "#94A8B5" }}>{reconciliation.claimed_outcomes ?? 0} vendor claims evaluated</Typography>
-            </Stack>
-            <Typography variant="overline" sx={{ color: "#A5B4FC" }}>Verified payable</Typography>
-            <Typography variant="h2" sx={{ mt: 0.15, fontSize: { xs: "2.7rem", md: "4.25rem" }, fontWeight: 760, letterSpacing: "-0.055em", fontVariantNumeric: "tabular-nums" }}>
-              {money(reconciliation.confirmed_payable_amount, reconciliation.currency)}
-            </Typography>
-            <Typography sx={{ mt: 1.25, color: "#BAC8D0", maxWidth: 710 }}>
-              This is the amount supported by the approved contract rules and the evidence currently available. Needs-review dollars stay outside both payable and dispute totals.
-            </Typography>
-          </Box>
-          <Box sx={{ p: 2.25, borderRadius: 2, bgcolor: disputeAmount > 0 ? "#2E2221" : "#1A2C30", border: "1px solid", borderColor: disputeAmount > 0 ? "#74443F" : "#31504B" }}>
-            <Typography variant="caption" sx={{ color: disputeAmount > 0 ? "#E3AAA4" : "#A8CFBF" }}>Charges identified for dispute</Typography>
-            <Typography variant="h4" sx={{ mt: 0.45, fontWeight: 760, fontVariantNumeric: "tabular-nums" }}>{money(reconciliation.recommended_deduction, reconciliation.currency)}</Typography>
-            <Typography variant="body2" sx={{ mt: 0.4, color: "#CBD5E1" }}>{reconciliation.identified_dispute_percent ?? "0.0"}% of invoice value · {reconciliation.disputed_outcomes ?? 0} line(s)</Typography>
-          </Box>
+    <Paper variant="outlined" className="verification-result">
+      <Box className="verification-result-lead">
+        <Box>
+          <Typography className="section-kicker">VERIFICATION COMPLETE</Typography>
+          <Typography variant="h4" fontWeight={760}>
+            {identifiedDisputePercent.toFixed(1)}% of invoice value identified for dispute.
+          </Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.65 }}>
+            Finance can see the billed amount, the substantiated payable amount, and every unresolved dollar without interpreting model output.
+          </Typography>
         </Box>
+        <Chip size="small" variant="outlined" color="success" label={`${reconciliation.claimed_outcomes ?? 0} claims evaluated`} />
       </Box>
-      <Box sx={(theme) => ({ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, bgcolor: theme.palette.mode === "dark" ? "#17212A" : "#FFFFFF" })}>
-        {[
-          ["Vendor billed", money(reconciliation.submitted_amount, reconciliation.currency), `${reconciliation.claimed_outcomes ?? 0} claimed outcomes`],
-          ["Charges identified for dispute", money(reconciliation.recommended_deduction, reconciliation.currency), `${reconciliation.disputed_outcomes ?? 0} contract-backed disputes`],
-          ["Needs review", money(reconciliation.needs_review_amount, reconciliation.currency), reviewAmount > 0 ? `${reconciliation.needs_review_outcomes ?? 0} unresolved line(s)` : "No unresolved dollars"],
-        ].map(([label, value, help], index) => (
-          <Box key={label} sx={{ p: 2.5, borderRight: { sm: index < 2 ? 1 : 0 }, borderBottom: { xs: index < 2 ? 1 : 0, sm: 0 }, borderColor: "divider" }}>
-            <Typography variant="caption" color="text.secondary" fontWeight={700}>{label}</Typography>
-            <Typography variant="h5" fontWeight={730} sx={{ mt: 0.25, fontVariantNumeric: "tabular-nums" }}>{value}</Typography>
-            <Typography variant="caption" color="text.secondary">{help}</Typography>
+
+      <Box className="verification-result-numbers">
+        {headline.map(([label, value, help]) => (
+          <Box key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+            <small>{help}</small>
           </Box>
         ))}
       </Box>
-      <Box sx={(theme) => ({ px: 2.5, py: 2.1, bgcolor: theme.palette.mode === "dark" ? "#17212A" : "#F7F7FA", borderTop: 1, borderColor: "divider" })}>
-        <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mb: 0.9 }}>
-          <Typography variant="caption" color="text.secondary" fontWeight={750}>Disposition of billed amount</Typography>
-          <Typography variant="caption" color="text.secondary">Payable · Disputed · Needs review</Typography>
+
+      <Box className="amount-waterfall" aria-label="Invoice disposition">
+        <Box className="amount-waterfall-labels">
+          <span>Disposition of billed amount</span>
+          <span>{payableShare.toFixed(1)}% payable · {disputeShare.toFixed(1)}% disputed · {reviewShare.toFixed(1)}% review</span>
         </Box>
-        <Box sx={{ display: "flex", height: 10, borderRadius: 999, overflow: "hidden", bgcolor: "action.hover", border: 1, borderColor: "divider" }} aria-label="Disposition of billed amount">
-          {payableShare > 0 && <Box sx={{ width: `${payableShare}%`, bgcolor: "success.main" }} title={`Verified payable ${payableShare.toFixed(1)}%`} />}
-          {disputeShare > 0 && <Box sx={{ width: `${disputeShare}%`, bgcolor: "error.main" }} title={`Disputed ${disputeShare.toFixed(1)}%`} />}
-          {reviewShare > 0 && <Box sx={{ width: `${reviewShare}%`, bgcolor: "warning.main" }} title={`Needs review ${reviewShare.toFixed(1)}%`} />}
+        <Box className="amount-waterfall-track">
+          {payableShare > 0 && <span className="payable" style={{ width: `${payableShare}%` }} />}
+          {disputeShare > 0 && <span className="disputed" style={{ width: `${disputeShare}%` }} />}
+          {reviewShare > 0 && <span className="review" style={{ width: `${reviewShare}%` }} />}
         </Box>
       </Box>
-      <Box sx={(theme) => ({ px: 2.5, py: 1.75, bgcolor: reviewAmount > 0 ? (theme.palette.mode === "dark" ? "#322A18" : "#FFF7E8") : (theme.palette.mode === "dark" ? "#153127" : "#EAF8F2"), borderTop: 1, borderColor: "divider" })}>
-        <Typography variant="body2" fontWeight={650}>
-          {reviewAmount > 0
-            ? `${money(reviewAmount, reconciliation.currency)} remains protected from an unsupported decision until its evidence gap is resolved.`
-            : "Every invoice line has a contract-backed deterministic decision."}
-        </Typography>
+
+      <Box className={reviewAmount > 0 ? "result-protection warning" : "result-protection success"}>
+        {reviewAmount > 0
+          ? `${money(reviewAmount, reconciliation.currency)} remains protected from an unsupported decision until its evidence gap is resolved.`
+          : "Every invoice line has a contract-backed deterministic decision."}
       </Box>
     </Paper>
   );
@@ -1414,7 +1164,7 @@ function ContractWorkspace({
   const [price, setPrice] = useState("");
   const [contractFile, setContractFile] = useState<File | null>(null);
   const [pasted, setPasted] = useState("");
-  const [reviewed, setReviewed] = useState(false);
+  const [ruleReviewSummary, setRuleReviewSummary] = useState({ reviewed: 0, total: 0, flagged: 0 });
   const [latestCandidateId, setLatestCandidateId] = useState("");
   const [latestCandidate, setLatestCandidate] = useState<(AIRVersion & { agreement_ir?: AgreementIRView; finance_view?: FinanceView }) | null>(null);
   const [latestAssurance, setLatestAssurance] = useState<CompilerAssurance | null>(null);
@@ -1472,13 +1222,15 @@ function ContractWorkspace({
     setLatestCandidateId(result.air_version_id);
     setLatestCandidate(version);
     setLatestAssurance(nextAssurance);
-    setReviewed(false);
+    setRuleReviewSummary({ reviewed: 0, total: 0, flagged: 0 });
   }
 
   async function approve() {
     const id = latestCandidateId || candidate?.id;
     if (!id) throw new Error("Analyze the agreement first.");
-    if (!reviewed) throw new Error("Confirm that you reviewed the proposed contract rules against the source agreement.");
+    if (!ruleReviewSummary.total || ruleReviewSummary.reviewed !== ruleReviewSummary.total || ruleReviewSummary.flagged > 0) {
+      throw new Error("Review every proposed contract rule and resolve any flagged interpretation before approval.");
+    }
     await pilotApi.approveAIR(id);
     setLatestCandidate(null);
     setLatestCandidateId("");
@@ -1540,12 +1292,16 @@ function ContractWorkspace({
                   <Metric label="Evidence needed" value={String(financeView?.evidence_needed.length ?? agreement?.proof_requirements?.length ?? 0)} />
                   <Metric label="Pricing terms" value={String(financeView?.pricing_terms.length ?? agreement?.settlement_policies?.length ?? 0)} />
                 </Box>
-                <RuleReview agreement={agreement} financeView={financeView} />
+                <RuleReview agreement={agreement} financeView={financeView} onProgress={setRuleReviewSummary} />
                 {!approved && (
-                  <Stack spacing={1.5}>
-                    <FormControlLabel control={<Checkbox checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />} label="I reviewed these contract rules against the source agreement and approve them for invoice verification." />
-                    <Button variant="contained" disabled={!reviewed || !candidateAssurance?.hard_gate_passed} sx={{ alignSelf: "flex-start" }} onClick={() => void act("Approving contract rules", approve, "Approved contract rules are now immutable and active for invoice verification.")}>Approve contract rules</Button>
-                  </Stack>
+                  <Paper variant="outlined" className="rule-approval-footer">
+                    <Box>
+                      <Typography className="section-kicker">APPROVAL PROGRESS</Typography>
+                      <Typography variant="h6" fontWeight={740}>{ruleReviewSummary.reviewed} of {ruleReviewSummary.total} contract rules reviewed</Typography>
+                      <Typography color="text.secondary">{ruleReviewSummary.flagged > 0 ? `${ruleReviewSummary.flagged} interpretation(s) are flagged and block approval.` : "Approval freezes this rule set as financial authority for reconciliation."}</Typography>
+                    </Box>
+                    <Button variant="contained" disabled={!ruleReviewSummary.total || ruleReviewSummary.reviewed !== ruleReviewSummary.total || ruleReviewSummary.flagged > 0 || !candidateAssurance?.hard_gate_passed} onClick={() => void act("Approving contract rules", approve, "Approved contract rules are now immutable and active for invoice verification.")}>Approve reviewed rules</Button>
+                  </Paper>
                 )}
                 {approved && <Alert severity="success">Approved contract rules v{airVersion?.version_number} are active. Recompiling the agreement creates a new candidate version; historical reconciliations remain pinned to the exact version they used.</Alert>}
               </>
@@ -1738,58 +1494,90 @@ function AgreementBundleManager({
   );
 }
 
-function RuleReview({ agreement, financeView }: { agreement?: AgreementIRView; financeView?: FinanceView }) {
-  if (!agreement) return <Typography color="text.secondary">Contract rule details are unavailable.</Typography>;
+function RuleReview({
+  agreement,
+  financeView,
+  onProgress,
+}: {
+  agreement?: AgreementIRView;
+  financeView?: FinanceView;
+  onProgress: (summary: { reviewed: number; total: number; flagged: number }) => void;
+}) {
   const rules = financeView?.contract_rules ?? [];
-  const pricing = financeView?.pricing_terms ?? [];
+  const [states, setStates] = useState<Record<string, "pending" | "reviewed" | "flagged">>({});
+
+  useEffect(() => {
+    const ids = rules.length ? rules.map((rule) => rule.id) : (agreement?.norms ?? []).map((rule) => rule.id);
+    const reviewed = ids.filter((id) => states[id] === "reviewed").length;
+    const flagged = ids.filter((id) => states[id] === "flagged").length;
+    onProgress({ reviewed, total: ids.length, flagged });
+  }, [agreement?.norms, onProgress, rules, states]);
+
+  if (!agreement) return <Typography color="text.secondary">Contract rule details are unavailable.</Typography>;
+
   if (rules.length) {
     return (
       <Stack spacing={2}>
-        <Typography variant="h6" fontWeight={750}>Did Evidue understand the agreement correctly?</Typography>
-        <Typography color="text.secondary">Review each proposed payment rule against the original language. Finance-facing descriptions below are rendered from the same structured rule that the deterministic engine will execute.</Typography>
-        {rules.map((rule) => (
-          <Paper
-            key={rule.id}
-            variant="outlined"
-            sx={(theme) => ({
-              p: 2.25,
-              borderRadius: 2,
-              bgcolor: theme.palette.mode === "dark" ? "#18242D" : "#F9FBFC",
-              borderLeft: "4px solid",
-              borderLeftColor: rule.consequence === "disputed" ? "error.main" : rule.consequence === "needs_review" ? "warning.main" : "success.main",
-            })}
-          >
-            <Stack spacing={1.25}>
-              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
-                <Chip size="small" color={rule.consequence === "disputed" ? "error" : rule.consequence === "needs_review" ? "warning" : "success"} label={rule.rule_type} />
-                <Chip size="small" variant="outlined" label={rule.verification_method} />
-              </Box>
-              <Typography variant="h6" fontWeight={760}>{rule.description}</Typography>
-              {rule.evidence_needed.length > 0 && <Typography variant="body2"><strong>Evidence needed:</strong> {rule.evidence_needed.join(" · ")}</Typography>}
-              <Box>
-                <Typography variant="caption" fontWeight={850} color="text.secondary">SOURCE AGREEMENT</Typography>
-                {rule.source_clauses.map((clause) => (
-                  <Paper key={clause.id} variant="outlined" sx={{ p: 1.5, mt: 0.75, bgcolor: "action.hover" }}>
-                    <Typography variant="caption" color="text.secondary">{clause.document_id}</Typography>
-                    <Typography variant="body2" sx={{ mt: 0.25 }}>{clause.text}</Typography>
-                  </Paper>
-                ))}
-              </Box>
-              <Typography variant="caption" color="text.secondary">Technical rule ID: {rule.id}</Typography>
-            </Stack>
-          </Paper>
-        ))}
-        {pricing.length > 0 && (
+        <Box className="workspace-section-heading compact">
           <Box>
-            <Typography variant="h6" fontWeight={750} gutterBottom>Pricing terms</Typography>
-            {pricing.map((term) => (
-              <Paper key={term.id} variant="outlined" sx={(theme) => ({ p: 2, mb: 1, bgcolor: theme.palette.mode === "dark" ? "#1B2040" : "#EEF6FA", borderLeft: "4px solid", borderLeftColor: "primary.main" })}>
-                <Typography fontWeight={730}>{term.description}</Typography>
-                {term.source_clauses.map((clause) => <Typography key={clause.id} variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>“{clause.text}”</Typography>)}
-              </Paper>
-            ))}
+            <Typography className="section-kicker">RULE REVIEW</Typography>
+            <Typography variant="h6" fontWeight={740}>Compare the contract language with Evidue’s interpretation</Typography>
+            <Typography color="text.secondary">The left side is the governing source. The right side is the finance rule the deterministic engine will execute after approval.</Typography>
           </Box>
-        )}
+        </Box>
+
+        <Stack spacing={1.25}>
+          {rules.map((rule, index) => {
+            const state = states[rule.id] ?? "pending";
+            return (
+              <Paper key={rule.id} variant="outlined" className={`contract-rule-review ${state}`}>
+                <Box className="contract-rule-source">
+                  <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="center">
+                    <Typography className="section-kicker">SOURCE CLAUSE {index + 1}</Typography>
+                    <Typography variant="caption" color="text.secondary">{rule.source_clauses[0]?.document_id ?? "Agreement"}</Typography>
+                  </Stack>
+                  {rule.source_clauses.length ? rule.source_clauses.map((clause) => (
+                    <Typography key={clause.id} className="contract-source-quote">{clause.text}</Typography>
+                  )) : <Typography color="text.secondary">No source clause was attached to this finance view.</Typography>}
+                </Box>
+
+                <Box className="contract-rule-interpretation">
+                  <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
+                    <Box>
+                      <Typography className="section-kicker">PROPOSED CONTRACT RULE</Typography>
+                      <Typography variant="h6" fontWeight={740}>{rule.description}</Typography>
+                    </Box>
+                    <Chip size="small" variant="outlined" color={state === "reviewed" ? "success" : state === "flagged" ? "error" : "default"} label={state === "reviewed" ? "Reviewed" : state === "flagged" ? "Flagged" : "Pending"} />
+                  </Stack>
+                  <Box className="rule-facts-grid">
+                    <Box><span>Rule type</span><strong>{rule.rule_type}</strong></Box>
+                    <Box><span>Verification</span><strong>{rule.verification_method}</strong></Box>
+                    <Box><span>Financial effect</span><strong>{readable(rule.consequence)}</strong></Box>
+                    <Box><span>Evidence needed</span><strong>{rule.evidence_needed.length ? rule.evidence_needed.join(" · ") : "None"}</strong></Box>
+                  </Box>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1.5 }}>
+                    <Button size="small" variant={state === "reviewed" ? "contained" : "outlined"} color="success" onClick={() => setStates((current) => ({ ...current, [rule.id]: "reviewed" }))}>Approve interpretation</Button>
+                    <Button size="small" variant={state === "flagged" ? "contained" : "outlined"} color="error" onClick={() => setStates((current) => ({ ...current, [rule.id]: "flagged" }))}>Flag for correction</Button>
+                  </Stack>
+                  {state === "flagged" && <Alert severity="warning" sx={{ mt: 1.5 }}>Evidue will not silently rewrite a commercial term. Correct the governing document set or re-run analysis before approving this rule version.</Alert>}
+                </Box>
+              </Paper>
+            );
+          })}
+        </Stack>
+
+        {financeView?.pricing_terms?.length ? (
+          <Paper variant="outlined" className="pricing-terms-panel">
+            <Typography className="section-kicker">PRICING TERMS</Typography>
+            {financeView.pricing_terms.map((term) => (
+              <Box key={term.id} className="pricing-term-row">
+                <Typography fontWeight={700}>{term.description}</Typography>
+                <Typography variant="caption" color="text.secondary">{term.currency}</Typography>
+              </Box>
+            ))}
+          </Paper>
+        ) : null}
+
         {agreement.diagnostics?.map((diag) => <Alert key={`${diag.code}-${diag.message}`} severity={diag.severity === "blocking" ? "error" : diag.severity === "warning" ? "warning" : "info"}>{diag.message}</Alert>)}
       </Stack>
     );
@@ -1799,11 +1587,11 @@ function RuleReview({ agreement, financeView }: { agreement?: AgreementIRView; f
   agreement.norms.forEach((norm) => norm.source_clause_ids.forEach((id) => normsByClause.set(id, [...(normsByClause.get(id) ?? []), norm])));
   return (
     <Stack spacing={1.5}>
-      <Alert severity="warning">Finance-language rule rendering is unavailable for this candidate. Review the source mapping carefully before approval.</Alert>
+      <Alert severity="warning">Finance-language rendering is unavailable for this candidate. Review every source mapping before approval.</Alert>
       {agreement.clauses.filter((item) => item.material).map((clause) => (
-        <Paper key={clause.id} variant="outlined" sx={{ p: 2 }}>
-          <Typography variant="body2" fontWeight={700}>{clause.text}</Typography>
-          {(normsByClause.get(clause.id) ?? []).map((norm) => <Typography key={norm.id} variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>{norm.id} · {readable(norm.consequence)} · {readable(norm.automation_class)}</Typography>)}
+        <Paper key={clause.id} variant="outlined" className="contract-rule-review fallback">
+          <Box className="contract-rule-source"><Typography className="contract-source-quote">{clause.text}</Typography></Box>
+          <Box className="contract-rule-interpretation">{(normsByClause.get(clause.id) ?? []).map((norm) => <Box key={norm.id} sx={{ mb: 1 }}><Typography fontWeight={700}>Contract rule · {readable(norm.consequence)}</Typography><Typography variant="body2" color="text.secondary">{financeVerificationMethod(norm.automation_class)}</Typography><Stack direction="row" spacing={1} sx={{ mt: 1 }}><Button size="small" variant={states[norm.id] === "reviewed" ? "contained" : "outlined"} color="success" onClick={() => setStates((current) => ({ ...current, [norm.id]: "reviewed" }))}>Approve interpretation</Button><Button size="small" variant={states[norm.id] === "flagged" ? "contained" : "outlined"} color="error" onClick={() => setStates((current) => ({ ...current, [norm.id]: "flagged" }))}>Flag</Button></Stack></Box>)}</Box>
         </Paper>
       ))}
     </Stack>
@@ -1956,6 +1744,11 @@ function EvidenceWorkspace({ status, airVersion, verificationPlan, config, act, 
   const externalRequirements = requirements.length || airVersion?.agreement_ir?.proof_requirements?.length || 0;
   const evidenceComplete = isPilotEvidenceReady(Boolean(status?.active_invoice_id), externalRequirements, verificationPlan);
   const planById = new Map(planItems.map((item) => [item.proof_requirement_id, item]));
+  const groupedRequirements = new Map<string, typeof requirements>();
+  requirements.forEach((item) => {
+    const group = evidenceGroupLabel(item, config);
+    groupedRequirements.set(group, [...(groupedRequirements.get(group) ?? []), item]);
+  });
 
   return (
     <Box id="evidence">
@@ -1971,37 +1764,37 @@ function EvidenceWorkspace({ status, airVersion, verificationPlan, config, act, 
           <Stack spacing={2.5}>
             <Typography color="text.secondary">Evidue derives this checklist from the approved contract rules. Missing evidence never becomes an automatic deduction or approval; affected claims remain in Needs review.</Typography>
             {requirements.length > 0 && (
-              <Stack spacing={1.25}>
-                {requirements.map((item) => {
-                  const plan = planById.get(item.id);
-                  const state = plan?.status ?? "missing";
+              <Stack spacing={1.5}>
+                {[...groupedRequirements.entries()].map(([group, items]) => {
+                  const states = items.map((item) => planById.get(item.id)?.status ?? "missing");
+                  const groupState = states.every((state) => state === "ready") ? "ready" : states.some((state) => state === "ready" || state === "partial") ? "partial" : "missing";
                   return (
-                    <Paper
-                      key={item.id}
-                      variant="outlined"
-                      sx={(theme) => ({
-                        p: 2,
-                        borderRadius: 2,
-                        bgcolor: state === "ready"
-                          ? (theme.palette.mode === "dark" ? "#153127" : "#EEF8F3")
-                          : state === "partial"
-                            ? (theme.palette.mode === "dark" ? "#352B18" : "#FBF5E8")
-                            : (theme.palette.mode === "dark" ? "#171E2A" : "#F7F7FA"),
-                        borderLeft: "4px solid",
-                        borderLeftColor: state === "ready" ? "success.main" : state === "partial" ? "warning.main" : "divider",
-                      })}
-                    >
-                      <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ md: "flex-start" }}>
-                        <Box sx={{ flex: 1 }}>
-                          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: "wrap" }}>
-                            <Chip size="small" color={state === "ready" ? "success" : state === "partial" ? "warning" : "default"} label={state === "ready" ? "Ready" : state === "partial" ? "Partial" : "Needed"} />
-                            <Typography fontWeight={760}>{item.description}</Typography>
-                          </Stack>
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}><strong>Required by:</strong> {item.rule_description}</Typography>
-                          <Typography variant="body2" sx={{ mt: 0.75 }}><strong>Typical sources:</strong> {evidenceSourceExamples(item, config).join(", ")}</Typography>
-                          {plan?.rationale && <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.75 }}>{plan.rationale}</Typography>}
-                          <Typography variant="caption" display="block" color="text.secondary">If missing: {item.missing_evidence_effect || "affected claims remain in Needs review"}</Typography>
+                    <Paper key={group} variant="outlined" className={`evidence-source-group ${groupState}`}>
+                      <Box className="evidence-source-header">
+                        <Box>
+                          <Typography className="section-kicker">SOURCE SYSTEM</Typography>
+                          <Typography variant="h6" fontWeight={740}>{group}</Typography>
                         </Box>
+                        <Chip size="small" variant="outlined" color={groupState === "ready" ? "success" : groupState === "partial" ? "warning" : "default"} label={groupState === "ready" ? "Ready" : groupState === "partial" ? "Incomplete" : "Missing"} />
+                      </Box>
+                      <Stack spacing={1}>
+                        {items.map((item) => {
+                          const plan = planById.get(item.id);
+                          const state = plan?.status ?? "missing";
+                          return (
+                            <Box key={item.id} className="evidence-requirement-row">
+                              <Box>
+                                <Typography fontWeight={700}>{item.description}</Typography>
+                                <Typography variant="body2" color="text.secondary"><strong>Required by:</strong> {item.rule_description}</Typography>
+                                <Typography variant="caption" color="text.secondary">Typical evidence: {evidenceSourceExamples(item, config).join(", ")}</Typography>
+                              </Box>
+                              <Box className="evidence-requirement-status">
+                                <strong>{state === "ready" ? "Ready" : state === "partial" ? "Incomplete" : "Missing"}</strong>
+                                <small>{state === "ready" ? "Evidence can support verification" : item.missing_evidence_effect || "Affected claims remain in Needs review"}</small>
+                              </Box>
+                            </Box>
+                          );
+                        })}
                       </Stack>
                     </Paper>
                   );
@@ -2109,8 +1902,8 @@ function DecisionWorkspace({
   const needsReview = rows.filter((row) => row.status === "needs_review");
 
   return (
-    <Box id="decision">
-      <Surface title="Reconciliation and exception review" eyebrow="04 · Decision" complete={Boolean(reconciliation)}>
+    <Box id="verification">
+      <Surface title="Deterministic verification" eyebrow="04 · Verification" complete={Boolean(reconciliation)}>
         {!status?.active_invoice_id ? <Alert severity="info">Import an invoice before reconciling.</Alert> : (
           <Stack spacing={2.5}>
             {!status.events && (
@@ -2137,8 +1930,19 @@ function DecisionWorkspace({
             {reconciliation && (
               <>
                 {reconciliationDelta && <ReconciliationDeltaView delta={reconciliationDelta} currency={reconciliation.currency} />}
-                <Determinations rows={rows} currency={reconciliation.currency} />
-                {needsReview.length > 0 && <Alert severity="warning">Needs-review lines are deliberately excluded from both payable and disputed totals. Each line below explains what evidence or action would resolve it.</Alert>}
+                <Paper variant="outlined" className="verification-complete-panel">
+                  <Box>
+                    <Typography className="section-kicker">VERIFICATION COMPLETE</Typography>
+                    <Typography variant="h6" fontWeight={760}>Every invoice line has a reproducible factual state.</Typography>
+                    <Typography color="text.secondary" sx={{ mt: 0.5 }}>Review separates those facts from the commercial action finance is allowed to take.</Typography>
+                  </Box>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <Chip size="small" color="success" variant="outlined" label={`${reconciliation.payable_outcomes} substantiated`} />
+                    <Chip size="small" color="error" variant="outlined" label={`${reconciliation.disputed_outcomes} contradicted`} />
+                    <Chip size="small" color="warning" variant="outlined" label={`${reconciliation.needs_review_outcomes} insufficient evidence`} />
+                  </Stack>
+                </Paper>
+                {needsReview.length > 0 && <Alert severity="warning">{money(reconciliation.needs_review_amount, reconciliation.currency)} remains outside both payable and disputed totals until the evidence gap is resolved.</Alert>}
                 <Button variant="outlined" sx={{ alignSelf: "flex-start" }} onClick={() => void act("Rerunning reconciliation with the latest evidence", reconcile, "A new append-only reconciliation run was created.")}>Rerun after evidence changes</Button>
               </>
             )}
@@ -2149,67 +1953,189 @@ function DecisionWorkspace({
   );
 }
 
-function ExportWorkspace({ reconciliation, act }: { reconciliation: Reconciliation | null; act: (label: string, action: () => Promise<void>, success?: string) => Promise<void> }) {
+
+function ReviewWorkspace({
+  reconciliation,
+  onNavigate,
+}: {
+  reconciliation: Reconciliation | null;
+  onNavigate: (stage: PilotStage) => void;
+}) {
+  if (!reconciliation) {
+    return (
+      <Surface title="Review the factual result" eyebrow="05 · Review" complete={false}>
+        <Alert severity="info">Run deterministic verification first. Review begins only after Evidue has a reproducible line-level result.</Alert>
+      </Surface>
+    );
+  }
+
+  const rows = (reconciliation.determinations ?? []) as Determination[];
+  const needsReview = rows.filter((row) => row.status === "needs_review");
+  const disputed = rows.filter((row) => row.status === "disputed");
+  const payable = rows.filter((row) => row.status === "payable");
+  const currency = reconciliation.currency || "USD";
+
+  return (
+    <Box id="review">
+      <Surface title="Facts first. Commercial action second." eyebrow="05 · Review" complete={needsReview.length === 0}>
+        <Stack spacing={2.5}>
+          <Box className="decision-separation-panel">
+            <Box>
+              <Typography className="section-kicker">WHAT HAPPENED</Typography>
+              <Typography variant="h5" fontWeight={760}>Evidence-backed determination</Typography>
+              <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                Each claim is classified from approved contract rules and customer-controlled evidence. This is the factual layer.
+              </Typography>
+              <Stack spacing={1.1} sx={{ mt: 2 }}>
+                <Box className="fact-action-row"><span>Substantiated</span><strong>{payable.length} claims · {money(reconciliation.confirmed_payable_amount, currency)}</strong></Box>
+                <Box className="fact-action-row"><span>Contradicted</span><strong>{disputed.length} claims · {money(reconciliation.recommended_deduction, currency)}</strong></Box>
+                <Box className="fact-action-row"><span>Insufficient evidence</span><strong>{needsReview.length} claims · {money(reconciliation.needs_review_amount, currency)}</strong></Box>
+              </Stack>
+            </Box>
+            <Box>
+              <Typography className="section-kicker">WHAT FINANCE CAN DO</Typography>
+              <Typography variant="h5" fontWeight={760}>Commercial action</Typography>
+              <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                The remedy is separate from the factual determination. Evidue never assumes every contradiction automatically authorizes withholding.
+              </Typography>
+              <Stack spacing={1.1} sx={{ mt: 2 }}>
+                <Box className="fact-action-row"><span>Substantiated claims</span><strong>Pay</strong></Box>
+                <Box className="fact-action-row"><span>Contradicted claims</span><strong>Dispute / credit / true-up per contract</strong></Box>
+                <Box className="fact-action-row"><span>Insufficient evidence</span><strong>Hold for review</strong></Box>
+              </Stack>
+            </Box>
+          </Box>
+
+          {needsReview.length > 0 && (
+            <Paper variant="outlined" className="recommended-action-panel">
+              <Box>
+                <Typography className="section-kicker">UNRESOLVED</Typography>
+                <Typography variant="h6" fontWeight={760}>{money(reconciliation.needs_review_amount, currency)} still needs evidence or judgment</Typography>
+                <Typography color="text.secondary">These dollars are deliberately excluded from both payable and disputed totals until the evidence gap is resolved.</Typography>
+              </Box>
+              <Button variant="contained" onClick={() => onNavigate("evidence")}>Resolve evidence gaps</Button>
+            </Paper>
+          )}
+
+          <Determinations rows={rows} currency={currency} />
+        </Stack>
+      </Surface>
+    </Box>
+  );
+}
+
+export function ExportWorkspace({ reconciliation, act }: { reconciliation: Reconciliation | null; act: (label: string, action: () => Promise<void>, success?: string) => Promise<void> }) {
   const [advanced, setAdvanced] = useState(false);
+  const [emailText, setEmailText] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const id = reconciliation?.reconciliation_id ?? "";
+  const hasDispute = Number(reconciliation?.recommended_deduction || 0) > 0;
+  const hasReview = Number(reconciliation?.needs_review_amount || 0) > 0;
+
+  useEffect(() => {
+    if (!id || !hasDispute) {
+      setEmailText("");
+      setEmailError("");
+      return;
+    }
+    let cancelled = false;
+    setEmailLoading(true);
+    setEmailError("");
+    void pilotApi.vendorEmail(id)
+      .then((text) => {
+        if (!cancelled) setEmailText(text);
+      })
+      .catch((error) => {
+        if (!cancelled) setEmailError(errorText(error));
+      })
+      .finally(() => {
+        if (!cancelled) setEmailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasDispute, id]);
+
   if (!reconciliation) {
     return (
       <Box id="export">
-        <Surface title="Finance-ready outputs" eyebrow="05 · Send & export" complete={false}>
-          <Typography color="text.secondary">Complete reconciliation first. Evidue will then generate the files finance needs internally and the package you can send to the vendor.</Typography>
+        <Surface title="Finance-ready outputs" eyebrow="06 · Commercial action" complete={false}>
+          <Typography color="text.secondary">Complete reconciliation first. Evidue will then prepare the corrected invoice, vendor communication, and supporting evidence package.</Typography>
         </Surface>
       </Box>
     );
   }
-  const id = reconciliation.reconciliation_id;
+
   async function copyEmail() {
-    const text = await pilotApi.vendorEmail(id);
+    const text = emailText || await pilotApi.vendorEmail(id);
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable in this browser.");
     await navigator.clipboard.writeText(text);
+    if (!emailText) setEmailText(text);
   }
+
   return (
     <Box id="export">
-      <Surface title="Move the decision into action" eyebrow="05 · Send & export" complete>
+      <Surface title="Move the decision into action" eyebrow="06 · Commercial action" complete>
         <Stack spacing={2.5}>
-          <Paper sx={{ bgcolor: "#0F172A", color: "#F8FAFC", p: { xs: 2.5, md: 3 }, borderRadius: 2, borderColor: "#294050" }}>
-            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr auto" }, gap: 2.5, alignItems: "center" }}>
-              <Box>
-                <Typography variant="overline" sx={{ color: "#A5B4FC" }}>Decision package ready</Typography>
-                <Typography variant="h4" sx={{ mt: 0.35 }}>Finance can act on {money(reconciliation.confirmed_payable_amount, reconciliation.currency)}.</Typography>
-                <Typography sx={{ mt: 0.9, color: "#CBD5E1", maxWidth: 720 }}>
-                  The corrected invoice and vendor dispute report are generated from the exact persisted reconciliation run, including the approved rule version and evidence provenance.
-                </Typography>
-              </Box>
-              <Box sx={{ minWidth: 220 }}>
-                <Typography variant="caption" sx={{ color: "#DFA39D" }}>Charges identified for dispute</Typography>
-                <Typography variant="h5" sx={{ mt: 0.25, fontVariantNumeric: "tabular-nums" }}>{money(reconciliation.recommended_deduction, reconciliation.currency)}</Typography>
-                <Typography variant="caption" sx={{ color: "#94A3B8" }}>{reconciliation.disputed_outcomes ?? 0} disputed line(s)</Typography>
-              </Box>
+          <Paper variant="outlined" className="commercial-action-summary">
+            <Box>
+              <Typography className="section-kicker">DECISION PACKAGE READY</Typography>
+              <Typography component="h3">
+                {hasReview
+                  ? `${money(reconciliation.needs_review_amount, reconciliation.currency)} still needs review before final action.`
+                  : `Finance can act on ${money(reconciliation.confirmed_payable_amount, reconciliation.currency)}.`}
+              </Typography>
+              <Typography>
+                {hasDispute
+                  ? "The payable output, vendor dispute communication, and line-level evidence all come from this persisted reconciliation."
+                  : "The payable output and evidence package come from this persisted reconciliation. No contract-backed disputed charges were identified."}
+              </Typography>
+            </Box>
+            <Box className="commercial-action-amount">
+              <span>Identified for dispute</span>
+              <strong>{money(reconciliation.recommended_deduction, reconciliation.currency)}</strong>
+              <small>{reconciliation.disputed_outcomes ?? 0} line(s)</small>
             </Box>
           </Paper>
 
-          <Box>
-            <Typography variant="subtitle1" fontWeight={800}>Recommended handoff</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>Start with the two artifacts a finance operator is most likely to use. Technical exports stay available below.</Typography>
-          </Box>
+          {hasDispute ? (
+            <Paper variant="outlined" className="vendor-dispute-panel">
+            <Stack spacing={1.5}>
+              <Box>
+                <Typography variant="overline" color="error.main">Recommended next action</Typography>
+                <Typography variant="h5" fontWeight={800}>Send the vendor dispute</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 820 }}>
+                  The message below is generated from the persisted reconciliation: billed amount, verified payable amount, disputed amount, affected claim count, and supporting documentation references.
+                </Typography>
+              </Box>
 
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 1.5 }}>
-            <Paper variant="outlined" sx={(theme) => ({ p: 2.25, bgcolor: theme.palette.mode === "dark" ? "#153127" : "#EEF8F3", borderColor: "success.main" })}>
-              <Typography variant="overline" color="success.main">For Accounts Payable</Typography>
-              <Typography variant="h6">Corrected invoice</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.75 }}>A line-level CSV with the contract-backed payable disposition for your AP workflow.</Typography>
-              <Button variant="contained" onClick={() => void act("Preparing corrected invoice", () => pilotApi.downloadExport(id, "corrected-invoice.csv"))}>Corrected invoice CSV</Button>
-            </Paper>
-            <Paper variant="outlined" sx={(theme) => ({ p: 2.25, bgcolor: theme.palette.mode === "dark" ? "#382025" : "#FCF2F1", borderColor: "error.main" })}>
-              <Typography variant="overline" color="error.main">For the vendor</Typography>
-              <Typography variant="h6">Dispute package</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.75 }}>A readable explanation of disputed charges with contract and evidence references.</Typography>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                <Button variant="contained" color="secondary" onClick={() => void act("Preparing vendor dispute report", () => pilotApi.downloadExport(id, "vendor-dispute.html"))}>Vendor dispute report</Button>
-                <Button variant="outlined" onClick={() => void act("Copying vendor email", copyEmail, "Vendor dispute email copied to your clipboard.")}>Copy vendor email</Button>
+              {emailLoading && <Alert severity="info">Preparing the vendor email from this reconciliation…</Alert>}
+              {emailError && <Alert severity="warning">Email preview is temporarily unavailable. You can retry with Copy vendor dispute email.</Alert>}
+              {emailText && (
+                <Paper variant="outlined" sx={{ p: 2, bgcolor: "background.paper", maxHeight: 320, overflow: "auto" }}>
+                  <Typography component="pre" variant="body2" sx={{ m: 0, whiteSpace: "pre-wrap", fontFamily: "inherit", lineHeight: 1.65 }}>{emailText}</Typography>
+                </Paper>
+              )}
+
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ flexWrap: "wrap" }}>
+                <Button variant="contained" color="error" onClick={() => void act("Copying vendor dispute email", copyEmail, "Vendor dispute email copied to your clipboard.")}>Copy vendor dispute email</Button>
+                <Button variant="outlined" onClick={() => void act("Preparing vendor dispute report", () => pilotApi.downloadExport(id, "vendor-dispute.html"))}>Download dispute package</Button>
+                <Button variant="outlined" onClick={() => void act("Preparing disputed line items", () => pilotApi.downloadExport(id, "disputes.csv"))}>Download disputed lines</Button>
               </Stack>
-            </Paper>
-          </Box>
+            </Stack>
+          </Paper>
 
-          <Button variant="outlined" sx={{ alignSelf: "flex-start" }} onClick={() => void act("Preparing disputed line items", () => pilotApi.downloadExport(id, "disputes.csv"))}>Disputed lines CSV</Button>
+          ) : (
+            <Alert severity="success">No vendor dispute is needed for this reconciliation. No contract-backed disputed charges were identified.</Alert>
+          )}
+
+          <Paper variant="outlined" className="ap-output-panel">
+            <Typography variant="overline" color="success.main">For Accounts Payable</Typography>
+            <Typography variant="h6">Corrected invoice</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.75 }}>A line-level CSV with the contract-backed payable disposition for your AP workflow.</Typography>
+            <Button variant="contained" onClick={() => void act("Preparing corrected invoice", () => pilotApi.downloadExport(id, "corrected-invoice.csv"))}>Corrected invoice CSV</Button>
+          </Paper>
 
           <Button size="small" sx={{ alignSelf: "flex-start" }} onClick={() => setAdvanced((value) => !value)}>{advanced ? "Hide audit exports" : "Show audit exports"}</Button>
           <Collapse in={advanced}>
@@ -2229,8 +2155,8 @@ function AdvancedDetails({ airVersion, assurance, plan, facts, audit }: { airVer
   return (
     <Stack spacing={3}>
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 2 }}>
-        <Paper variant="outlined" sx={{ p: 2 }}><Typography fontWeight={750}>Approved contract rules (AIR)</Typography><Typography variant="body2" fontFamily="monospace">{airVersion?.id ?? "—"}</Typography><Typography variant="caption">Payload {airVersion?.payload_hash ?? "—"}</Typography></Paper>
-        <Paper variant="outlined" sx={{ p: 2 }}><Typography fontWeight={750}>Rule verification</Typography><Chip size="small" color={assurance?.hard_gate_passed ? "success" : "default"} label={assurance?.hard_gate_passed ? "Hard gate passed" : "Not available"} /><Typography variant="caption" display="block" sx={{ mt: 1 }}>{assurance?.checks?.filter((item) => item.status === "pass").length ?? 0}/{assurance?.checks?.length ?? 0} checks passed</Typography></Paper>
+        <Paper variant="outlined" sx={{ p: 2 }}><Typography fontWeight={750}>Approved rule set</Typography><Typography variant="body2" fontFamily="monospace">{airVersion?.id ?? "—"}</Typography><Typography variant="caption">Rule-set fingerprint {airVersion?.payload_hash ?? "—"}</Typography></Paper>
+        <Paper variant="outlined" sx={{ p: 2 }}><Typography fontWeight={750}>Rule verification</Typography><Chip size="small" color={assurance?.hard_gate_passed ? "success" : "default"} label={assurance?.hard_gate_passed ? "Verification passed" : "Not available"} /><Typography variant="caption" display="block" sx={{ mt: 1 }}>{assurance?.checks?.filter((item) => item.status === "pass").length ?? 0}/{assurance?.checks?.length ?? 0} checks passed</Typography></Paper>
       </Box>
       {assurance?.checks?.map((check) => <Alert key={check.id} severity={check.status === "pass" ? "success" : check.hard_gate ? "error" : "warning"}><strong>{readable(check.id)}</strong> — {check.summary}{check.details.length ? ` (${check.details.join("; ")})` : ""}</Alert>)}
       {plan && <Box><Typography variant="h6" fontWeight={750} gutterBottom>Evidence verification plan (technical)</Typography>{plan.plan.items.map((item) => <Paper key={item.proof_requirement_id} variant="outlined" sx={{ p: 1.5, mb: 1 }}><Stack direction="row" spacing={1} alignItems="center"><Chip size="small" color={item.status === "ready" ? "success" : item.status === "partial" ? "warning" : "error"} label={item.status} /><Typography variant="body2" fontFamily="monospace">{item.proof_requirement_id}</Typography></Stack><Typography variant="caption">{item.rationale}</Typography></Paper>)}</Box>}

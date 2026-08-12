@@ -65,8 +65,8 @@ describe("Evidue reconciliation workspace", () => {
       reconciliationNeedsReview: false,
     };
     expect(recommendedPilotStage(base)).toBe("export");
-    expect(recommendedPilotStage({ ...base, reconciliationNeedsReview: true })).toBe("decision");
-    expect(recommendedPilotStage({ ...base, hasReconciliation: false })).toBe("decision");
+    expect(recommendedPilotStage({ ...base, reconciliationNeedsReview: true })).toBe("review");
+    expect(recommendedPilotStage({ ...base, hasReconciliation: false })).toBe("verification");
     expect(recommendedPilotStage({ ...base, evidenceReady: false })).toBe("evidence");
   });
 

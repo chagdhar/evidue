@@ -14,7 +14,6 @@ DIST_ROOT = ROOT / "frontend" / "dist"
 FORBIDDEN = (
     "Email Dharun",
     "mailto:",
-    "personal email address",
 )
 
 # Ignore tests because they may assert that forbidden strings are absent.

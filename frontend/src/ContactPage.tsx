@@ -11,7 +11,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { browserSessionId, contactAttribution, track } from "./analytics";
 import { usePublicConfig } from "./BetaApplicationCTA";
@@ -38,115 +38,53 @@ const discussionOptions: Array<{
   value: ContactDiscussionType;
   title: string;
   description: string;
+  meta: string;
 }> = [
-  {
-    value: "Invoice review",
-    title: "AI-vendor billing",
-    description: "I deal with AI usage, outcome, or resolution charges.",
-  },
-  {
-    value: "Product feedback",
-    title: "Product feedback",
-    description: "I tried Evidue and want to tell you what worked or didn't.",
-  },
-  {
-    value: "Partnership",
-    title: "Partnership",
-    description: "I want to discuss an integration, data source, or partnership.",
-  },
-  {
-    value: "Other",
-    title: "Something else",
-    description: "I have another question or comment.",
-  },
+  { value: "Invoice review", title: "AI-vendor billing", description: "I deal with outcome, resolution, action, or usage charges.", meta: "Customer discovery" },
+  { value: "Product feedback", title: "Product feedback", description: "I tried Evidue and want to tell you what worked or did not.", meta: "Can be anonymous" },
+  { value: "Partnership", title: "Partnership", description: "I want to discuss an integration, data source, or partnership.", meta: "Business conversation" },
+  { value: "Other", title: "Something else", description: "I have another question, comment, or piece of feedback.", meta: "Open message" },
 ];
 
-const billingModels = [
-  "Per outcome",
-  "Per resolution",
-  "Per action",
-  "Usage-based",
-  "Fixed / seat-based",
-  "Not sure",
-  "Other",
-];
-
-const verificationMethods = [
-  "Vendor report only",
-  "Manual spot checks",
-  "Reconcile exports",
-  "Internal tooling",
-  "Not independently verified",
-  "Not sure",
-];
-
-const evidenceLocations = [
-  "Support / helpdesk data",
-  "Payments / billing records",
-  "CRM / account data",
-  "Product / event logs",
-  "Multiple customer systems",
-  "Mostly vendor-controlled",
-  "Not sure",
-];
-
-const commercialActions = [
-  "Dispute before payment",
-  "Request a credit",
-  "True-up later",
-  "Use it at renewal",
-  "No financial action today",
-  "Not sure",
-  "Other",
-];
-
-const feedbackAreas = [
-  "Product idea",
-  "Demo clarity",
-  "Trust / evidence",
-  "User experience",
-  "Bug",
-  "Positioning",
-  "Other",
-];
+const billingModels = ["Per outcome", "Per resolution", "Per action", "Usage-based", "Fixed / seat-based", "Not sure", "Other"];
+const verificationMethods = ["Vendor report only", "Manual spot checks", "Reconcile exports", "Internal tooling", "Not independently verified", "Not sure"];
+const evidenceLocations = ["Support / helpdesk data", "Payments / billing records", "CRM / account data", "Product / event logs", "Multiple customer systems", "Mostly vendor-controlled", "Not sure"];
+const commercialActions = ["Dispute before payment", "Request a credit", "True-up later", "Use it at renewal", "No financial action today", "Not sure", "Other"];
+const feedbackAreas = ["Product idea", "Demo clarity", "Trust / evidence", "User experience", "Bug", "Positioning", "Other"];
 
 function ContactHeader() {
   return (
     <Box component="header" className="contact-header">
       <Container maxWidth="lg" className="contact-container">
         <RouterLink to="/" className="contact-wordmark" aria-label="Evidue landing page">
-          <span aria-hidden="true">E</span>
-          <strong>Evidue</strong>
+          <span aria-hidden="true">E</span><strong>Evidue</strong>
         </RouterLink>
         <Stack direction="row" spacing={1}>
-          <Button component={RouterLink} to="/" color="inherit">Back to landing page</Button>
-          <Button component={RouterLink} to="/try" variant="contained">Try Evidue</Button>
+          <Button component={RouterLink} to="/" color="inherit">Home</Button>
+          <Button component={RouterLink} to="/try" variant="outlined">Back to demo</Button>
         </Stack>
       </Container>
     </Box>
   );
 }
 
-function messageLabel(discussionType: ContactDiscussionType) {
-  if (discussionType === "Invoice review") return "What is hardest about verifying the bill today?";
-  if (discussionType === "Product feedback") return "What worked, what was confusing, or what would you change?";
-  if (discussionType === "Partnership") return "What would you like to explore together?";
+function messageLabel(type: ContactDiscussionType) {
+  if (type === "Invoice review") return "What is hardest about verifying the bill today?";
+  if (type === "Product feedback") return "What worked, what was confusing, or what would you change?";
+  if (type === "Partnership") return "What would you like to explore together?";
   return "What would you like to tell us?";
 }
 
-function successMessage(discussionType: ContactDiscussionType) {
-  if (discussionType === "Invoice review") {
-    return "Thanks — this is exactly the kind of real workflow we're trying to understand.";
-  }
-  if (discussionType === "Product feedback") {
-    return "Thanks — your feedback helps us see what is clear, confusing, or unconvincing.";
-  }
-  return "Thanks — your response was received.";
+function successMessage(type: ContactDiscussionType) {
+  if (type === "Invoice review") return "Thanks. This is exactly the kind of real workflow we are trying to understand.";
+  if (type === "Product feedback") return "Thanks. Specific criticism is useful—we read every response.";
+  return "Thanks. Your response was received.";
 }
 
 export default function ContactPage() {
   const config = usePublicConfig();
   const [submission, setSubmission] = useState(initialSubmission);
+  const [intentChosen, setIntentChosen] = useState(false);
   const [safeToShare, setSafeToShare] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -160,10 +98,10 @@ export default function ContactPage() {
   const partnershipConversation = submission.discussionType === "Partnership";
   const identityRequired = billingConversation || partnershipConversation;
   const emailRequired = identityRequired || submission.openToCall;
+  const currentStep = submitted ? 3 : intentChosen ? 2 : 1;
+  const completion = useMemo(() => Math.round((currentStep / 3) * 100), [currentStep]);
 
-  useEffect(() => {
-    if (error) errorRef.current?.focus();
-  }, [error]);
+  useEffect(() => { if (error) errorRef.current?.focus(); }, [error]);
 
   const update = (field: keyof ContactSubmission) => (event: ChangeEvent<HTMLInputElement>) => {
     setSubmission((current) => ({ ...current, [field]: event.target.value }));
@@ -179,14 +117,14 @@ export default function ContactPage() {
       commercialAction: discussionType === "Invoice review" ? current.commercialAction : "",
       feedbackArea: discussionType === "Product feedback" ? current.feedbackArea : "",
     }));
+    setIntentChosen(true);
     setError("");
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submitting) return;
-    setSubmitting(true);
-    setError("");
+    setSubmitting(true); setError("");
     try {
       await api.createContactSubmission({
         name: submission.name,
@@ -208,12 +146,7 @@ export default function ContactPage() {
         form_started_at: formStartedAt,
         website,
       });
-      track("contact_form_submitted", {
-        discussion_type: submission.discussionType,
-        billing_model: submission.billingModel || "n/a",
-        feedback_area: submission.feedbackArea || "n/a",
-        open_to_call: submission.openToCall,
-      });
+      track("contact_form_submitted", { discussion_type: submission.discussionType, open_to_call: submission.openToCall });
       setSubmitted(true);
     } catch {
       setError("We couldn't send your response right now. Your answers are still here — please try again shortly.");
@@ -227,220 +160,112 @@ export default function ContactPage() {
       <ContactHeader />
       <Container maxWidth="lg" className="contact-container contact-layout">
         <Box className="contact-intro">
-          <Typography className="contact-overline">Talk to us</Typography>
-          <Typography component="h1">Tell us what's true.</Typography>
+          <Typography className="contact-overline">TALK TO EVIDUE</Typography>
+          <Typography component="h1">One minute. Useful context only.</Typography>
           <Typography className="contact-lede">
-            If you handle AI-vendor billing, help us understand how the numbers are checked today. If you just tried Evidue, tell us what was useful, confusing, or unconvincing.
+            Tell us why you came. We ask only the questions relevant to that reason. Product feedback can be anonymous.
           </Typography>
+          <Box className="contact-signal-list">
+            <Box><strong>&lt; 1 min</strong><span>Typical completion time</span></Box>
+            <Box><strong>No signup</strong><span>Nothing to create or configure</span></Box>
+            <Box><strong>No sensitive data</strong><span>Keep contracts and customer records out of this form</span></Box>
+          </Box>
           <Box className="contact-expectations">
-            <Typography variant="h5">What we value</Typography>
-            <Stack spacing={2}>
-              <Box><TemplateIcon name="check" size={18} /><span>Real workflows, including “we don't verify it”</span></Box>
-              <Box><TemplateIcon name="check" size={18} /><span>Specific criticism of the demo or product idea</span></Box>
-              <Box><TemplateIcon name="check" size={18} /><span>What would have to be true for you to trust the result</span></Box>
-            </Stack>
+            <Typography variant="h5">We want the inconvenient answer.</Typography>
+            <Typography>If you never verify vendor charges, say that. If the demo was confusing or unconvincing, say that too.</Typography>
           </Box>
         </Box>
 
-        {submitted ? (
-          <Paper className="contact-form contact-form-success" role="status">
-            <TemplateIcon name="check" size={30} />
-            <Typography variant="h4">Response received.</Typography>
-            <Typography>{successMessage(submission.discussionType)}</Typography>
-            {submission.email && (
-              <Typography className="contact-success-detail">
-                {submission.openToCall
-                  ? "You said you're open to a conversation, so we can follow up using the email you provided."
-                  : "If a reply is useful, we can follow up using the email you provided."}
-              </Typography>
-            )}
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-              {submission.openToCall && config?.talk_booking_url && (
-                <Button href={config.talk_booking_url} target="_blank" rel="noreferrer" variant="contained">
-                  Book a 15-minute conversation
-                </Button>
-              )}
-              <Button component={RouterLink} to="/try" variant="outlined">Return to the demo</Button>
-            </Stack>
-          </Paper>
-        ) : (
-          <Paper component="form" className="contact-form" onSubmit={(event) => void submit(event)}>
-            <input
-              className="contact-honeypot"
-              type="text"
-              name="website"
-              value={website}
-              onChange={(event) => setWebsite(event.target.value)}
-              tabIndex={-1}
-              autoComplete="off"
-              aria-hidden="true"
-            />
+        <Paper className="contact-form-shell" variant="outlined">
+          <Box className="contact-progress" aria-label={`Contact form ${completion}% complete`}>
+            {["Choose", "Context", "Sent"].map((label, index) => {
+              const step = index + 1;
+              return <Box key={label} className={`contact-progress-step${step <= currentStep ? " active" : ""}`}><span>{step < currentStep ? "✓" : step}</span><Typography>{label}</Typography></Box>;
+            })}
+          </Box>
 
-            <Box className="contact-form-heading">
-              <Typography variant="h4">What would you like to share?</Typography>
-              <Typography>Choose a path. We only ask follow-up questions that are useful for that response.</Typography>
+          {submitted ? (
+            <Box className="contact-success" role="status">
+              <Box className="contact-success-mark"><TemplateIcon name="check" size={24} /></Box>
+              <Typography className="contact-section-kicker">RESPONSE RECEIVED</Typography>
+              <Typography component="h2">Thank you.</Typography>
+              <Typography>{successMessage(submission.discussionType)}</Typography>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} sx={{ mt: 2 }}>
+                {submission.openToCall && config?.talk_booking_url && <Button href={config.talk_booking_url} target="_blank" rel="noreferrer" variant="contained">Book 15 minutes</Button>}
+                <Button component={RouterLink} to="/try" variant="outlined">Return to demo</Button>
+              </Stack>
             </Box>
-
-            <Box className="contact-intent-grid" role="group" aria-label="What would you like to share?">
-              {discussionOptions.map((option) => {
-                const selected = submission.discussionType === option.value;
-                return (
-                  <Button
-                    key={option.value}
-                    type="button"
-                    variant={selected ? "contained" : "outlined"}
-                    aria-pressed={selected}
-                    onClick={() => chooseDiscussion(option.value)}
-                    className="contact-intent-option"
-                  >
-                    <strong>{option.title}</strong>
-                    <span>{option.description}</span>
+          ) : !intentChosen ? (
+            <Box className="contact-intent-stage">
+              <Typography className="contact-section-kicker">STEP 1 OF 3</Typography>
+              <Typography component="h2">What brought you here?</Typography>
+              <Typography className="contact-stage-copy">Choose the closest match. Nothing else is shown until you do.</Typography>
+              <Box className="contact-intent-grid" role="group" aria-label="What would you like to share?">
+                {discussionOptions.map((option) => (
+                  <Button key={option.value} type="button" variant="outlined" onClick={() => chooseDiscussion(option.value)} className="contact-intent-option">
+                    <Box className="contact-intent-copy"><strong>{option.title}</strong><span>{option.description}</span><small>{option.meta}</small></Box>
+                    <span className="contact-intent-arrow" aria-hidden="true">→</span>
                   </Button>
-                );
-              })}
+                ))}
+              </Box>
             </Box>
-
-            <Box className="contact-section-heading">
-              <Typography variant="h6">
-                {identityRequired ? "About you" : "About you — optional"}
-              </Typography>
-              <Typography>
-                {identityRequired
-                  ? "Enough context to understand the workflow and follow up intelligently."
-                  : "You can leave feedback without identifying yourself. Add an email only if you'd like a reply."}
-              </Typography>
-            </Box>
-
-            <Box className="contact-form-grid">
-              <TextField
-                required={identityRequired}
-                label={identityRequired ? "Name" : "Name (optional)"}
-                value={submission.name}
-                onChange={update("name")}
-                autoComplete="name"
-              />
-              <TextField
-                required={emailRequired}
-                type="email"
-                label={emailRequired ? "Work email" : "Email (optional)"}
-                value={submission.email}
-                onChange={update("email")}
-                autoComplete="email"
-                helperText={!emailRequired ? "Only if you'd like a reply." : undefined}
-              />
-              <TextField
-                required={identityRequired}
-                label={identityRequired ? "Company" : "Company (optional)"}
-                value={submission.company}
-                onChange={update("company")}
-                autoComplete="organization"
-              />
-              <TextField
-                label="Role (optional)"
-                value={submission.role}
-                onChange={update("role")}
-                autoComplete="organization-title"
-                placeholder="Finance, procurement, CX, support, engineering…"
-              />
-            </Box>
-
-            {billingConversation && (
-              <>
-                <Box className="contact-section-heading">
-                  <Typography variant="h6">Your current control</Typography>
-                  <Typography>Three quick answers tell us far more than a generic “interested” submission.</Typography>
+          ) : (
+            <Box component="form" onSubmit={(event) => void submit(event)} className="contact-form">
+              <input className="contact-honeypot" type="text" name="website" value={website} onChange={(event) => setWebsite(event.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" />
+              <Box className="contact-stage-header">
+                <Box>
+                  <Typography className="contact-section-kicker">STEP 2 OF 3</Typography>
+                  <Typography component="h2">Add only the context that matters.</Typography>
+                  <Typography className="contact-stage-copy">
+                    {identityRequired ? "We need enough context to understand the workflow and follow up intelligently." : "Identity is optional. Add an email only if you want a reply."}
+                  </Typography>
                 </Box>
-                <Box className="contact-form-grid">
-                  <TextField select required label="How are you charged?" value={submission.billingModel} onChange={update("billingModel")}>
-                    <MenuItem value="" disabled>Select one</MenuItem>
-                    {billingModels.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
-                  </TextField>
-                  <TextField select required label="How is it verified today?" value={submission.verificationMethod} onChange={update("verificationMethod")}>
-                    <MenuItem value="" disabled>Select one</MenuItem>
-                    {verificationMethods.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
-                  </TextField>
-                  <TextField select required label="Where does the evidence live?" value={submission.evidenceLocation} onChange={update("evidenceLocation")}>
-                    <MenuItem value="" disabled>Select one</MenuItem>
-                    {evidenceLocations.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
-                  </TextField>
-                  <TextField select required label="If the numbers don't match, what happens?" value={submission.commercialAction} onChange={update("commercialAction")}>
-                    <MenuItem value="" disabled>Select one</MenuItem>
-                    {commercialActions.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
-                  </TextField>
+                <Button type="button" variant="text" onClick={() => setIntentChosen(false)}>Change reason</Button>
+              </Box>
+
+              <Box className="contact-form-grid">
+                <TextField required={identityRequired} label={identityRequired ? "Name" : "Name (optional)"} value={submission.name} onChange={update("name")} autoComplete="name" />
+                <TextField required={emailRequired} type="email" label={emailRequired ? "Work email" : "Email (optional)"} value={submission.email} onChange={update("email")} autoComplete="email" helperText={!emailRequired ? "Only if you'd like a reply." : undefined} />
+                <TextField required={identityRequired} label={identityRequired ? "Company" : "Company (optional)"} value={submission.company} onChange={update("company")} autoComplete="organization" />
+                <TextField label="Role (optional)" value={submission.role} onChange={update("role")} autoComplete="organization-title" placeholder="Finance, procurement, CX, support…" />
+              </Box>
+
+              {billingConversation && (
+                <Box className="contact-adaptive-section">
+                  <Box className="contact-section-heading"><Typography className="contact-section-kicker">4 QUALIFICATION SIGNALS</Typography><Typography component="h3">How does the control work today?</Typography></Box>
+                  <Box className="contact-form-grid">
+                    <TextField select required label="How are you charged?" value={submission.billingModel} onChange={update("billingModel")}><MenuItem value="" disabled>Select one</MenuItem>{billingModels.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
+                    <TextField select required label="How is it verified today?" value={submission.verificationMethod} onChange={update("verificationMethod")}><MenuItem value="" disabled>Select one</MenuItem>{verificationMethods.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
+                    <TextField select required label="Where does the evidence live?" value={submission.evidenceLocation} onChange={update("evidenceLocation")}><MenuItem value="" disabled>Select one</MenuItem>{evidenceLocations.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
+                    <TextField select required label="If the numbers don't match, what happens?" value={submission.commercialAction} onChange={update("commercialAction")}><MenuItem value="" disabled>Select one</MenuItem>{commercialActions.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
+                  </Box>
                 </Box>
-              </>
-            )}
-
-            {submission.discussionType === "Product feedback" && (
-              <>
-                <Box className="contact-section-heading">
-                  <Typography variant="h6">Your feedback</Typography>
-                  <Typography>Tell us where your reaction came from so we can act on it.</Typography>
-                </Box>
-                <TextField
-                  select
-                  required
-                  fullWidth
-                  label="What is your feedback mainly about?"
-                  value={submission.feedbackArea}
-                  onChange={update("feedbackArea")}
-                >
-                  <MenuItem value="" disabled>Select one</MenuItem>
-                  {feedbackAreas.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}
-                </TextField>
-              </>
-            )}
-
-            <Box className="contact-section-heading contact-message-heading">
-              <Typography variant="h6">In your own words</Typography>
-            </Box>
-            <TextField
-              required
-              multiline
-              minRows={6}
-              fullWidth
-              label={messageLabel(submission.discussionType)}
-              value={submission.message}
-              onChange={update("message")}
-              helperText={`${submission.message.length}/4000 characters`}
-              inputProps={{ maxLength: 4000 }}
-            />
-
-            <FormControlLabel
-              className="contact-call-opt-in"
-              control={(
-                <Checkbox
-                  checked={submission.openToCall}
-                  onChange={(event) => setSubmission((current) => ({ ...current, openToCall: event.target.checked }))}
-                />
               )}
-              label="I'm open to a 15-minute conversation about this."
-            />
 
-            <Alert severity="info" className="contact-privacy-note">
-              Please don't paste confidential contracts, invoices, customer records, credentials, or production data here. If we need to inspect something sensitive, we'll arrange a safer path separately.
-            </Alert>
-            {error && (
-              <Alert severity="error" ref={errorRef} tabIndex={-1} aria-live="assertive" sx={{ mb: 2 }}>
-                {error}
-              </Alert>
-            )}
-            <FormControlLabel
-              control={<Checkbox checked={safeToShare} onChange={(event) => setSafeToShare(event.target.checked)} />}
-              label="I confirm this message contains no confidential or customer data."
-            />
-            <Box className="contact-submit-row">
-              <Button type="submit" variant="contained" size="large" disabled={!safeToShare || submitting} endIcon={<TemplateIcon name="arrow" size={17} />}>
-                {submitting
-                  ? "Submitting…"
-                  : submission.discussionType === "Product feedback"
-                    ? "Send feedback"
-                    : "Send response"}
-              </Button>
-              <Typography>Usually under a minute.</Typography>
+              {submission.discussionType === "Product feedback" && (
+                <Box className="contact-adaptive-section">
+                  <TextField select required fullWidth label="What is your feedback mainly about?" value={submission.feedbackArea} onChange={update("feedbackArea")}><MenuItem value="" disabled>Select one</MenuItem>{feedbackAreas.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
+                </Box>
+              )}
+
+              <Box className="contact-message-section">
+                <Typography className="contact-section-kicker">YOUR WORDS</Typography>
+                <TextField required multiline minRows={5} fullWidth label={messageLabel(submission.discussionType)} value={submission.message} onChange={update("message")} helperText={`${submission.message.length}/4000`} inputProps={{ maxLength: 4000 }} />
+              </Box>
+
+              <FormControlLabel control={<Checkbox checked={submission.openToCall} onChange={(event) => setSubmission((current) => ({ ...current, openToCall: event.target.checked }))} />} label="I'm open to a 15-minute conversation about this." />
+              <Typography className="contact-privacy-copy">Do not include confidential contracts, invoices, credentials, customer records, or production data.</Typography>
+              {error && <Alert severity="error" ref={errorRef} tabIndex={-1} aria-live="assertive">{error}</Alert>}
+              <FormControlLabel control={<Checkbox checked={safeToShare} onChange={(event) => setSafeToShare(event.target.checked)} />} label="I confirm this message contains no confidential or customer data." />
+              <Box className="contact-submit-row">
+                <Button type="submit" variant="contained" size="large" disabled={!safeToShare || submitting} endIcon={<TemplateIcon name="arrow" size={17} />}>
+                  {submitting ? "Submitting…" : submission.discussionType === "Product feedback" ? "Send feedback" : "Send response"}
+                </Button>
+                <Typography>Step 3 completes when the response is received.</Typography>
+              </Box>
             </Box>
-          </Paper>
-        )}
+          )}
+        </Paper>
       </Container>
     </Box>
   );

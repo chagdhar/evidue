@@ -26,7 +26,7 @@ The model proposes contract interpretation. It never adjudicates invoice lines. 
 
 ## Primary surface
 
-`/workspace` is the customer product surface. `/workspace/operations` handles finance review/approval/disputes and `/workspace/settings` handles configuration. `/demo` remains a synthetic public narrative demo and is not the source of truth for product workflow validation.
+`/workspace` is the authenticated finance-control home. The product is invoice-centered: `/workspace/invoices` is the register, `/workspace/invoices/current` is the active contract → evidence → verification → review → commercial-action case, `/workspace/review` is the exception queue, `/workspace/vendors` is vendor history, and `/workspace/settings` holds configuration. `/demo` remains a synthetic narrative surface and `/try` is the zero-signup guided reconciliation.
 
 ## Current product boundary
 

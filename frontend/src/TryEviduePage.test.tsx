@@ -64,17 +64,17 @@ it("delivers one successful reconciliation before asking for contact", async () 
   const user = userEvent.setup();
   render(<TryEviduePage />, { wrapper: MemoryRouter });
 
-  expect(screen.getByRole("heading", { name: /See whether an AI vendor’s billed outcomes actually count/i })).toBeInTheDocument();
-  expect(screen.queryByText("Talk to us", { selector: "button" })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /Nova AI billed Acme \$150 for 100 outcomes/i })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Share your workflow" })).not.toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: "Analyze the synthetic contract" }));
-  expect(await screen.findByText("R1 · No same-intent recontact")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Approve demo rules & reconcile 100 claims" }));
+  await user.click(screen.getByRole("button", { name: "Analyze synthetic contract" }));
+  expect(await screen.findByText("No same-intent recontact")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Approve rules & verify invoice" }));
 
   expect(await screen.findByText("$124.50")).toBeInTheDocument();
   expect(screen.getByText("$25.50")).toBeInTheDocument();
   expect(screen.getByText(/17 claims/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "R3 · OUT-004821" })).toHaveAttribute("href", "/demo/invoices/current?outcome=OUT-004821");
-  expect(screen.getByRole("link", { name: "Talk to us" })).toHaveAttribute("href", "/contact");
+  expect(screen.getByRole("link", { name: "Share your workflow" })).toHaveAttribute("href", "/contact");
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
