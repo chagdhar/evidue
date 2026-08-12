@@ -3233,3 +3233,137 @@ html[data-evidue-mode="light"] body { background: #eeeae1; }
   .try-v5-audit-grid > div:nth-last-child(-n+2) { border-bottom: 1px solid #d6cec1; }
   .try-v5-audit-grid > div:last-child { border-bottom: 0; }
 }
+
+/* Public Try usability pass: guided progression + readable type floor. */
+.try-v4-step,
+.try-v4-result-shell { scroll-margin-top: 88px; }
+
+.try-v4-page .try-v3-brand > div:last-child p:last-child { font-size: .68rem; }
+.try-v4-page .try-v3-kicker { font-size: .70rem !important; line-height: 1.35 !important; }
+.try-v4-page .try-v4-lede { font-size: 1rem !important; }
+.try-v4-page .try-v4-challenge-head { font-size: .70rem; }
+.try-v4-page .try-v4-vendor-claim span,
+.try-v4-page .try-v4-amount-due span,
+.try-v4-page .try-v4-resolved-label { font-size: .68rem; line-height: 1.25; }
+.try-v4-page .try-v4-amount-due small,
+.try-v4-page .try-v4-challenge-note { font-size: .78rem; }
+
+.try-v4-page .try-v4-rail > div > span { font-size: .65rem; }
+.try-v4-page .try-v4-rail > div > strong { font-size: .79rem; }
+.try-v4-page .try-v4-step-rail > span { font-size: .68rem; }
+.try-v4-page .try-v4-step-rail > strong { font-size: .70rem; }
+.try-v4-page .try-v4-step-rail > small { font-size: .76rem; }
+.try-v4-page .try-v4-step-copy { font-size: .88rem !important; line-height: 1.6 !important; }
+.try-v4-page .try-v3-muted { font-size: .88rem !important; }
+.try-v4-page .try-v4-proposal-meta { font-size: .68rem; line-height: 1.35; }
+.try-v4-page .try-v4-rule-source > span,
+.try-v4-page .try-v4-rule-authority > span { font-size: .68rem; line-height: 1.3; }
+.try-v4-page .try-v4-rule-source blockquote { font-size: .88rem; }
+.try-v4-page .try-v4-rule-authority strong { font-size: .90rem; }
+.try-v4-page .try-v4-rule-authority p { font-size: .82rem; line-height: 1.5; }
+.try-v4-page .try-v4-rule-authority small { font-size: .74rem; line-height: 1.4; }
+.try-v4-page .try-v4-approval-action > div > span { font-size: .68rem; line-height: 1.25; }
+.try-v4-page .try-v4-approval-action > div > strong { font-size: .88rem; line-height: 1.4; }
+.try-v4-page .try-v4-result-state { font-size: .68rem; }
+.try-v4-page .try-v4-result-head p:not(.try-v3-kicker) { font-size: .88rem; line-height: 1.5; }
+
+.try-v4-page .decision-flow.compact .decision-flow-index { font-size: .64rem; }
+.try-v4-page .decision-flow.compact .decision-flow-copy > span { font-size: .66rem; }
+.try-v4-page .decision-flow.compact .decision-flow-copy > strong { font-size: .84rem; }
+.try-v4-page .authority-boundary-v2 > div > strong { font-size: .90rem; }
+.try-v4-page .authority-boundary-v2 > div > small { font-size: .77rem; line-height: 1.5; }
+.try-v4-page .decision-ledger-label,
+.try-v4-page .decision-equation-term > span,
+.try-v4-page .decision-equation-review > span { font-size: .69rem; }
+.try-v4-page .decision-equation-caption { font-size: .78rem !important; line-height: 1.45 !important; }
+.try-v4-page .decision-ledger-synthetic { font-size: .66rem; }
+.try-v4-page .decision-ledger-section-title > span { font-size: .69rem; }
+.try-v4-page .decision-ledger-section.claim p { font-size: .90rem; }
+.try-v4-page .decision-ledger-event > span { font-size: .68rem; }
+.try-v4-page .decision-ledger-event > strong { font-size: .82rem; }
+.try-v4-page .decision-ledger-event > small { font-size: .72rem; }
+.try-v4-page .decision-ledger-outcome strong { font-size: .86rem; }
+
+.try-v4-page .try-v3-result-money span,
+.try-v4-page .try-v3-result-money small { font-size: .74rem; }
+.try-v4-page .try-v3-result-detail strong { font-size: .86rem; }
+.try-v4-page .try-v3-result-detail p:not(.try-v3-kicker),
+.try-v4-page .try-v3-contact p:not(.try-v3-kicker) { font-size: .80rem; line-height: 1.5; }
+
+.try-v4-page .try-v5-inspection-heading > span { font-size: .68rem; }
+.try-v4-page .try-v5-receipt dt { font-size: .74rem; }
+.try-v4-page .try-v5-receipt dd { font-size: .75rem; }
+.try-v4-page .try-v5-receipt-note { font-size: .78rem !important; }
+.try-v4-page .try-v5-provenance-row strong { font-size: .80rem; }
+.try-v4-page .try-v5-provenance-row span { font-size: .74rem; }
+.try-v4-page .try-v5-provenance-row small { font-size: .70rem; }
+.try-v4-page .try-v5-provenance-row code { font-size: .68rem; }
+.try-v4-page .try-v5-raw-proof > summary,
+.try-v4-page .try-v5-audit-details > summary { font-size: .74rem; }
+.try-v4-page .try-v5-raw-record-head strong { font-size: .78rem; }
+.try-v4-page .try-v5-raw-record-head span,
+.try-v4-page .try-v5-raw-record > small,
+.try-v4-page .try-v5-raw-record > code,
+.try-v4-page .try-v5-raw-record pre { font-size: .68rem; }
+.try-v4-page .try-v5-dispute-package-head p:not(.try-v3-kicker) { font-size: .80rem; }
+.try-v4-page .try-v5-dispute-copy { font-size: .72rem; }
+.try-v4-page .try-v5-audit-grid span { font-size: .70rem; }
+.try-v4-page .try-v5-audit-grid strong,
+.try-v4-page .try-v5-audit-grid code { font-size: .72rem; }
+
+
+
+/* Public Try readability floor: metadata remains compact but never tiny. */
+.try-v4-page small,
+.try-v4-page code,
+.try-v4-page dt,
+.try-v4-page dd,
+.try-v4-page .try-v3-kicker,
+.try-v4-page .try-v4-challenge-head,
+.try-v4-page .try-v4-vendor-claim span,
+.try-v4-page .try-v4-amount-due span,
+.try-v4-page .try-v4-resolved-label,
+.try-v4-page .try-v4-rail > div > span,
+.try-v4-page .try-v4-step-rail > span,
+.try-v4-page .try-v4-step-rail > strong,
+.try-v4-page .try-v4-proposal-meta,
+.try-v4-page .try-v4-rule-source > span,
+.try-v4-page .try-v4-rule-authority > span,
+.try-v4-page .try-v4-approval-action > div > span,
+.try-v4-page .try-v4-result-state,
+.try-v4-page .decision-flow.compact .decision-flow-index,
+.try-v4-page .decision-flow.compact .decision-flow-copy > span,
+.try-v4-page .decision-ledger-label,
+.try-v4-page .decision-equation-term > span,
+.try-v4-page .decision-equation-review > span,
+.try-v4-page .decision-ledger-synthetic,
+.try-v4-page .decision-ledger-section-title > span,
+.try-v4-page .decision-ledger-event > span,
+.try-v4-page .try-v5-inspection-heading > span,
+.try-v4-page .try-v5-provenance-row span,
+.try-v4-page .try-v5-provenance-row small,
+.try-v4-page .try-v5-raw-proof > summary,
+.try-v4-page .try-v5-audit-details > summary,
+.try-v4-page .try-v5-dispute-copy,
+.try-v4-page .try-v5-audit-grid span {
+  font-size: .75rem !important;
+  line-height: 1.45 !important;
+}
+
+.try-v4-page .try-v3-brand > div:last-child p:last-child,
+.try-v4-page .try-v4-step-rail > small,
+.try-v4-page .try-v4-amount-due small,
+.try-v4-page .try-v4-challenge-note,
+.try-v4-page .decision-equation-caption,
+.try-v4-page .authority-boundary-v2 > div > small,
+.try-v4-page .try-v5-receipt-note {
+  font-size: .80rem !important;
+  line-height: 1.5 !important;
+}
+
+.try-v4-page .try-v4-step,
+.try-v4-page .try-v3-section-head,
+.try-v4-page .try-v4-verification-step,
+.try-v4-page .try-v4-result-head {
+  scroll-margin-top: 96px;
+}

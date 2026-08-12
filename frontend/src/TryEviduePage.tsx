@@ -7,7 +7,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { api, PublicTryAnalysis, PublicTryInspection, PublicTryResult } from "./api";
 import {
@@ -96,6 +96,16 @@ function shortHash(value: string | null | undefined): string {
   return value.length > 22 ? `${value.slice(0, 12)}…${value.slice(-8)}` : value;
 }
 
+function scrollToStep(element: HTMLElement | null, block: "start" | "center" = "start") {
+  if (!element || typeof element.scrollIntoView !== "function") return;
+  const scroll = () => element.scrollIntoView({ behavior: "smooth", block });
+  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(scroll));
+    return;
+  }
+  scroll();
+}
+
 export default function TryEviduePage() {
   const [analysis, setAnalysis] = useState<PublicTryAnalysis | null>(null);
   const [rulesApproved, setRulesApproved] = useState(false);
@@ -108,8 +118,29 @@ export default function TryEviduePage() {
   const [inspectionError, setInspectionError] = useState("");
   const [showContract, setShowContract] = useState(false);
   const [copied, setCopied] = useState(false);
+  const proposalHeadingRef = useRef<HTMLDivElement | null>(null);
+  const verifyActionRef = useRef<HTMLButtonElement | null>(null);
+  const resultHeadRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => { track("try_evidue_viewed"); }, []);
+
+  useEffect(() => {
+    if (analysis && !rulesApproved && !result) {
+      scrollToStep(proposalHeadingRef.current);
+    }
+  }, [analysis, rulesApproved, result]);
+
+  useEffect(() => {
+    if (rulesApproved && !result) {
+      scrollToStep(verifyActionRef.current, "center");
+    }
+  }, [rulesApproved, result]);
+
+  useEffect(() => {
+    if (result) {
+      scrollToStep(resultHeadRef.current);
+    }
+  }, [result]);
 
   const deductionPercent = useMemo(() => {
     if (!result) return null;
@@ -226,8 +257,19 @@ export default function TryEviduePage() {
             <Typography component="h1">Nova AI billed Acme $150 for 100 outcomes.</Typography>
             <Typography className="try-v4-question">Would you pay it?</Typography>
             <Typography className="try-v4-lede">Do not trust the vendor number—or the model. Establish contract authority, then verify every claim against customer-side proof.</Typography>
-            <Button variant="contained" size="large" onClick={() => void analyze()} disabled={analyzing}>
-              {analyzing ? <><CircularProgress size={17} sx={{ mr: 1 }} />Reading contract…</> : analysis ? "Read contract again" : "Verify the invoice"}
+            <Button
+              variant="contained"
+              size="large"
+              onClick={() => {
+                if (analysis) {
+                  scrollToStep(proposalHeadingRef.current);
+                  return;
+                }
+                void analyze();
+              }}
+              disabled={analyzing}
+            >
+              {analyzing ? <><CircularProgress size={17} sx={{ mr: 1 }} />Reading contract…</> : analysis ? "Review proposed rules" : "Verify the invoice"}
             </Button>
           </Box>
           <Box className={`try-v4-challenge${result ? " resolved" : ""}`}>
@@ -262,9 +304,12 @@ export default function TryEviduePage() {
         <Box className="try-v4-step" data-step="01">
           <Box className="try-v4-step-rail"><span>01</span><strong>INTERPRET</strong><small>What does the contract make billable?</small></Box>
           <Box className="try-v4-step-body">
-            <Box className="try-v3-section-head">
+            <Box ref={proposalHeadingRef} className="try-v3-section-head">
               <Box><Typography className="try-v3-kicker">AI PROPOSAL · NOT YET AUTHORITY</Typography><Typography component="h2">Turn source language into explicit payment rules.</Typography></Box>
-              <Button variant="text" onClick={() => setShowContract((value) => !value)}>{showContract ? "Hide source contract" : "View source contract"}</Button>
+              <Stack direction="row" spacing={1}>
+                {analysis && <Button variant="text" onClick={() => void analyze()}>Re-read contract</Button>}
+                <Button variant="text" onClick={() => setShowContract((value) => !value)}>{showContract ? "Hide source contract" : "View source contract"}</Button>
+              </Stack>
             </Box>
             {!analysis && <Typography className="try-v3-muted">Start with “Verify the invoice.” Evidue will load the synthetic agreement and propose a structured rule set.</Typography>}
             {showContract && <Box component="pre" className="try-v3-contract-source">{analysis?.contract_text ?? "Run contract analysis to load the exact synthetic contract used by this public try."}</Box>}
@@ -312,7 +357,7 @@ export default function TryEviduePage() {
               <Typography component="h2">Check 100 claims against approved rules and evidence.</Typography>
               <Typography className="try-v4-step-copy">The model is no longer in the decision loop. Every line becomes substantiated, contradicted, or insufficient evidence.</Typography>
             </Box>
-            <Button variant="contained" size="large" onClick={() => void verifyClaims()} disabled={!rulesApproved || reconciling || Boolean(result)}>
+            <Button ref={verifyActionRef} variant="contained" size="large" onClick={() => void verifyClaims()} disabled={!rulesApproved || reconciling || Boolean(result)}>
               {reconciling ? <><CircularProgress size={18} sx={{ mr: 1 }} />Checking 100 claims…</> : result ? "100 claims verified" : "Verify 100 claims"}
             </Button>
           </Box>
@@ -320,7 +365,7 @@ export default function TryEviduePage() {
 
         {result && (
           <Box className="try-v4-result-shell" data-step="04">
-            <Box className="try-v4-result-head">
+            <Box ref={resultHeadRef} className="try-v4-result-head">
               <Box>
                 <Typography className="try-v3-kicker">04 · ACT ON DOLLARS</Typography>
                 <Typography component="h2">The vendor billed $150. Evidue substantiated $124.50.</Typography>

@@ -103,6 +103,8 @@ it("delivers one successful reconciliation before asking for contact", async () 
 
   await user.click(screen.getByRole("button", { name: "Verify the invoice" }));
   expect(await screen.findByText("No same-intent recontact")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Review proposed rules" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Re-read contract" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Approve 1 contract rule" }));
   await user.click(screen.getByRole("button", { name: "Verify 100 claims" }));
 

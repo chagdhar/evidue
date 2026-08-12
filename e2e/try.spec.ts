@@ -6,11 +6,20 @@ test("public Try Evidue carries the full proof path without a separate demo", as
   await expect(page.getByRole("heading", { name: /Nova AI billed Acme \$150 for 100 outcomes/i })).toBeVisible();
   await page.getByRole("button", { name: "Verify the invoice" }).click();
 
+  const proposalHeading = page.getByRole("heading", { name: "Turn source language into explicit payment rules." });
+  await expect(proposalHeading).toBeVisible();
+  await expect(proposalHeading).toBeInViewport();
   await expect(page.getByText("No same-intent recontact", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /Approve 8 contract rules/i }).click();
-  await page.getByRole("button", { name: "Verify 100 claims" }).click();
+  await expect(page.getByRole("button", { name: "Review proposed rules" })).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: /The vendor billed \$150\. Evidue substantiated \$124\.50/i })).toBeVisible();
+  await page.getByRole("button", { name: /Approve 8 contract rules/i }).click();
+  const verifyClaims = page.getByRole("button", { name: "Verify 100 claims" });
+  await expect(verifyClaims).toBeInViewport();
+  await verifyClaims.click();
+
+  const resultHeading = page.getByRole("heading", { name: /The vendor billed \$150\. Evidue substantiated \$124\.50/i });
+  await expect(resultHeading).toBeVisible();
+  await expect(resultHeading).toBeInViewport();
   await expect(page.getByText("17 claims contradicted an approved contract rule.", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "R3 · OUT-004821" }).click();
