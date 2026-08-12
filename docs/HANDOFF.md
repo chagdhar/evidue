@@ -2,8 +2,7 @@
 
 ## Fresh checkout
 
-Requirements: Git, Python 3.13 or newer, uv, Node 20.19 or newer, npm, and
-Docker. Commands below are directly invokable from fish.
+Requirements: Git, Python 3.13+, uv, Node 20.19+, npm, and Docker.
 
 ```fish
 git clone <repository-url> evidue
@@ -14,14 +13,11 @@ cd evidue
 ./scripts/dev.sh
 ```
 
-Open <http://localhost:5173/demo>. Stop both development processes with
-`Ctrl+C`; `dev.sh` terminates its child processes.
+Open <http://localhost:5173/try> for the public proof and <http://localhost:5173/workspace> for the protected product.
 
-`/demo` is fixed to the full 10,000-line headline invoice and is the recording
-route. Open <http://localhost:5173/demo/lab> only for the focused contradictory
-evidence, recovery, and duplicate-attribution cases.
+The public proof uses deterministic synthetic fixtures and cannot mutate protected workspace state. The useful inspection features that previously lived in a separate public reference shell—claim audit trail, source-record provenance, outcome receipt, reproducibility metadata, and dispute-summary handoff—now appear inline in `/try`.
 
-## Demo reset
+## Reset synthetic fixtures
 
 With development servers stopped:
 
@@ -29,15 +25,13 @@ With development servers stopped:
 ./scripts/demo-reset.sh
 ```
 
-The script recreates the deterministic inputs and returns the application to the
-unreconciled state.
+This resets the internal synthetic fixture database used by `/try`; it does not affect protected workspace data.
 
 ## Container
 
 ```fish
-docker build -t evidue-demo .
-docker run --rm -p 8000:8000 evidue-demo
+docker build -t evidue .
+docker run --rm -p 8000:8000 evidue
 ```
 
-Open <http://localhost:8000/demo>. The image serves the built React assets
-through FastAPI and runs as the unprivileged `evidue` user.
+Open <http://localhost:8000/try>.

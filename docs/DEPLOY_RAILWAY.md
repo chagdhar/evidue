@@ -78,15 +78,12 @@ Set `SERVICE_URL` to the generated Railway HTTPS domain, without a trailing slas
 
 ```bash
 curl -fsS "$SERVICE_URL/api/health"
-curl -fsS "$SERVICE_URL/api/demo/status"
 curl -fsS "$SERVICE_URL/api/reconciliations/current"
 curl -fsS "$SERVICE_URL/api/contracts/current"
 curl -fsS "$SERVICE_URL/api/public-config"
 curl -fsSI "$SERVICE_URL/contact"
-curl -fsS -X POST "$SERVICE_URL/api/public-demo/rules/validate"
-curl -fsS -X POST "$SERVICE_URL/api/public-demo/outcomes/OUT-004821/evaluate"
-curl -fsS -X POST "$SERVICE_URL/api/public-demo/reconciliations/sample"
-curl -fsS -o /dev/null -w '%{http_code}\n' "$SERVICE_URL/demo/invoices/current?outcome=OUT-004821"
+curl -fsS -o /dev/null -w '%{http_code}\n' "$SERVICE_URL/try"
+curl -fsS -o /dev/null -w '%{http_code}\n' "$SERVICE_URL/workspace"
 ```
 
 Inspect the public configuration response and verify

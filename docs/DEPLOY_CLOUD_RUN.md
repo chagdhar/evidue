@@ -52,7 +52,7 @@ gcloud run deploy $SERVICE \
   --startup-probe httpGet.path=/api/health,httpGet.port=8080,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=10,failureThreshold=10
 ```
 
-Keep `--min-instances 1` for a launch/demo window. Afterward, return to
+Keep `--min-instances 1` for a launch or interview window. Afterward, return to
 scale-to-zero with `gcloud run services update $SERVICE --region $REGION
 --min-instances 0`.
 
@@ -62,7 +62,7 @@ Verify the deployed service:
 set SERVICE_URL (gcloud run services describe $SERVICE --region $REGION --format='value(status.url)')
 curl --fail $SERVICE_URL/api/health
 curl --fail $SERVICE_URL/api/reconciliations/current
-echo $SERVICE_URL/demo
+echo $SERVICE_URL/try
 ```
 
 ## Beta waitlist and feedback

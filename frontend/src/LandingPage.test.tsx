@@ -16,18 +16,6 @@ vi.mock("./analytics", async (importOriginal) => ({
   track: vi.fn(),
 }));
 
-const status = {
-  public_demo: true,
-  seeded: true,
-  reconciled: true,
-  claimed_outcomes: 10000,
-  billing_period: "2026-06-01 through 2026-06-30",
-  scenario_id: "headline",
-  scenario_name: "Full invoice reconciliation",
-  scenario_description: "Headline scenario",
-  demo_outcome_id: "OUT-004821",
-};
-
 const invoice = {
   invoice_id: "INV-1",
   claimed_outcomes: 10000,
@@ -60,13 +48,11 @@ afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); });
 function mockPublicConfig(beta = true) {
   vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
     const url = String(input);
-    const body = url.endsWith("/api/demo/status")
-      ? status
-      : url.endsWith("/api/invoices/current")
-        ? invoice
-        : url.endsWith("/api/public-config")
-          ? { beta_form_configured: beta, beta_form_url: beta ? "https://tally.so/r/test-form" : null, contact_form_configured: true }
-          : summary;
+    const body = url.endsWith("/api/invoices/current")
+      ? invoice
+      : url.endsWith("/api/public-config")
+        ? { beta_form_configured: beta, beta_form_url: beta ? "https://tally.so/r/test-form" : null, contact_form_configured: true }
+        : summary;
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response);
   });
 }
@@ -81,17 +67,16 @@ it("leads with the financial loss and makes the verification loop visible", asyn
   expect(screen.getAllByText("$2,520").length).toBeGreaterThan(0);
   expect(screen.getByText(/1,680 charges fail approved contract verification/i)).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: "Verify a sample invoice" }).length).toBeGreaterThan(0);
-  expect(screen.getByRole("button", { name: "Inspect a disputed claim" })).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "Talk to us" }).length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText("The LLM interprets the contract. It never decides the invoice.")).toBeInTheDocument();
-  const contactLink = await screen.findByRole("link", { name: "Contact" });
-  await userEvent.click(contactLink);
+  const talkToUs = screen.getAllByRole("button", { name: "Talk to us" })[0];
+  await userEvent.click(talkToUs);
   expect(track).toHaveBeenCalledWith("talk_to_us_clicked");
 });
 
 it("keeps direct contact in the header when no beta form is configured", async () => {
   mockPublicConfig(false);
   render(<LandingPage />, { wrapper: Wrapper });
-  const contact = await screen.findByRole("link", { name: "Contact" });
-  expect(contact).toHaveAttribute("href", "/contact");
-  expect(contact.closest("header")).not.toBeNull();
+  const talkToUs = screen.getAllByRole("button", { name: "Talk to us" })[0];
+  expect(talkToUs.closest("header")).not.toBeNull();
 });

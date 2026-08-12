@@ -14,7 +14,7 @@ Present Evidue as one customer product rather than a collection of demo, pilot, 
 | `/workspace/vendors` | Vendor spend, exception, contract, and review history |
 | `/workspace/settings` | Workspace defaults and integration readiness |
 | `/try` | Public synthetic no-login trial; never customer data |
-| `/demo/*` | Deep synthetic reference workspace used for product inspection |
+| `/try` | Canonical public proof, including inline claim/provenance inspection |
 
 Legacy `/pilot`, `/pilot/config`, `/pilot/finance`, and `/pilot/operations` UI paths redirect to the canonical workspace routes. The protected backend API remains `/api/pilot/*` for compatibility; changing the UI route does not weaken the existing workspace-token boundary.
 

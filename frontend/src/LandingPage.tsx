@@ -8,8 +8,8 @@ import {
 } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, DemoStatus, Invoice, Summary } from "./api";
-import { BetaApplicationCTA, FeedbackCTA } from "./BetaApplicationCTA";
+import { api, Invoice, Summary } from "./api";
+import { FeedbackCTA } from "./BetaApplicationCTA";
 import { AuthorityBoundary, ClaimDecisionLedger, DecisionFlow, FinancialEquation } from "./DecisionLedger";
 import { disclosure } from "./presentation";
 import { TemplateIcon } from "./TemplateIcons";
@@ -103,21 +103,14 @@ function InvoiceVerdict({ invoice, summary }: { invoice: Invoice | null; summary
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<DemoStatus | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
 
   useEffect(() => {
     track("landing_viewed");
     let active = true;
-    void Promise.all([api.status(), api.invoice()]).then(([statusResult, invoiceResult]) => {
-      if (!active) return;
-      setStatus(statusResult);
-      setInvoice(invoiceResult);
-      if (statusResult.reconciled) {
-        void api.current().then((result) => { if (active) setSummary(result); }).catch(() => undefined);
-      }
-    }).catch(() => undefined);
+    void api.invoice().then((result) => { if (active) setInvoice(result); }).catch(() => undefined);
+    void api.current().then((result) => { if (active) setSummary(result); }).catch(() => undefined);
     return () => { active = false; };
   }, []);
 
@@ -138,7 +131,12 @@ export default function LandingPage() {
               <Link href="#boundary">Authority boundary</Link>
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center">
-              <BetaApplicationCTA compact />
+              <Button
+                variant="text"
+                onClick={() => { track("talk_to_us_clicked"); navigate("/contact"); }}
+              >
+                Talk to us
+              </Button>
               <Button variant="contained" className="landing-v3-nav-cta" onClick={() => navigate("/try")}>Verify a sample invoice</Button>
             </Stack>
           </Box>
@@ -155,7 +153,13 @@ export default function LandingPage() {
             </Typography>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} className="landing-v3-actions">
               <Button variant="contained" size="large" endIcon={<TemplateIcon name="arrow" size={17} />} onClick={() => navigate("/try")}>Verify a sample invoice</Button>
-              <Button variant="text" size="large" onClick={() => navigate(`/demo/invoices/current?outcome=${encodeURIComponent(status?.demo_outcome_id ?? "OUT-004821")}`)}>Inspect a disputed claim</Button>
+              <Button
+                variant="outlined"
+                size="large"
+                onClick={() => { track("talk_to_us_clicked"); navigate("/contact"); }}
+              >
+                Talk to us
+              </Button>
             </Stack>
             <Box className="landing-v4-trust-row">
               <span>AI proposes</span><b>→</b><span>Human approves</span><b>→</b><span>Code decides dollars</span>

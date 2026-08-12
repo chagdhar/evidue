@@ -5,21 +5,15 @@ Support AI for Acme Commerce. It deterministically evaluates each claimed
 outcome against contractual evidence rules; it does not use an LLM to make a
 payment decision.
 
-## Immutable demonstration result
+## Public proof result
 
-The deterministic synthetic fixture produces 10,000 claimed outcomes at
-$1.50 each ($15,000.00 submitted). Of those, 8,320 are payable ($12,480.00)
-and 1,680 are disputed ($2,520.00 deduction): 720 recontacts, 360 human
-completions/corrections, 300 failed downstream actions, 180 duplicates, and
-120 account/action mismatches. Categories are mutually exclusive. OUT-004821
-is a failed refund and is disputed.
+`/try` is the canonical public proof. It uses a bounded 100-claim synthetic sample: $150.00 billed, $124.50 substantiated, and $25.50 identified for dispute in the recorded baseline. The values are produced by the deterministic engine after explicit rule approval; the frontend does not hardcode the adjudication result.
 
-## Deterministic scenario catalog
+After the result, `/try` can inspect representative findings inline with contract authority, customer-side evidence, source-record provenance, outcome receipt metadata, reproducibility details, and a vendor-ready dispute summary.
 
-The full invoice is the fixed recorded demonstration at `/demo`. A separate
-technical route at `/demo/lab` offers focused synthetic data sets that run
-through the same persistence, domain engine, API, evidence inspector, and
-exports:
+## Deterministic fixture catalog
+
+The repository keeps focused synthetic fixture scenarios for automated testing and developer qualification. They are not exposed as a separate customer-facing frontend route:
 
 - `headline`: 10,000 claims; 8,320 payable; 1,680 disputed; $15,000.00
   submitted; $12,480.00 payable; $2,520.00 deduction; $0.00 review.
@@ -53,16 +47,12 @@ separate fixture proves that state.
 
 ## Product surface
 
-FastAPI exposes the documented health, demo, contract, invoice,
-reconciliation, paginated outcomes, detail, and persisted export endpoints.
-It also exposes the deterministic scenario catalog and supports resetting to a
-selected scenario. The React `/demo` route guarantees the headline invoice and
-contains no scenario selector. `/demo/lab` exposes the selector for technical
-inspection. Both routes show the pre-run invoice, rules, and evidence sources;
-then invoke the real backend engine and present backend-derived totals, filters,
-evidence, and downloads. All screens and exports disclose: “Synthetic
-demonstration data” and “Operationally realistic data generated
-deterministically. No real customer or vendor data is shown.”
+- `/` — positioning and financial example
+- `/try` — no-signup public proof and inline inspection
+- `/contact` — customer discovery / sales
+- `/workspace/*` — protected customer product
+
+The retired standalone public demo shell has no frontend route. The public proof does not expose a duplicate invoice list, scenario lab, vendor-preflight product, or separate contract/evidence pages; their useful proof elements are progressively disclosed inside `/try`.
 
 ## Technical and financial constraints
 

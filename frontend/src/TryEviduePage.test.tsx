@@ -16,7 +16,7 @@ afterEach(() => {
 it("delivers one successful reconciliation before asking for contact", async () => {
   const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
     const url = String(input);
-    if (url.endsWith("/api/public-demo/try/analyze")) {
+    if (url.endsWith("/api/public-try/analyze")) {
       return response({
         sandbox_id: "TRY-123",
         contract_text: "A qualifying resolution is billable at $1.50 only when customer-side evidence satisfies the approved conditions.",
@@ -36,7 +36,7 @@ it("delivers one successful reconciliation before asking for contact", async () 
         duration_ms: 20,
       });
     }
-    if (url.includes("/api/public-demo/try/TRY-123/approve-and-reconcile")) {
+    if (url.includes("/api/public-try/TRY-123/approve-and-reconcile")) {
       return response({
         sandbox_id: "TRY-123",
         human_approval_recorded: true,
@@ -58,6 +58,40 @@ it("delivers one successful reconciliation before asking for contact", async () 
         duration_ms: 8,
       });
     }
+    if (url.includes("/api/public-try/TRY-123/outcomes/OUT-004821")) {
+      return response({
+        outcome_id: "OUT-004821",
+        vendor_claim_id: "VC-4821",
+        vendor_claim: "Refund completed",
+        agent_version: "refund-v2.4",
+        customer_id: "CUST-4821",
+        account_id: "ACCT-4821",
+        intent: "refund",
+        status: "disputed",
+        reason: "Payment processor rejected the refund before the contract deadline.",
+        rule_id: "R3",
+        rule: { id: "R3", title: "Refund completion", description: "Refund must post successfully.", clause_text: "A refund is complete only when the payment processor confirms success.", operation: "require_event_within", evidence_required: ["payment processor"], consequence: "disputed" },
+        billed_amount: "1.50",
+        confirmed_payable_amount: "0.00",
+        confirmed_disputed_amount: "1.50",
+        needs_review_amount: "0.00",
+        evidence: [{
+          id: "EV-1",
+          source_system: "payment_processor",
+          source_record_id: "PAY-4821",
+          event_type: "refund_rejected",
+          timestamp: "2026-06-04T10:15:00",
+          values: { status: "rejected" },
+          provenance: { connector_name: "Payment processor", authority: "customer-controlled", collection_method: "API", raw_record_id: "RAW-1", raw_payload: { status: "rejected" }, payload_hash: "sha256:abc123", schema_version: "1.0", match_status: "matched", match_method: "direct_outcome_id", match_confidence: "1.0000", match_reason: "Stable outcome ID", received_at: "2026-06-04T10:16:00" },
+        }],
+        claim_provenance: { connector_name: "Vendor invoice", raw_record_id: "RAW-CLAIM", source_record_id: "VC-4821", payload_hash: "sha256:claim123", schema_version: "1.0" },
+        engine_version: "test-engine",
+        compilation_id: "TRY-123",
+        program_version: 1,
+        source_hash: "abc",
+        evaluated_at: "2026-06-30T00:00:00",
+      });
+    }
     throw new Error(`Unexpected URL ${url}`);
   });
 
@@ -75,7 +109,13 @@ it("delivers one successful reconciliation before asking for contact", async () 
   expect((await screen.findAllByText("$124.50")).length).toBeGreaterThan(0);
   expect(screen.getAllByText("$25.50").length).toBeGreaterThan(0);
   expect(screen.getByText("17 claims contradicted an approved contract rule.")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "R3 · OUT-004821" })).toHaveAttribute("href", "/demo/invoices/current?outcome=OUT-004821");
+  expect(screen.queryByRole("link", { name: "R3 · OUT-004821" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "R3 · OUT-004821" }));
+  expect(await screen.findByRole("heading", { name: /One charge, from assertion to financial consequence/i })).toBeInTheDocument();
+  expect(screen.getAllByText("Payment processor").length).toBeGreaterThanOrEqual(1);
+  expect(screen.getAllByText("sha256:abc123").length).toBeGreaterThanOrEqual(1);
+  expect(screen.getByText("Proof envelope")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Copy dispute summary" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Share your workflow" })).toHaveAttribute("href", "/contact");
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock).toHaveBeenCalledTimes(3);
 });

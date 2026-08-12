@@ -51,7 +51,7 @@ const billingModels = ["Per outcome", "Per resolution", "Per action", "Usage-bas
 const verificationMethods = ["Vendor report only", "Manual spot checks", "Reconcile exports", "Internal tooling", "Not independently verified", "Not sure"];
 const evidenceLocations = ["Support / helpdesk data", "Payments / billing records", "CRM / account data", "Product / event logs", "Multiple customer systems", "Mostly vendor-controlled", "Not sure"];
 const commercialActions = ["Dispute before payment", "Request a credit", "True-up later", "Use it at renewal", "No financial action today", "Not sure", "Other"];
-const feedbackAreas = ["Product idea", "Demo clarity", "Trust / evidence", "User experience", "Bug", "Positioning", "Other"];
+const feedbackAreas = ["Product idea", "Try flow clarity", "Trust / evidence", "User experience", "Bug", "Positioning", "Other"];
 
 function ContactHeader() {
   return (

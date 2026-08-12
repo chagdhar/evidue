@@ -152,24 +152,11 @@ A secondary match must expose the keys used and why the match is accepted. Low-c
 
 Vendor evidence cannot overwrite customer evidence, edit customer rules, inspect private customer records, or declare a charge payable.
 
-## Demo surfaces
+## Public proof and product surfaces
 
-### `/demo/data-sources`
+`/try` demonstrates the ingestion trust boundary at the claim level. After reconciliation, a visitor can inspect the decisive customer-controlled evidence, connector/source identity, match status and confidence, raw-record hash, schema version, and the representative raw payload inline.
 
-Shows:
-
-- aggregate source volumes;
-- the collection method for each source;
-- its production connection path and trust boundary;
-- raw source payloads;
-- normalized Evidue records;
-- matching method and confidence;
-- content hashes and schema versions;
-- the practical export → warehouse → connector rollout.
-
-### `/demo/invoices/current`
-
-Shows evidence readiness before reconciliation and links to the collection pipeline. The outcome inspector exposes the exact vendor claim, source record, match method, authority, normalized evidence, and raw payload used in a determination.
+`/workspace` exposes production/pilot evidence readiness at invoice scale and retains the full source/evidence lifecycle for authorized operators. The old standalone public data-source browser has been removed to avoid creating a third product surface.
 
 ## Repository fixtures
 

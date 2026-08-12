@@ -28,7 +28,7 @@ export default defineConfig({
       cwd: "..",
       command:
         `EVIDUE_API_URL=http://127.0.0.1:${backendPort} npm --prefix frontend run dev -- --host 127.0.0.1 --port ${frontendPort}`,
-      url: `http://127.0.0.1:${frontendPort}/demo`,
+      url: `http://127.0.0.1:${frontendPort}/try`,
       reuseExistingServer: false,
       timeout: 120_000,
     },

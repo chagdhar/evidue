@@ -3,10 +3,10 @@
 Evidue independently reconciles outcome-priced AI-agent vendor invoices against
 contractual billing rules and customer-owned operational evidence.
 
-This repository contains the protected product workflow (`/workspace`), a no-signup public
-product trial (`/try`), and the deeper synthetic reference workspace (`/demo`). The
-product path accepts operator-provided agreements, invoices, and customer-side evidence;
-the public surfaces use fictional Acme Commerce / Nova Support AI data only.
+This repository contains two customer-facing experiences: the protected product workflow
+(`/workspace`) and the no-signup public proof (`/try`). The product path accepts
+operator-provided agreements, invoices, and customer-side evidence; `/try` uses fictional
+Acme Commerce / Nova Support AI data only.
 
 ## Run the product locally
 
@@ -61,33 +61,23 @@ and [docs/product-v1/SYSTEM_ARCHITECTURE.md](docs/product-v1/SYSTEM_ARCHITECTURE
 [docs/NORMAL_USER_ACCEPTANCE.md](docs/NORMAL_USER_ACCEPTANCE.md), and
 [docs/IMPLEMENTATION_MATRIX.md](docs/IMPLEMENTATION_MATRIX.md).
 
-## Run the synthetic public demo
+## Run the public Try Evidue flow
 
 ```fish
 ./scripts/setup-demo.sh
 ./scripts/dev.sh
 ```
 
-The demo setup rebuilds the disposable synthetic database, installs dependencies,
-seeds the headline fixture, and runs the fast validation suite. See
-[SETUP.md](SETUP.md) for manual and Docker instructions.
+The setup script rebuilds the disposable synthetic fixture database, installs dependencies,
+and runs the fast validation suite. Open <http://localhost:5173/try>. The public flow takes
+a visitor through contract interpretation, explicit human approval, a 100-claim deterministic
+reconciliation, inline failed-claim inspection, source-record provenance, an outcome receipt,
+and a vendor-ready dispute summary. No signup or customer data is required.
 
-Open <http://localhost:5173/try> for the public no-signup product trial. It walks a
-visitor through contract analysis, explicit human approval, and a 100-claim in-memory
-deterministic reconciliation before showing the conversation CTA. Open
-<http://localhost:5173/demo> for the deeper reference workspace. The backend API is
-available at <http://localhost:8000/api/health>.
-
-The `/try` flow never accepts customer data and never mutates `/workspace` or the authoritative
-demo reconciliation. If a server-side Gemini key is configured, one live compiler run is
-allowed per network per seven days; later runs transparently replay the validated recorded
-model proposal while continuing to execute the real deterministic reconciliation engine.
-See [docs/PUBLIC_TRY_DEMO.md](docs/PUBLIC_TRY_DEMO.md).
-
-The golden path starts with a submitted $15,000 invoice. Click **Run
-reconciliation** to invoke the backend engine. It evaluates all 10,000 claims,
-persists the determinations, and returns a $12,480 corrected payable amount with
-a $2,520 recommended deduction.
+`/try` never mutates `/workspace`. If a server-side Gemini key is configured, one live
+compiler run is allowed per network per seven days; later runs replay the validated recorded
+model proposal while continuing to execute the real deterministic reconciliation engine. See
+[docs/PUBLIC_TRY.md](docs/PUBLIC_TRY.md).
 
 ## Contract-to-rules workflow
 
@@ -106,22 +96,24 @@ The repository includes validated recorded proposals so technical previews and t
 In the UI, open **Contract compiler**, click **Compile contract**, inspect the proposed operations, approve the
 new version, and then run reconciliation. See [docs/CONTRACT_COMPILER.md](docs/CONTRACT_COMPILER.md).
 
-## Contract-to-rules demo
+## Contract-to-rules public proof
 
-Open `/demo/contracts/current` before running the invoice. Click **Compile contract**:
+Open `/try`, click **Verify the invoice**, inspect the proposed rule set, and explicitly approve
+it before clicking **Verify 100 claims**. The public proof demonstrates the production trust
+boundary without exposing internal compiler artifacts in the primary UI:
 
-1. Gemini converts the natural-language order form into a constrained JSON rule proposal.
-2. Pydantic validates the proposal against seven supported deterministic operators.
-3. The proposal remains inactive until **Approve rule version** is clicked.
-4. Reconciliation executes only the approved immutable version; the LLM never adjudicates a charge.
+1. A model proposes structured rules from the natural-language agreement.
+2. Schema and deterministic assurance validate the proposal.
+3. A human establishes the approved financial authority.
+4. The deterministic engine evaluates customer-side evidence; the model never adjudicates a charge.
+5. A representative failed claim can be inspected inline with source records, provenance hashes,
+   rule authority, and financial consequence.
 
-For local developer testing, the Evidue operator may configure a server-side provider credential in `.env`; customers are never asked to supply an LLM key. With no provider credential, the same demo screen replays a checked-in, schema-validated response so the technical preview remains reliable offline. See [docs/LLM_RULE_COMPILER.md](docs/LLM_RULE_COMPILER.md).
-
-Before reconciliation, the demo now shows the production-shaped evidence path:
-eight vendor and customer sources, aggregate source-record volumes, 9,975 direct
-matches, 25 verified secondary-key matches, raw payload hashes, normalized
-records, and source authority. Representative source exports are checked into
-`demo-data/`; see [docs/REAL_DATA_INGESTION.md](docs/REAL_DATA_INGESTION.md).
+For local developer testing, the Evidue operator may configure a server-side provider credential
+in `.env`; customers are never asked to supply an LLM key. With no provider credential, `/try`
+replays a checked-in, schema-validated proposal so the public proof remains reliable offline. See
+[docs/LLM_RULE_COMPILER.md](docs/LLM_RULE_COMPILER.md) and
+[docs/REAL_DATA_INGESTION.md](docs/REAL_DATA_INGESTION.md).
 
 ## Validate
 
@@ -142,10 +134,10 @@ docker build -t evidue-demo .
 docker run --rm -p 8000:8000 evidue-demo
 ```
 
-Open <http://localhost:8000/demo>.
+Open <http://localhost:8000/try>.
 
 See [docs/HANDOFF.md](docs/HANDOFF.md) for fresh-checkout instructions and
-[docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the demo narration.
+[docs/PUBLIC_TRY_SCRIPT.md](docs/PUBLIC_TRY_SCRIPT.md) for the `/try` narration.
 
 ## Hosted deployment
 
@@ -158,34 +150,33 @@ Railway deployment.
 
 ## Product surfaces
 
-- `/workspace` — protected contract/invoice/evidence reconciliation workbench
-- `/workspace/operations` — protected review, settlement approval, trust, and vendor-dispute operations
-- `/workspace/settings` — protected workspace configuration
+- `/` — landing page
+- `/try` — no-signup public proof using synthetic data
+- `/contact` — customer discovery and sales contact
+- `/workspace` — protected invoice-control workspace
+- `/workspace/invoices` — invoice register
+- `/workspace/invoices/current` — active contract → evidence → verification → review → action case
+- `/workspace/review` — exception and review queue
+- `/workspace/vendors` — vendor history
+- `/workspace/settings` — workspace configuration
 
-Legacy `/pilot`, `/pilot/finance`, and `/pilot/config` UI routes redirect to the canonical `/workspace` surfaces. The backend API remains `/api/pilot/*` for compatibility.
-- `/try` — no-signup, synthetic, human-approved public reconciliation trial
-- `/demo` — deeper synthetic finance-control reference workspace
-- `/demo/invoices` — recurring invoice operations
-- `/demo/invoices/current` — complete working June reconciliation
-- `/demo/contracts/current` — contract clause-to-rule control center
-- `/demo/disputes/current` — dispute package and financial handoff
-- `/demo/data-sources` — production-shaped collection, matching, and raw-record provenance
-- `/demo/vendor-preflight` — vendor-side invoice preflight
-- `/demo/outcome-ledger` — shared outcome receipt model
-- `/demo/lab` — technical edge-case scenarios
-
-Only the June 2026 invoice is a fully interactive reconciliation. Historical invoice rows are explicitly labelled illustrative synthetic history; connector statuses are explicitly labelled local fixtures rather than live integrations.
+Legacy `/pilot`, `/pilot/finance`, and `/pilot/config` UI routes redirect to the canonical
+`/workspace` surfaces. The legacy standalone public demo application has been removed; its useful
+inspection capabilities now live inline in `/try`.
 
 ## Product architecture
 
-The demo presents Evidue as the financial control layer for outcome-priced AI agents:
+Evidue uses one decision grammar across the public proof and protected product:
 
-- **Evidue Prove** (`/demo/vendor-preflight`) helps agent vendors preflight proposed invoice claims and find revenue at risk before billing.
-- **Outcome Ledger** (`/demo/outcome-ledger`) shows the versioned proof envelope connecting agent execution, contract rules, and operational evidence.
-- **Evidue** (`/demo/invoices/current`) independently calculates what the customer should pay.
+```text
+Vendor claim → Approved authority → Customer proof → Determination → Financial impact → Commercial action
+```
 
-The vendor workspace cannot modify customer-approved rules, customer-private evidence, or the customer's final payment decision.
-
+`/try` demonstrates this grammar on a bounded synthetic 100-claim sample, including inline
+claim provenance and a vendor dispute summary. `/workspace` applies the same grammar to
+operator-provided agreements, invoices, evidence, review decisions, approvals, and disputes.
+Vendor assertions and source records can support a charge, but they cannot modify the
+customer-approved rules or self-declare the charge payable.
 
 ## UI template
 
@@ -216,10 +207,10 @@ compile. Material normalized-semantic disagreement blocks approval and goes to h
 models never vote on the rule that determines money.
 
 
-The real-data pilot is deliberately separate from the synthetic demo:
+The protected workspace is deliberately isolated from the synthetic public-try fixtures:
 
-- demo data uses `data/evidue.db`;
-- pilot data uses `data/evidue-pilot.db` by default;
+- public-try fixtures use `data/evidue.db`;
+- protected workspace data uses `data/evidue-pilot.db` by default;
 - every `/api/pilot/*` endpoint requires a bearer token;
 - the qualified kernel reconciles one invoice against one approved AIR version per run;
 - the product layer manages multiple vendor engagements, invoices, reconciliation statements,
@@ -260,7 +251,7 @@ The API sequence is:
 8. `POST /api/pilot/reconcile`
 9. Download the corrected invoice, review report, disputes CSV, summary, or evidence package.
 
-Custom contracts require a server-configured native compiler provider in live mode; customers are never asked for provider credentials. The recorded compiler proposal is accepted only for controlled/demo fixtures. `pypdf` is a declared runtime dependency for text-based PDF extraction; DOCX parsing uses the standard library and does not require Microsoft Office.
+Custom contracts require a server-configured native compiler provider in live mode; customers are never asked for provider credentials. The recorded compiler proposal is accepted only for controlled synthetic fixtures. `pypdf` is a declared runtime dependency for text-based PDF extraction; DOCX parsing uses the standard library and does not require Microsoft Office.
 
 Each reconciliation run is append-only. Use the comparison endpoint to show what changed after new evidence, and record the customer's review with `/api/pilot/reconciliations/{run_id}/customer-review`. This keeps engine output separate from customer acceptance evidence instead of overwriting determinations.
 

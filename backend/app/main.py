@@ -21,16 +21,11 @@ from app.api.schemas import (
     ContractCompileRequest,
     DataReadinessResponse,
     DataSourceSamplesResponse,
-    DemoScenarioResponse,
-    DemoStatusResponse,
     HealthResponse,
     OutcomeDetail,
     OutcomePage,
     PublicConfigResponse,
-    PublicOutcomeEvaluationResponse,
-    PublicReconciliationSampleResponse,
     ReconciliationSummary,
-    RecordedProposalValidationResponse,
 )
 from app.contact.body_limit import ContactBodyLimitMiddleware
 from app.contact.google_sheets import contact_sheet_configured, deliver_contact_submission
@@ -178,8 +173,6 @@ async def security_and_cache_headers(request, call_next):
     if public_demo_enabled():
         if request.url.path.startswith("/assets/"):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        elif request.url.path.startswith("/api/demo/inputs/"):
-            response.headers["Cache-Control"] = "public, max-age=86400"
         elif request.url.path in {
             "/api/reconciliations/current",
             "/api/reconciliations/current/exports/evidence.json",
@@ -265,13 +258,13 @@ def create_contact_submission(
     return {"accepted": True}
 
 
-@app.get("/api/demo/scenarios", response_model=list[DemoScenarioResponse])
 def demo_scenarios() -> list[dict[str, str]]:
+    """Internal synthetic-fixture catalog; not exposed as a public HTTP surface."""
     return repository.scenario_catalog()
 
 
-@app.post("/api/demo/reset", response_model=DemoStatusResponse)
 def reset(scenario_id: str = "headline") -> dict[str, object]:
+    """Reset deterministic fixtures for tests/local setup; not a public HTTP surface."""
     ensure_mutation_allowed()
     try:
         return {**repository.reset(scenario_id), "public_demo": public_demo_enabled()}
@@ -279,13 +272,13 @@ def reset(scenario_id: str = "headline") -> dict[str, object]:
         raise HTTPException(422, str(exc)) from exc
 
 
-@app.get("/api/demo/status", response_model=DemoStatusResponse)
 def demo_status() -> dict[str, object]:
+    """Return internal fixture state for tests/setup; not a public HTTP surface."""
     return {**repository.demo_status(), "public_demo": public_demo_enabled()}
 
 
-@app.get("/api/demo/inputs/{input_id}")
 def demo_input(input_id: str) -> FileResponse:
+    """Resolve an internal deterministic fixture file; not a public HTTP surface."""
     input_spec = DEMO_INPUTS.get(input_id)
     if input_spec is None:
         raise HTTPException(404, "Demo input not found")
@@ -340,21 +333,15 @@ def compile_contract(
         raise HTTPException(422, str(exc)) from exc
 
 
-@app.post(
-    "/api/public-demo/rules/validate",
-    response_model=RecordedProposalValidationResponse,
-)
 def validate_public_rules() -> dict[str, object]:
+    """Validate the recorded fixture proposal internally; not a public HTTP surface."""
     started_at = time.perf_counter()
     result = repository.validate_recorded_proposal()
     return {**result, "duration_ms": round((time.perf_counter() - started_at) * 1000)}
 
 
-@app.post(
-    "/api/public-demo/outcomes/{outcome_id}/evaluate",
-    response_model=PublicOutcomeEvaluationResponse,
-)
 def evaluate_public_outcome(outcome_id: str) -> dict[str, object]:
+    """Evaluate one fixture outcome internally; not a public HTTP surface."""
     started_at = time.perf_counter()
     try:
         result = repository.public_outcome_evaluation(outcome_id)
@@ -363,23 +350,20 @@ def evaluate_public_outcome(outcome_id: str) -> dict[str, object]:
     return {**result, "duration_ms": round((time.perf_counter() - started_at) * 1000)}
 
 
-@app.post(
-    "/api/public-demo/reconciliations/sample",
-    response_model=PublicReconciliationSampleResponse,
-)
 def run_public_reconciliation_sample() -> dict[str, object]:
+    """Run the deterministic fixture sample internally; not a public HTTP surface."""
     started_at = time.perf_counter()
     result = repository.public_reconciliation_sample()
     return {**result, "duration_ms": round((time.perf_counter() - started_at) * 1000)}
 
 
-@app.post("/api/public-demo/try/analyze")
+@app.post("/api/public-try/analyze")
 def analyze_public_try(request: Request) -> dict[str, object]:
     """Compile the bundled synthetic contract without mutating authoritative state.
 
     A visitor gets at most one live Gemini compilation per network per seven days.
     Additional runs replay the validated recorded Gemini proposal so the deterministic
-    part of the demo remains available without signup or API-cost abuse.
+    part of the public proof remains available without signup or API-cost abuse.
     """
     started_at = time.perf_counter()
     client_key = _public_try_client_key(request)
@@ -459,9 +443,9 @@ def analyze_public_try(request: Request) -> dict[str, object]:
     }
 
 
-@app.post("/api/public-demo/try/{sandbox_id}/approve-and-reconcile")
+@app.post("/api/public-try/{sandbox_id}/approve-and-reconcile")
 def approve_public_try(sandbox_id: str, request: Request) -> dict[str, object]:
-    """Record explicit demo approval and run the real deterministic engine in memory."""
+    """Record explicit human approval and run the deterministic engine in memory."""
     started_at = time.perf_counter()
     client_key = _public_try_client_key(request)
     now = time.time()
@@ -482,6 +466,34 @@ def approve_public_try(sandbox_id: str, request: Request) -> dict[str, object]:
         "live_model_call": metadata["live_model_call"],
         "duration_ms": round((time.perf_counter() - started_at) * 1000),
     }
+
+
+@app.get("/api/public-try/{sandbox_id}/outcomes/{outcome_id}")
+def inspect_public_try_outcome(
+    sandbox_id: str, outcome_id: str, request: Request
+) -> dict[str, object]:
+    """Return one representative claim audit using the visitor-approved rule program."""
+    client_key = _public_try_client_key(request)
+    now = time.time()
+    with _public_try_lock:
+        _public_try_cleanup(now)
+        entry = _public_try_sessions.get(sandbox_id)
+    if entry is None:
+        raise HTTPException(404, "This Try Evidue session expired. Analyze the contract again.")
+    _created_at, owner_key, program, _metadata = entry
+    if owner_key != client_key:
+        raise HTTPException(403, "This Try Evidue session belongs to another browser network.")
+
+    sample = repository.public_reconciliation_sample(program=program)
+    allowed_outcomes = {str(finding["outcome_id"]) for finding in sample["representative_findings"]}
+    if outcome_id not in allowed_outcomes:
+        raise HTTPException(
+            404, "Only representative findings from this Try Evidue run can be inspected."
+        )
+    try:
+        return repository.public_try_outcome_inspection(outcome_id, program=program)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @app.get("/api/contracts/current/compilations")
@@ -593,20 +605,25 @@ def summary_json() -> dict[str, object]:
 dist = Path(__file__).parents[2] / "frontend_dist"
 
 
+@app.head("/", include_in_schema=False)
+@app.get("/", include_in_schema=False)
 @app.head("/contact", include_in_schema=False)
 @app.get("/contact", include_in_schema=False)
 @app.head("/try", include_in_schema=False)
 @app.get("/try", include_in_schema=False)
-@app.get("/demo/lab", include_in_schema=False)
-@app.get("/demo/outcome-ledger", include_in_schema=False)
-@app.get("/demo/vendor-preflight", include_in_schema=False)
-@app.get("/demo/data-sources", include_in_schema=False)
-@app.get("/demo/disputes/current", include_in_schema=False)
-@app.get("/demo/contracts/current", include_in_schema=False)
-@app.get("/demo/invoices/current", include_in_schema=False)
-@app.get("/demo/invoices", include_in_schema=False)
-@app.get("/demo", include_in_schema=False)
-def frontend_page() -> FileResponse:
+@app.get("/workspace", include_in_schema=False)
+@app.get("/workspace/invoices", include_in_schema=False)
+@app.get("/workspace/invoices/current", include_in_schema=False)
+@app.get("/workspace/invoices/{invoice_id}", include_in_schema=False)
+@app.get("/workspace/review", include_in_schema=False)
+@app.get("/workspace/vendors", include_in_schema=False)
+@app.get("/workspace/settings", include_in_schema=False)
+@app.get("/workspace/operations", include_in_schema=False)
+@app.get("/pilot", include_in_schema=False)
+@app.get("/pilot/config", include_in_schema=False)
+@app.get("/pilot/finance", include_in_schema=False)
+@app.get("/pilot/operations", include_in_schema=False)
+def frontend_page(invoice_id: str | None = None) -> FileResponse:
     index_path = dist / "index.html"
     if not index_path.is_file():
         raise HTTPException(status_code=404, detail="Frontend build is unavailable")

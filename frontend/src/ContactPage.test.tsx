@@ -27,14 +27,14 @@ it("accepts anonymous product feedback and sends structured context", async () =
   const user = userEvent.setup(); render(<ContactPage />, { wrapper: Wrapper });
   await user.click(await screen.findByRole("button", { name: /Product feedback/ }));
   expect(screen.getByLabelText("Name (optional)")).not.toBeRequired();
-  await chooseSelect(user, "What is your feedback mainly about? *", "Demo clarity");
+  await chooseSelect(user, "What is your feedback mainly about? *", "Try flow clarity");
   await user.type(screen.getByLabelText("What worked, what was confusing, or what would you change? *"), "The result is compelling, but the evidence trail should appear earlier.");
   await user.click(screen.getByRole("checkbox", { name: "I confirm this message contains no confidential or customer data." }));
   await user.click(screen.getByRole("button", { name: "Send feedback" }));
   await screen.findByRole("heading", { name: "Thank you." });
   const calls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/api/contact-submissions"));
   const payload = JSON.parse(String(calls[0][1]?.body));
-  expect(payload).toMatchObject({ discussion_type: "Product feedback", feedback_area: "Demo clarity", attribution_source: "indie_hackers", confirmed_no_confidential_data: true });
+  expect(payload).toMatchObject({ discussion_type: "Product feedback", feedback_area: "Try flow clarity", attribution_source: "indie_hackers", confirmed_no_confidential_data: true });
 });
 
 it("captures the core Evidue qualification gates and offers booking after call opt-in", async () => {

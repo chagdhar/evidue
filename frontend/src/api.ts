@@ -1,15 +1,3 @@
-export type DemoStatus = {
-  public_demo: boolean;
-  seeded: boolean;
-  reconciled: boolean;
-  claimed_outcomes: number;
-  billing_period: string;
-  scenario_id: string;
-  scenario_name: string;
-  scenario_description: string;
-  demo_outcome_id: string;
-};
-
 export type PublicConfig = {
   beta_form_configured: boolean;
   beta_form_url: string | null;
@@ -38,13 +26,6 @@ export type ContactSubmissionPayload = {
   browser_session_id: string;
   form_started_at: string;
   website: string;
-};
-
-export type DemoScenario = {
-  id: string;
-  name: string;
-  description: string;
-  demo_outcome_id: string;
 };
 
 export type Rule = {
@@ -203,35 +184,6 @@ export type OutcomePage = {
   items: Outcome[];
 };
 
-export type RecordedProposalValidation = {
-  valid: boolean;
-  contract_id: string;
-  source_hash: string;
-  prompt_hash: string;
-  rule_count: number;
-  rule_ids: string[];
-  compiler_version: string;
-  live_model_call: boolean;
-  duration_ms: number;
-};
-
-export type PublicOutcomeEvaluation = {
-  outcome_id: string;
-  status: string;
-  rule_id: string | null;
-  reason: string;
-  confirmed_payable_amount: string;
-  confirmed_disputed_amount: string;
-  needs_review_amount: string;
-  evidence_ids: string[];
-  engine_version: string;
-  compilation_id: string;
-  program_version: number;
-  source_hash: string;
-  canonical: OutcomeDetail | null;
-  duration_ms: number;
-};
-
 export type PublicReconciliationSample = {
   sample_size: number;
   payable_outcomes: number;
@@ -284,6 +236,66 @@ export type PublicTryResult = PublicReconciliationSample & {
   human_approval_recorded: boolean;
   compiler_mode: string;
   live_model_call: boolean;
+};
+
+export type PublicTryInspection = {
+  outcome_id: string;
+  vendor_claim_id: string;
+  vendor_claim: string;
+  agent_version: string;
+  customer_id: string;
+  account_id: string;
+  intent: string;
+  status: "payable" | "disputed" | "needs_review";
+  reason: string;
+  rule_id: string | null;
+  rule: {
+    id: string;
+    title: string;
+    description: string;
+    clause_text: string;
+    operation: string;
+    evidence_required: string[];
+    consequence: string;
+  } | null;
+  billed_amount: string;
+  confirmed_payable_amount: string;
+  confirmed_disputed_amount: string;
+  needs_review_amount: string;
+  evidence: Array<{
+    id: string;
+    source_system: string;
+    source_record_id: string;
+    event_type: string;
+    timestamp: string;
+    values: Record<string, string>;
+    provenance: {
+      connector_name: string | null;
+      authority: string | null;
+      collection_method: string | null;
+      raw_record_id: string | null;
+      raw_payload: Record<string, unknown> | null;
+      payload_hash: string | null;
+      schema_version: string | null;
+      match_status: string | null;
+      match_method: string | null;
+      match_confidence: string | null;
+      match_reason: string | null;
+      received_at: string;
+    };
+  }>;
+  claim_provenance: {
+    connector_name: string | null;
+    raw_record_id: string | null;
+    source_record_id: string | null;
+    payload_hash: string | null;
+    schema_version: string | null;
+  } | null;
+  engine_version: string;
+  compilation_id: string;
+  program_version: number;
+  source_hash: string;
+  evaluated_at: string;
 };
 
 export type DataSource = {
@@ -377,8 +389,6 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(submission),
     }),
-  status: () => request<DemoStatus>("/demo/status"),
-  scenarios: () => request<DemoScenario[]>("/demo/scenarios"),
   contract: () => request<Contract>("/contracts/current"),
   compileContract: (
     mode: "auto" | "live" | "recorded" = "auto",
@@ -407,25 +417,16 @@ export const api = {
   invoice: () => request<Invoice>("/invoices/current"),
   current: () => request<Summary>("/reconciliations/current"),
   reconcile: () => request<Summary>("/reconciliations", { method: "POST" }),
-  validateRecordedProposal: () =>
-    request<RecordedProposalValidation>("/public-demo/rules/validate", { method: "POST" }),
-  evaluatePublicOutcome: (id: string) =>
-    request<PublicOutcomeEvaluation>(`/public-demo/outcomes/${encodeURIComponent(id)}/evaluate`, {
-      method: "POST",
-    }),
-  publicReconciliationSample: () =>
-    request<PublicReconciliationSample>("/public-demo/reconciliations/sample", { method: "POST" }),
   analyzePublicTry: () =>
-    request<PublicTryAnalysis>("/public-demo/try/analyze", { method: "POST" }),
+    request<PublicTryAnalysis>("/public-try/analyze", { method: "POST" }),
   approvePublicTry: (sandboxId: string) =>
     request<PublicTryResult>(
-      `/public-demo/try/${encodeURIComponent(sandboxId)}/approve-and-reconcile`,
+      `/public-try/${encodeURIComponent(sandboxId)}/approve-and-reconcile`,
       { method: "POST" },
     ),
-  reset: (scenarioId = "headline") =>
-    request<DemoStatus>(
-      `/demo/reset?scenario_id=${encodeURIComponent(scenarioId)}`,
-      { method: "POST" },
+  inspectPublicTryOutcome: (sandboxId: string, outcomeId: string) =>
+    request<PublicTryInspection>(
+      `/public-try/${encodeURIComponent(sandboxId)}/outcomes/${encodeURIComponent(outcomeId)}`,
     ),
   outcomes: (query: URLSearchParams) =>
     request<OutcomePage>(`/reconciliations/current/outcomes?${query}`),

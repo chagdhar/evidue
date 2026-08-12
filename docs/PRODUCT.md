@@ -26,7 +26,7 @@ The model proposes contract interpretation. It never adjudicates invoice lines. 
 
 ## Primary surface
 
-`/workspace` is the authenticated finance-control home. The product is invoice-centered: `/workspace/invoices` is the register, `/workspace/invoices/current` is the active contract → evidence → verification → review → commercial-action case, `/workspace/review` is the exception queue, `/workspace/vendors` is vendor history, and `/workspace/settings` holds configuration. `/demo` remains a synthetic narrative surface and `/try` is the zero-signup guided reconciliation.
+`/workspace` is the authenticated finance-control home. The product is invoice-centered: `/workspace/invoices` is the register, `/workspace/invoices/current` is the active contract → evidence → verification → review → commercial-action case, `/workspace/review` is the exception queue, `/workspace/vendors` is vendor history, and `/workspace/settings` holds configuration. `/try` is the only public no-signup proof surface; the legacy standalone demo UI has been removed.
 
 ## Current product boundary
 

@@ -19,54 +19,11 @@ Evidue is a single deployable application with deliberately separated concerns:
 
 ## Reconciliation lifecycle
 
-Reset deletes and regenerates the deterministic input dataset but creates no
-determinations. The initial `/demo` screen therefore shows a submitted invoice,
-contract rules, and evidence sources without implying that reconciliation has
-already happened.
+The public `/try` flow is an ephemeral, read-only proof. It compiles or replays a structured contract proposal, requires explicit visitor approval, and then runs a deterministic 100-claim sample in memory. The visitor can inspect representative failed claims against the exact ephemeral rule program approved in that session. No `/try` action mutates protected workspace state.
 
-Reset accepts a scenario ID from a fixed domain fixture catalog. The active
-scenario is persisted in the single demo-state row and exposed with its name,
-description, and highlighted outcome ID. Scenario metadata contains no
-financial results. Claims, events, determinations, summaries, exports, and UI
-values all follow the same lifecycle regardless of fixture size:
+The protected `/workspace` flow persists operator-provided agreements, invoices, evidence, identity decisions, determinations, review overlays, approvals, and dispute actions. Its reconciliation engine uses the approved rule version pinned to the run.
 
-- `headline` is the complete 10,000-line, five-category invoice;
-- `evidence_review` isolates contradictory directly matched evidence;
-- `recovery` proves that a failed first claim does not suppress a valid
-  follow-up;
-- `duplicate_window` shows one deterministic winner and two later R4
-  duplicates.
-
-Changing the scenario regenerates inputs and clears the current
-reconciliation. A user must run reconciliation again before any determination
-or corrected amount is shown.
-
-The presentation has two deliberate routes over the same backend:
-
-- `/demo` is the recording-safe product flow. It does not request or render the
-  scenario catalog and automatically resets a previously selected lab fixture
-  to `headline`.
-- `/demo/lab` is the technical inspection flow. It exposes the scenario
-  selector and focused edge cases.
-
-This is presentation isolation, not a second financial engine. Both routes use
-the same persisted inputs, reconciliation endpoint, determinations, and
-exports. FastAPI explicitly serves the production React entry document at both
-paths; the lab route does not depend on a development-server history fallback.
-
-`POST /api/reconciliations` loads persisted claims and events, converts them to
-domain objects, attributes evidence, provisionally evaluates every claim
-without R4, builds duplicate context from only the provisional payable results,
-applies R4 in a second pass, and stores:
-
-- reconciliation identity and engine version;
-- status, reason, applied contract rule, billed amount, confirmed payable
-  amount, confirmed disputed amount, and needs-review amount;
-- references only to the operational events used by the decisive rule;
-- the winning outcome ID for a contextual duplicate determination.
-
-Aggregates and exports query stored determinations. The route and frontend do not
-contain the headline payable totals.
+Synthetic fixture infrastructure still supports deterministic tests and the public proof, but it is no longer exposed as a separate frontend application. Customer-facing routes are `/`, `/try`, `/contact`, and `/workspace/*`.
 
 ## Evidence attribution
 

@@ -2,6 +2,7 @@ import os
 import threading
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from functools import lru_cache
 from pathlib import Path
 
 from sqlalchemy import create_engine, delete, func, inspect, or_, select
@@ -20,6 +21,7 @@ from app.fixtures.demo import (
     INVOICE_ID,
     SCENARIOS,
     SCENARIOS_BY_ID,
+    DemoRecord,
     DemoScenario,
     scenario_fixture,
 )
@@ -793,65 +795,193 @@ def public_outcome_evaluation(outcome_id: str) -> dict[str, object]:
     }
 
 
+@lru_cache(maxsize=1)
+def _public_try_headline_records() -> tuple[DemoRecord, ...]:
+    """Return the immutable synthetic headline fixture used by the public Try flow."""
+    return tuple(scenario_fixture("headline"))
+
+
+@lru_cache(maxsize=1)
+def _public_try_headline_index() -> dict[str, DemoRecord]:
+    return {record.claim.outcome_id: record for record in _public_try_headline_records()}
+
+
+@lru_cache(maxsize=1)
+def _public_try_baseline_results():
+    records = _public_try_headline_records()
+    return tuple(
+        reconcile(
+            [(record.claim, list(record.events)) for record in records],
+            program=recorded_rule_program(),
+        )
+    )
+
+
+def _public_try_sample_records() -> list[DemoRecord]:
+    """Build the stable 100-claim sample without reading mutable workspace state."""
+    record_by_id = _public_try_headline_index()
+    baseline_results = _public_try_baseline_results()
+    payable_ids = [
+        result.claim.outcome_id for result in baseline_results if result.status == "payable"
+    ][:83]
+
+    quotas = {"R1": 7, "R2": 4, "R3": 3, "R4": 2, "R5": 1}
+    disputed_ids_by_rule: dict[str, list[str]] = {}
+    for rule_id, count in quotas.items():
+        matching_ids = [
+            result.claim.outcome_id
+            for result in baseline_results
+            if result.status == "disputed" and result.rule_id == rule_id
+        ]
+        if rule_id == "R3" and "OUT-004821" in matching_ids:
+            matching_ids = ["OUT-004821"] + [
+                outcome_id for outcome_id in matching_ids if outcome_id != "OUT-004821"
+            ]
+        disputed_ids_by_rule[rule_id] = matching_ids[:count]
+
+    if len(payable_ids) != 83 or any(
+        len(disputed_ids_by_rule[rule_id]) != count for rule_id, count in quotas.items()
+    ):
+        raise RuntimeError("Could not build the immutable 100-claim public Try sample.")
+
+    selected_ids = payable_ids + [
+        outcome_id
+        for rule_id in ("R1", "R2", "R3", "R4", "R5")
+        for outcome_id in disputed_ids_by_rule[rule_id]
+    ]
+    return [record_by_id[outcome_id] for outcome_id in selected_ids]
+
+
+def public_try_outcome_inspection(outcome_id: str, *, program: RuleProgram) -> dict[str, object]:
+    """Inspect one Try finding against the same immutable synthetic fixture and approved program."""
+    record = _public_try_headline_index().get(outcome_id)
+    if record is None:
+        raise LookupError("Outcome not found")
+
+    bundle = build_ingestion_bundle([record], "public_try")
+    claim = bundle.claims[0]
+    events = [event for event in bundle.events if event.outcome_id == outcome_id]
+    raw_by_id = {raw.id: raw for raw in bundle.raw_samples}
+    connector_by_id = {snapshot.connector.id: snapshot.connector for snapshot in bundle.connectors}
+
+    evidence_rows: list[dict[str, object]] = []
+    for event in events:
+        raw = raw_by_id.get(event.raw_record_id) if event.raw_record_id else None
+        connector = connector_by_id.get(event.connector_id)
+        evidence_rows.append(
+            {
+                "id": event.id,
+                "source_system": event.source_system,
+                "source_record_id": event.source_record_id,
+                "event_type": event.event_type,
+                "timestamp": event.timestamp.isoformat(),
+                "values": event.values,
+                "provenance": {
+                    "connector_name": (
+                        connector.name
+                        if connector
+                        else event.source_system.replace("_", " ").title()
+                    ),
+                    "authority": connector.authority if connector else None,
+                    "collection_method": connector.collection_method if connector else None,
+                    "raw_record_id": raw.id if raw else event.raw_record_id,
+                    "raw_payload": raw.payload if raw else None,
+                    "payload_hash": (
+                        f"sha256:{raw.payload_hash}" if raw else f"sha256:{event.payload_hash}"
+                    ),
+                    "schema_version": raw.schema_version if raw else event.schema_version,
+                    "match_status": raw.match_status if raw else None,
+                    "match_method": raw.match_method if raw else event.match_method,
+                    "match_confidence": (
+                        f"{raw.match_confidence:.4f}" if raw else f"{event.match_confidence:.4f}"
+                    ),
+                    "match_reason": raw.match_reason if raw else None,
+                    "received_at": (
+                        raw.received_at.isoformat() if raw else event.ingested_at.isoformat()
+                    ),
+                },
+            }
+        )
+
+    claim_raw = raw_by_id.get(claim.raw_record_id) if claim.raw_record_id else None
+    claim_connector = connector_by_id.get(claim_raw.connector_id) if claim_raw else None
+
+    determination = evaluate(record.claim, list(record.events), program=program)
+    rule = next(
+        (candidate for candidate in program.rules if candidate.id == determination.rule_id),
+        None,
+    )
+    return {
+        "outcome_id": outcome_id,
+        "vendor_claim_id": claim.vendor_claim_id,
+        "vendor_claim": claim.vendor_claim,
+        "agent_version": claim.agent_version,
+        "customer_id": claim.customer_id,
+        "account_id": claim.account_id,
+        "intent": claim.intent,
+        "status": determination.status,
+        "reason": determination.reason,
+        "rule_id": determination.rule_id,
+        "rule": (
+            {
+                "id": rule.id,
+                "title": rule.title,
+                "description": rule.description,
+                "clause_text": rule.clause_text,
+                "operation": rule.operation,
+                "evidence_required": list(rule.evidence_required),
+                "consequence": rule.consequence,
+            }
+            if rule
+            else None
+        ),
+        "billed_amount": _money(claim.billed_amount),
+        "confirmed_payable_amount": _money(determination.confirmed_payable_amount),
+        "confirmed_disputed_amount": _money(determination.confirmed_disputed_amount),
+        "needs_review_amount": _money(determination.needs_review_amount),
+        "evidence": evidence_rows,
+        "claim_provenance": (
+            {
+                "connector_name": claim_connector.name if claim_connector else None,
+                "raw_record_id": claim_raw.id if claim_raw else None,
+                "source_record_id": claim_raw.source_record_id if claim_raw else None,
+                "payload_hash": f"sha256:{claim_raw.payload_hash}" if claim_raw else None,
+                "schema_version": claim_raw.schema_version if claim_raw else None,
+            }
+            if claim_raw
+            else None
+        ),
+        "engine_version": determination.engine_version,
+        "compilation_id": program.compilation_id,
+        "program_version": program.version,
+        "source_hash": program.source_hash,
+        "evaluated_at": determination.evaluated_at.isoformat(),
+    }
+
+
 def public_reconciliation_sample(
     limit: int = 100, *, program: RuleProgram | None = None
 ) -> dict[str, object]:
-    """Evaluate a stable subset without persisting anything.
-
-    When ``program`` is provided it is an ephemeral, schema-validated rule program
-    produced by the public Try Evidue flow and explicitly approved by the visitor.
-    The database's authoritative compilation is never changed.
-    """
-    with SessionLocal() as session:
-        selected_program = program or _active_rule_program(session)
-        determinations = session.execute(
-            select(OutcomeClaimRow, OutcomeDeterminationRow)
-            .join(
-                OutcomeDeterminationRow,
-                OutcomeDeterminationRow.outcome_id == OutcomeClaimRow.outcome_id,
-            )
-            .order_by(OutcomeClaimRow.outcome_id)
-        ).all()
-        payable = [
-            claim for claim, determination in determinations if determination.status == "payable"
-        ][:83]
-        disputed_by_rule = {}
-        for rule_id, count in (("R1", 7), ("R2", 4), ("R3", 3), ("R4", 2), ("R5", 1)):
-            matching_claims = [
-                claim for claim, determination in determinations if determination.rule_id == rule_id
-            ]
-            if rule_id == "R3":
-                featured_claim = next(
-                    claim for claim in matching_claims if claim.outcome_id == "OUT-004821"
-                )
-                matching_claims = [featured_claim] + [
-                    claim
-                    for claim in matching_claims
-                    if claim.outcome_id != featured_claim.outcome_id
-                ]
-            disputed_by_rule[rule_id] = matching_claims[:count]
-        claims = payable + [claim for rows in disputed_by_rule.values() for claim in rows]
-        outcome_ids = [claim.outcome_id for claim in claims]
-        event_rows = session.scalars(
-            select(OperationalEventRow)
-            .where(OperationalEventRow.outcome_id.in_(outcome_ids))
-            .order_by(OperationalEventRow.outcome_id, OperationalEventRow.timestamp)
-        ).all()
-    by_outcome: dict[str, list[OperationalEventRow]] = {}
-    for event in event_rows:
-        if event.outcome_id:
-            by_outcome.setdefault(event.outcome_id, []).append(event)
+    """Evaluate the immutable public Try sample without reading or mutating workspace state."""
+    if limit != 100:
+        raise ValueError("The public Try flow exposes exactly the canonical 100-claim sample.")
+    selected_program = program or recorded_rule_program()
+    records = _public_try_sample_records()
     results = reconcile(
-        [
-            (
-                _domain_claim(row),
-                [_domain_event(event) for event in by_outcome.get(row.outcome_id, [])],
-            )
-            for row in claims
-        ],
+        [(record.claim, list(record.events)) for record in records],
         program=selected_program,
     )
     disputed = [result for result in results if result.status == "disputed"]
+    representative_findings: list[dict[str, str]] = []
+    seen_rule_ids: set[str] = set()
+    for result in disputed:
+        if not result.rule_id or result.rule_id in seen_rule_ids:
+            continue
+        representative_findings.append(
+            {"rule_id": result.rule_id, "outcome_id": result.claim.outcome_id}
+        )
+        seen_rule_ids.add(result.rule_id)
+
     return {
         "sample_size": len(results),
         "payable_outcomes": sum(result.status == "payable" for result in results),
@@ -866,16 +996,11 @@ def public_reconciliation_sample(
         "recommended_deduction": _money(
             sum((result.confirmed_disputed_amount for result in results), Decimal())
         ),
-        "representative_findings": [
-            {
-                "rule_id": rule_id,
-                "outcome_id": next(
-                    result.claim.outcome_id for result in disputed if result.rule_id == rule_id
-                ),
-            }
-            for rule_id in ("R1", "R2", "R3", "R4", "R5")
-        ],
-        "sampling_method": "Deterministic stratified sample: 83 payable; 7 R1, 4 R2, 3 R3, 2 R4, and 1 R5 disputes.",
+        "representative_findings": representative_findings,
+        "sampling_method": (
+            "Immutable deterministic fixture sample: 83 payable; 7 R1, 4 R2, "
+            "3 R3, 2 R4, and 1 R5 canonical disputes, re-evaluated with the visitor-approved rules."
+        ),
         "compilation_id": selected_program.compilation_id,
         "program_version": selected_program.version,
         "source_hash": selected_program.source_hash,

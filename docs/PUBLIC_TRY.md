@@ -27,7 +27,7 @@ The public route does not weaken the protected product.
 
 - `/workspace/*` is the authenticated customer UI; its `/api/pilot/*` data boundary remains bearer-token protected and workspace-scoped.
 - public contract analysis is ephemeral and does not create an authoritative AIR/rule version.
-- the visitor must explicitly approve the proposed demo rules before money is calculated.
+- the visitor must explicitly approve the proposed sample rules before money is calculated.
 - reconciliation runs in memory against the synthetic 100-claim sample.
 - `/api/reconciliations` and other shared-state mutation routes remain blocked when
   `EVIDUE_PUBLIC_DEMO=true`.
@@ -35,7 +35,7 @@ The public route does not weaken the protected product.
 
 ## Live compiler budget
 
-When `GEMINI_API_KEY` is configured, `/api/public-demo/try/analyze` attempts one live Gemini
+When `GEMINI_API_KEY` is configured, `/api/public-try/analyze` attempts one live Gemini
 compile per hashed network address per seven-day process window. This is a cost/abuse control,
 not an authentication mechanism. If the live compiler is unavailable, unconfigured, rate
 limited, or already used from that network, the UI explicitly states that it is replaying the
@@ -49,7 +49,7 @@ recorded replay as a live model call.
 ### Analyze
 
 ```http
-POST /api/public-demo/try/analyze
+POST /api/public-try/analyze
 ```
 
 Returns the exact synthetic contract, compiler mode, diagnostics, proposed rules, source hash,
@@ -58,7 +58,7 @@ and an ephemeral `sandbox_id` when the proposal is approval-ready.
 ### Approve and reconcile
 
 ```http
-POST /api/public-demo/try/{sandbox_id}/approve-and-reconcile
+POST /api/public-try/{sandbox_id}/approve-and-reconcile
 ```
 
 The session must belong to the same network and still be live. The response is the deterministic

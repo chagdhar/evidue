@@ -165,12 +165,42 @@ def test_public_stateless_actions_use_the_bundled_program():
     assert sample["representative_findings"][2]["outcome_id"] == "OUT-004821"
 
 
+def test_public_try_fixture_is_independent_of_workspace_scenario():
+    try:
+        reset("evidence_review")
+        reconcile()
+        before = demo_status()
+        program = repository.recorded_rule_program()
+
+        sample = repository.public_reconciliation_sample(program=program)
+        assert sample["sample_size"] == 100
+        assert (sample["payable_outcomes"], sample["disputed_outcomes"]) == (83, 17)
+        assert sample["submitted_amount"] == "150.00"
+        assert sample["confirmed_payable_amount"] == "124.50"
+        assert sample["recommended_deduction"] == "25.50"
+        assert any(
+            finding["outcome_id"] == "OUT-004821" for finding in sample["representative_findings"]
+        )
+
+        audit = repository.public_try_outcome_inspection("OUT-004821", program=program)
+        assert audit["status"] == "disputed"
+        assert audit["rule_id"] == "R3"
+        assert audit["evidence"]
+        assert any(event["provenance"]["payload_hash"] for event in audit["evidence"])
+
+        after = demo_status()
+        assert after["scenario_id"] == before["scenario_id"] == "evidence_review"
+    finally:
+        reset("headline")
+        reconcile()
+
+
 def test_try_evidue_is_no_signup_ephemeral_and_human_approved(monkeypatch):
     monkeypatch.setenv("EVIDUE_PUBLIC_DEMO", "true")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with TestClient(app) as client:
         before = client.get("/api/reconciliations/current").json()
-        analysis = client.post("/api/public-demo/try/analyze")
+        analysis = client.post("/api/public-try/analyze")
         assert analysis.status_code == 200
         payload = analysis.json()
         assert payload["mode"] == "recorded_replay"
@@ -180,7 +210,7 @@ def test_try_evidue_is_no_signup_ephemeral_and_human_approved(monkeypatch):
         assert len(payload["rules"]) == 8
         assert payload["sandbox_id"].startswith("TRY-")
 
-        result = client.post(f"/api/public-demo/try/{payload['sandbox_id']}/approve-and-reconcile")
+        result = client.post(f"/api/public-try/{payload['sandbox_id']}/approve-and-reconcile")
         assert result.status_code == 200
         decision = result.json()
         assert decision["human_approval_recorded"] is True
@@ -190,6 +220,30 @@ def test_try_evidue_is_no_signup_ephemeral_and_human_approved(monkeypatch):
         assert decision["submitted_amount"] == "150.00"
         assert decision["confirmed_payable_amount"] == "124.50"
         assert decision["recommended_deduction"] == "25.50"
+
+        featured = next(
+            finding
+            for finding in decision["representative_findings"]
+            if finding["outcome_id"] == "OUT-004821"
+        )
+        inspection = client.get(
+            f"/api/public-try/{payload['sandbox_id']}/outcomes/{featured['outcome_id']}"
+        )
+        assert inspection.status_code == 200
+        audit = inspection.json()
+        assert audit["outcome_id"] == "OUT-004821"
+        assert audit["status"] == "disputed"
+        assert audit["rule_id"] == "R3"
+        assert audit["confirmed_disputed_amount"] == "1.50"
+        assert audit["compilation_id"] == decision["compilation_id"]
+        assert audit["source_hash"] == decision["source_hash"]
+        assert audit["evidence"]
+        assert any(event["provenance"]["payload_hash"] for event in audit["evidence"])
+
+        not_representative = client.get(
+            f"/api/public-try/{payload['sandbox_id']}/outcomes/OUT-NOT-REPRESENTATIVE"
+        )
+        assert not_representative.status_code == 404
 
         # The public sandbox must not replace or mutate the authoritative workspace decision.
         after = client.get("/api/reconciliations/current").json()
@@ -201,7 +255,7 @@ def test_try_evidue_is_no_signup_ephemeral_and_human_approved(monkeypatch):
 def test_try_evidue_rejects_unknown_session(monkeypatch):
     monkeypatch.setenv("EVIDUE_PUBLIC_DEMO", "true")
     with TestClient(app) as client:
-        response = client.post("/api/public-demo/try/TRY-NOT-REAL/approve-and-reconcile")
+        response = client.post("/api/public-try/TRY-NOT-REAL/approve-and-reconcile")
         assert response.status_code == 404
         assert "expired" in response.json()["detail"].lower()
 
@@ -210,7 +264,6 @@ def test_public_http_routes_block_mutation_and_allow_safe_actions(monkeypatch):
     monkeypatch.setenv("EVIDUE_PUBLIC_DEMO", "true")
     with TestClient(app) as client:
         for path in (
-            "/api/demo/reset",
             "/api/contracts/current/compile",
             "/api/contracts/current/compilations/COMP-RECORDED-GEMINI-V1/approve",
             "/api/reconciliations",
@@ -218,10 +271,14 @@ def test_public_http_routes_block_mutation_and_allow_safe_actions(monkeypatch):
             response = client.post(path)
             assert response.status_code == 403
             assert "shared state is read-only" in response.json()["detail"]
-        assert client.post("/api/public-demo/rules/validate").json()["valid"] is True
-        evaluation = client.post("/api/public-demo/outcomes/OUT-004821/evaluate")
-        assert evaluation.status_code == 200
-        assert evaluation.json()["compilation_id"] == "COMP-RECORDED-GEMINI-V1"
+        assert client.post("/api/demo/reset").status_code == 404
+        assert client.get("/api/demo/status").status_code == 404
+        assert client.get("/api/demo/scenarios").status_code == 404
+        assert client.get("/api/demo/inputs/contract").status_code == 404
+        # Retired public technical-preview endpoints stay gone; /api/public-try is the only public proof API.
+        assert client.post("/api/public-demo/rules/validate").status_code == 404
+        assert client.post("/api/public-demo/outcomes/OUT-004821/evaluate").status_code == 404
+        assert client.post("/api/public-demo/reconciliations/sample").status_code == 404
 
 
 def test_public_config_is_safe_without_google_credentials(monkeypatch):
@@ -239,7 +296,7 @@ def test_public_config_is_safe_without_google_credentials(monkeypatch):
         "talk_booking_url": None,
     }
     with TestClient(app) as client:
-        assert client.get("/api/demo/status").json()["public_demo"] is True
+        assert client.get("/api/demo/status").status_code == 404
         assert client.get("/api/public-config").json() == {
             "beta_form_configured": False,
             "beta_form_url": None,
