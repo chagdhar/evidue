@@ -34,8 +34,8 @@ const sectionCopy: Record<WorkspaceSection, { eyebrow: string; title: string; de
   },
   invoices: {
     eyebrow: "INVOICE CONTROL",
-    title: "Invoices",
-    detail: "Move each vendor invoice from contract terms and evidence to a defensible commercial action.",
+    title: "Invoice control",
+    detail: "Contract → customer evidence → verified payable → commercial action.",
   },
   review: {
     eyebrow: "DECISION QUEUE",
@@ -77,7 +77,7 @@ export default function WorkspaceShell({
           <Box className="workspace-brand-mark">E</Box>
           <Box sx={{ textAlign: "left", minWidth: 0 }}>
             <Typography className="workspace-wordmark">Evidue</Typography>
-            <Typography className="workspace-brand-caption">AI vendor financial control</Typography>
+            <Typography className="workspace-brand-caption">Invoice control</Typography>
           </Box>
         </Button>
 
@@ -119,10 +119,8 @@ export default function WorkspaceShell({
         <Box sx={{ flexGrow: 1 }} />
         <Divider />
         <Box className="workspace-sidebar-footer">
-          <Typography className="workspace-sidebar-footer-title">Authority model</Typography>
-          <Typography>
-            AI proposes contract rules. Approved rules and customer evidence govern deterministic financial decisions.
-          </Typography>
+          <Typography className="workspace-sidebar-footer-title">Financial authority</Typography>
+          <Typography>AI proposes. Finance approves. Deterministic code decides dollars.</Typography>
         </Box>
       </Box>
 

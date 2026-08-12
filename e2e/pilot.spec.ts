@@ -38,7 +38,11 @@ test("a first-time finance user can complete the invoice-centered protected prod
   await expect(page.getByText("Needs review", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Verification" }).click();
-  await expect(page.getByText(/invoice value identified for dispute/i)).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "33.3% of invoice value identified for dispute.",
+    }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Review", exact: true }).click();
   await expect(page.getByRole("heading", { name: /Facts first\. Commercial action second/i })).toBeVisible();

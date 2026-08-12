@@ -67,13 +67,13 @@ it("delivers one successful reconciliation before asking for contact", async () 
   expect(screen.getByRole("heading", { name: /Nova AI billed Acme \$150 for 100 outcomes/i })).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Share your workflow" })).not.toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: "Analyze synthetic contract" }));
+  await user.click(screen.getByRole("button", { name: "Verify the invoice" }));
   expect(await screen.findByText("No same-intent recontact")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Approve rules & verify invoice" }));
 
   expect(await screen.findByText("$124.50")).toBeInTheDocument();
   expect(screen.getByText("$25.50")).toBeInTheDocument();
-  expect(screen.getByText(/17 claims/)).toBeInTheDocument();
+  expect(screen.getByText("17 claims contradicted an approved contract rule.")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "R3 · OUT-004821" })).toHaveAttribute("href", "/demo/invoices/current?outcome=OUT-004821");
   expect(screen.getByRole("link", { name: "Share your workflow" })).toHaveAttribute("href", "/contact");
   expect(fetchMock).toHaveBeenCalledTimes(2);

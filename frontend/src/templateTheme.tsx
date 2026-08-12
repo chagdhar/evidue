@@ -49,15 +49,15 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
           error: "#D8646F",
         }
       : {
-          primary: "#245F80",
-          primaryDark: "#1B4E6B",
+          primary: "#0D6F75",
+          primaryDark: "#095B60",
           secondary: "#2E7368",
-          canvas: "#F5F6F8",
-          paper: "#FFFFFF",
-          raised: "#F8F9FB",
-          text: "#171A21",
-          muted: "#667085",
-          divider: "#E0E4EA",
+          canvas: "#EEEAE1",
+          paper: "#FBFAF6",
+          raised: "#F3EFE7",
+          text: "#13202A",
+          muted: "#667179",
+          divider: "#D8D1C5",
           success: "#1F7A5C",
           warning: "#A86F16",
           error: "#B94755",
@@ -76,8 +76,8 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
         divider: colors.divider,
         action: {
           hover: dark ? "rgba(255,255,255,0.045)" : "rgba(15,23,42,0.035)",
-          selected: dark ? "rgba(127,166,188,0.14)" : "rgba(36,95,128,0.08)",
-          focus: dark ? "rgba(127,166,188,0.18)" : "rgba(36,95,128,0.13)",
+          selected: dark ? "rgba(127,166,188,0.14)" : "rgba(13,111,117,0.09)",
+          focus: dark ? "rgba(127,166,188,0.18)" : "rgba(13,111,117,0.14)",
         },
       },
       typography: {
@@ -99,7 +99,7 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
           styleOverrides: {
             html: { backgroundColor: colors.canvas },
             body: { backgroundColor: colors.canvas },
-            "*::selection": { backgroundColor: dark ? "rgba(127,166,188,0.28)" : "rgba(36,95,128,0.16)" },
+            "*::selection": { backgroundColor: dark ? "rgba(127,166,188,0.28)" : "rgba(13,111,117,0.16)" },
           },
         },
         MuiPaper: {
@@ -130,7 +130,7 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
             },
             outlined: {
               borderColor: colors.divider,
-              "&:hover": { borderColor: colors.primary, backgroundColor: dark ? "rgba(127,166,188,0.07)" : "rgba(36,95,128,0.035)" },
+              "&:hover": { borderColor: colors.primary, backgroundColor: dark ? "rgba(127,166,188,0.07)" : "rgba(13,111,117,0.045)" },
             },
           },
         },
@@ -164,7 +164,7 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
               borderRadius: 7,
               backgroundColor: colors.paper,
               transition: "box-shadow 120ms ease",
-              "&.Mui-focused": { boxShadow: dark ? "0 0 0 2px rgba(127,166,188,0.14)" : "0 0 0 2px rgba(36,95,128,0.10)" },
+              "&.Mui-focused": { boxShadow: dark ? "0 0 0 2px rgba(127,166,188,0.14)" : "0 0 0 2px rgba(13,111,117,0.11)" },
             },
           },
         },

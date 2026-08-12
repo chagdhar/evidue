@@ -1,8 +1,6 @@
 import {
-  Alert,
   Box,
   Button,
-  Chip,
   Container,
   Link,
   Stack,
@@ -12,17 +10,17 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, DemoStatus, Invoice, Summary } from "./api";
 import { BetaApplicationCTA, FeedbackCTA } from "./BetaApplicationCTA";
-import { disclosure, formatPercent, formatUsd } from "./presentation";
+import { disclosure, formatUsd } from "./presentation";
 import { TemplateIcon } from "./TemplateIcons";
 import { track } from "./analytics";
 
 function Brand() {
   return (
-    <Stack direction="row" spacing={1.15} alignItems="center">
-      <Box className="landing-brand-mark" aria-hidden="true"><span>E</span></Box>
+    <Stack direction="row" spacing={1.1} alignItems="center" className="landing-v3-brand">
+      <Box className="landing-v3-mark" aria-hidden="true">E</Box>
       <Box>
-        <Typography className="landing-wordmark">Evidue</Typography>
-        <Typography className="landing-brand-caption">Outcome invoice control</Typography>
+        <Typography className="landing-v3-wordmark">Evidue</Typography>
+        <Typography className="landing-v3-caption">AI vendor invoice control</Typography>
       </Box>
     </Stack>
   );
@@ -36,65 +34,107 @@ function formatWholeUsd(amount: string): string {
   }).format(Number(amount));
 }
 
-function DecisionSurface({ invoice, summary }: { invoice: Invoice | null; summary: Summary | null }) {
-  const categories = summary ? Object.entries(summary.categories) : [];
+function wholeOrDash(amount: string | null | undefined): string {
+  return amount ? formatWholeUsd(amount) : "—";
+}
+
+function percent(part: string, whole: string): string {
+  const denominator = Number(whole);
+  return denominator > 0 ? `${((Number(part) / denominator) * 100).toFixed(1)}%` : "0.0%";
+}
+
+function InvoiceVerdict({ invoice, summary }: { invoice: Invoice | null; summary: Summary | null }) {
+  const billed = invoice?.submitted_amount ?? summary?.submitted_amount ?? null;
+  const payable = summary?.confirmed_payable_amount ?? null;
+  const disputed = summary?.recommended_deduction ?? null;
+  const review = summary?.needs_review_amount ?? null;
+  const disputedCount = summary?.disputed_outcomes ?? null;
+  const disputePercent = billed && disputed ? percent(disputed, billed) : null;
+
   return (
-    <Box className="landing-product-frame" aria-label="Evidue payment decision preview">
-      <Box className="landing-product-bar">
-        <Stack direction="row" spacing={1.1} alignItems="center">
-          <Box className="landing-mini-mark">E</Box>
-          <Box>
-            <Typography>Payment decision</Typography>
-            <Typography>June 2026 · Nova Support AI</Typography>
-          </Box>
-        </Stack>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Chip label="Decision complete" size="small" />
-          <span className="landing-product-avatar">AC</span>
-        </Stack>
+    <Box className="landing-v3-verdict" aria-label="Example Evidue invoice decision">
+      <Box className="landing-v3-verdict-top">
+        <Box>
+          <Typography className="landing-v3-mono-label">NOVA SUPPORT AI · JUNE 2026</Typography>
+          <Typography component="h2">Invoice decision</Typography>
+        </Box>
+        <span className="landing-v3-status">DECISION COMPLETE</span>
       </Box>
 
-      <Box className="landing-product-body">
-        <Box className="landing-product-heading">
-          <Box>
-            <Typography className="landing-overline">Invoice control</Typography>
-            <Typography variant="h5">Acme Commerce</Typography>
-            <Typography>{invoice?.invoice_id ?? "Current invoice"} · Customer-approved rule program</Typography>
-          </Box>
-          <Button size="small" variant="outlined" href="/api/reconciliations/current/exports/summary.json">
-            Export decision
-          </Button>
+      <Box className="landing-v3-money-grid">
+        <Box>
+          <span>Vendor billed</span>
+          <strong>{wholeOrDash(billed)}</strong>
         </Box>
-
-        <Box className="landing-decision-strip">
-          <Box className="landing-primary-result">
-            <Typography className="landing-overline">Corrected payable amount</Typography>
-            <Typography>{summary ? formatUsd(summary.confirmed_payable_amount) : invoice ? "Pending" : "Loading…"}</Typography>
-            <Typography>{summary ? `${summary.payable_outcomes.toLocaleString()} outcomes payable` : invoice ? "Open the workspace to complete this decision" : "Loading persisted decision"}</Typography>
-          </Box>
-          <Box className="landing-secondary-results">
-            <Box><span>Submitted</span><strong>{invoice ? formatUsd(invoice.submitted_amount) : "—"}</strong></Box>
-            <Box><span>Recommended deduction</span><strong className="is-disputed">{summary ? formatUsd(summary.recommended_deduction) : "—"}</strong></Box>
-            <Box><span>Needs review</span><strong className="is-review">{summary ? formatUsd(summary.needs_review_amount) : "—"}</strong></Box>
-          </Box>
+        <Box>
+          <span>Verified payable</span>
+          <strong>{wholeOrDash(payable)}</strong>
         </Box>
+        <Box className="is-dispute">
+          <span>Identified for dispute</span>
+          <strong>{wholeOrDash(disputed)}</strong>
+        </Box>
+        <Box>
+          <span>Needs review</span>
+          <strong>{wholeOrDash(review)}</strong>
+        </Box>
+      </Box>
 
-        <Box className="landing-findings-preview">
-          <Box className="landing-findings-head">
-            <span>Rule</span><span>Finding</span><span>Outcomes</span><span>Amount</span>
+      <Box className="landing-v3-disposition">
+        <Box className="landing-v3-disposition-copy">
+          <strong>{disputedCount === null ? "Loading persisted decision…" : `${disputedCount.toLocaleString()} charges fail approved contract verification.`}</strong>
+          <span>{disputePercent ? `${disputePercent} of invoice value is not supported by the approved rules and customer evidence.` : "The result appears only after a persisted reconciliation is available."}</span>
+        </Box>
+        {disputePercent && (
+          <Box className="landing-v3-bar" aria-label={`${disputePercent} identified for dispute`}>
+            <Box className="verified" sx={{ width: `${100 - Number(disputePercent.replace("%", ""))}%` }} />
+            <Box className="disputed" sx={{ width: disputePercent }} />
           </Box>
-          {categories.slice(0, 3).map(([ruleId, category]) => (
-            <Box className="landing-finding-row" key={ruleId}>
-              <span>{ruleId}</span>
-              <strong>{category.label}</strong>
-              <span>{category.count.toLocaleString()}</span>
-              <span>{formatUsd(category.amount)}</span>
+        )}
+      </Box>
+
+      <Box className="landing-v3-findings">
+        <Box className="landing-v3-findings-head"><span>Why the invoice changed</span><span>Exposure</span></Box>
+        {summary && Object.entries(summary.categories).length > 0 ? (
+          Object.entries(summary.categories).slice(0, 3).map(([ruleId, category]) => (
+            <Box key={ruleId} className="landing-v3-finding-row">
+              <Box><span>{ruleId}</span><strong>{category.label}</strong><small>{category.count.toLocaleString()} affected claims</small></Box>
+              <strong>{formatUsd(category.amount)}</strong>
             </Box>
-          ))}
-          {!summary && <Box className="landing-product-loading">No determination is available in this workspace yet.</Box>}
-        </Box>
-        <Box className="landing-product-foot"><TemplateIcon name="check" size={15} /> Every amount is reproduced from stored determinations.</Box>
+          ))
+        ) : (
+          <Box className="landing-v3-finding-row">
+            <Box><span>—</span><strong>Loading persisted findings</strong><small>No financial finding is invented before the reconciliation loads.</small></Box><strong>—</strong>
+          </Box>
+        )}
       </Box>
+
+      <Box className="landing-v3-verdict-foot">
+        <TemplateIcon name="check" size={15} />
+        <span>Every dollar traces back to an approved rule and customer-controlled evidence.</span>
+      </Box>
+    </Box>
+  );
+}
+
+function Mechanism() {
+  const items = [
+    ["01", "Contract", "Natural-language commercial terms"],
+    ["02", "AI proposal", "Structured rules, still inert"],
+    ["03", "Human approval", "Finance activates the rule set"],
+    ["04", "Evidence", "Customer systems prove what happened"],
+    ["05", "Deterministic dollars", "Code calculates the financial result"],
+  ];
+  return (
+    <Box className="landing-v3-mechanism" id="how-it-works">
+      {items.map(([number, title, detail], index) => (
+        <Box className="landing-v3-mechanism-step" key={title}>
+          <span>{number}</span>
+          <strong>{title}</strong>
+          <small>{detail}</small>
+          {index < items.length - 1 && <b aria-hidden="true">→</b>}
+        </Box>
+      ))}
     </Box>
   );
 }
@@ -119,156 +159,121 @@ export default function LandingPage() {
     return () => { active = false; };
   }, []);
 
-  const categories = summary ? Object.entries(summary.categories) : [];
+  const billed = invoice?.submitted_amount ?? summary?.submitted_amount ?? null;
+  const payable = summary?.confirmed_payable_amount ?? null;
+  const disputed = summary?.recommended_deduction ?? null;
 
   return (
-    <Box className="landing-page">
-      <Box component="header" className="landing-header">
-        <Container maxWidth="xl" className="landing-container">
-          <Box component="nav" className="landing-nav" aria-label="Main navigation">
+    <Box className="landing-v3-page">
+      <Box component="header" className="landing-v3-header">
+        <Container maxWidth={false} className="landing-v3-container">
+          <Box component="nav" className="landing-v3-nav" aria-label="Main navigation">
             <Brand />
-            <Stack direction="row" spacing={3.5} className="landing-nav-links">
-              <Link href="#product">Product</Link>
-              <Link href="#findings">Findings</Link>
-              <Link href="#control">Control boundary</Link>
+            <Stack direction="row" spacing={3} className="landing-v3-nav-links">
+              <Link href="#how-it-works">How it works</Link>
+              <Link href="#proof">Evidence</Link>
+              <Link href="#boundary">Authority boundary</Link>
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center">
-              {status?.public_demo && <Chip label="Public technical preview" size="small" className="landing-preview-chip" />}
               <BetaApplicationCTA compact />
-              <Button variant="text" endIcon={<TemplateIcon name="arrow" size={16} />} onClick={() => navigate("/try")}>
-                Try Evidue
-              </Button>
+              <Button variant="contained" className="landing-v3-nav-cta" onClick={() => navigate("/try")}>Verify a sample invoice</Button>
             </Stack>
           </Box>
         </Container>
       </Box>
 
-      <Box className="landing-hero-shell">
-        <Container maxWidth="xl" className="landing-container">
-          <Box className="landing-hero">
-            <Box className="landing-hero-copy">
-              <Typography className="landing-hero-eyebrow">Buyer-side control for outcome-priced AI</Typography>
-              <Typography component="h1">Pay for outcomes that actually happened.</Typography>
-              <Typography className="landing-hero-lede">
-                Evidue checks outcome-priced AI vendor invoices against the contract and the customer’s own system evidence.
-              </Typography>
-              {summary && invoice && (
-                <Typography className="landing-preview-result">
-                  This technical preview reconciles {summary.claimed_outcomes.toLocaleString()} synthetic outcomes and determines that {formatWholeUsd(summary.confirmed_payable_amount)} of a {formatWholeUsd(invoice.submitted_amount)} invoice is payable.
-                </Typography>
-              )}
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.1} sx={{ mt: 3 }}>
-                <Button variant="contained" size="large" endIcon={<TemplateIcon name="arrow" size={17} />} onClick={() => navigate("/try")}>
-                  Try the reconciliation — no signup
-                </Button>
-                <Button variant="text" size="large" onClick={() => navigate(`/demo/invoices/current?outcome=${encodeURIComponent(status?.demo_outcome_id ?? "OUT-004821")}`)}>
-                  Inspect one disputed outcome
-                </Button>
-              </Stack>
-              <Box className="landing-trust-line">
-                <span><TemplateIcon name="check" size={14} /> Customer-owned evidence</span>
-                <span><TemplateIcon name="check" size={14} /> Approved contract rules</span>
-                <span><TemplateIcon name="check" size={14} /> Deterministic decisions</span>
-              </Box>
-            </Box>
-            <Box id="product" className="landing-product-wrap">
-              <DecisionSurface invoice={invoice} summary={summary} />
-            </Box>
-          </Box>
-        </Container>
-      </Box>
-
-      <Box className="landing-disclosure-wrap">
-        <Container maxWidth="xl" className="landing-container">
-          <Alert icon={false} className="landing-disclosure">
-            <strong>Synthetic demonstration data.</strong> {disclosure}
-          </Alert>
-        </Container>
-      </Box>
-
-      <Box className="landing-workflow-rail">
-        <Container maxWidth="xl" className="landing-container">
-          <Box className="landing-workflow-label">One review path</Box>
-          {["Decision", "Findings", "Contract rules", "Evidence"].map((item, index) => (
-            <Box key={item} className="landing-workflow-item">
-              <span>0{index + 1}</span><strong>{item}</strong>{index < 3 && <TemplateIcon name="arrow" size={16} />}
-            </Box>
-          ))}
-        </Container>
-      </Box>
-
-      <Container maxWidth="xl" className="landing-container">
-        <Box id="findings" className="landing-proof-section">
-          <Box className="landing-section-copy">
-            <Typography className="landing-overline">The financial consequence is explicit</Typography>
-            <Typography variant="h2">A deduction finance can defend.</Typography>
-            <Typography>
-              Every disputed line points to the rule it failed and the operational records that prove why. Finance gets a corrected payable amount, not another dashboard to interpret.
+      <Box className="landing-v3-hero">
+        <Container maxWidth={false} className="landing-v3-container landing-v3-hero-grid">
+          <Box className="landing-v3-hero-copy">
+            <Typography className="landing-v3-kicker">BUYER-SIDE CONTROL FOR OUTCOME-PRICED AI</Typography>
+            <Typography component="h1">Stop paying AI vendors for outcomes that didn’t happen.</Typography>
+            <Typography className="landing-v3-lede">
+              Evidue checks every billed AI outcome against your contract and your own systems, then shows finance exactly what is supported, what is not, and why.
             </Typography>
-            <Button variant="outlined" endIcon={<TemplateIcon name="arrow" size={16} />} onClick={() => navigate("/demo/disputes/current")}>
-              Review all findings
-            </Button>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} className="landing-v3-actions">
+              <Button variant="contained" size="large" endIcon={<TemplateIcon name="arrow" size={17} />} onClick={() => navigate("/try")}>Verify a sample invoice</Button>
+              <Button variant="text" size="large" onClick={() => navigate(`/demo/invoices/current?outcome=${encodeURIComponent(status?.demo_outcome_id ?? "OUT-004821")}`)}>Inspect a disputed claim</Button>
+            </Stack>
+            <Box className="landing-v3-proofline">
+              <span><b>{wholeOrDash(billed)}</b> billed</span>
+              <span><b>{wholeOrDash(payable)}</b> verified</span>
+              <span className="danger"><b>{wholeOrDash(disputed)}</b> dispute</span>
+            </Box>
+            <Typography className="landing-v3-synthetic-note">Synthetic demonstration data · no signup · no customer data</Typography>
           </Box>
+          <InvoiceVerdict invoice={invoice} summary={summary} />
+        </Container>
+      </Box>
 
-          <Box className="landing-proof-table" aria-label="Finding summary preview">
-            <Box className="landing-proof-table-head"><span>Finding</span><span>Count</span><span>Amount</span><span>Share</span></Box>
-            {categories.map(([ruleId, category]) => (
-              <Box className="landing-proof-table-row" key={ruleId}>
-                <Box><span>{ruleId}</span><strong>{category.label}</strong></Box>
-                <span>{category.count.toLocaleString()}</span>
-                <span>{formatUsd(category.amount)}</span>
-                <span>{summary ? formatPercent(category.amount, summary.submitted_amount) : "—"}</span>
-              </Box>
-            ))}
-            {summary ? (
-              <Box className="landing-proof-total">
-                <span>Recommended deduction</span>
-                <strong>{formatUsd(summary.recommended_deduction)}</strong>
-              </Box>
-            ) : <Box className="landing-proof-empty">Run the deterministic reconciliation to populate the finding register.</Box>}
+      <Container maxWidth={false} className="landing-v3-container">
+        <Mechanism />
+
+        <Box className="landing-v3-proof-section" id="proof">
+          <Box className="landing-v3-section-intro">
+            <Typography className="landing-v3-kicker">ONE CHARGE. ONE PROOF CHAIN.</Typography>
+            <Typography component="h2">See why a vendor claim stops being payable.</Typography>
+            <Typography>Finance does not get a score. It gets the governing clause, the customer-side evidence, and the resulting financial determination.</Typography>
+          </Box>
+          <Box className="landing-v3-proof-chain">
+            <Box className="landing-v3-proof-column">
+              <Typography className="landing-v3-mono-label">CONTRACT CLAUSE</Typography>
+              <blockquote>“A resolution is billable only if there is no same-intent customer recontact within seven days.”</blockquote>
+              <Box className="landing-v3-proof-meta"><span>Approved rule</span><strong>R1 · No same-intent recontact</strong></Box>
+            </Box>
+            <Box className="landing-v3-proof-column evidence">
+              <Typography className="landing-v3-mono-label">CUSTOMER EVIDENCE</Typography>
+              <Box className="landing-v3-event"><span>Jun 12 · 14:03</span><strong>Vendor marked outcome resolved</strong><small>Support event</small></Box>
+              <Box className="landing-v3-event is-bad"><span>Jun 15 · 09:21</span><strong>Customer recontacted with same intent</strong><small>Customer support system</small></Box>
+            </Box>
+            <Box className="landing-v3-determination">
+              <Typography className="landing-v3-mono-label">DETERMINATION</Typography>
+              <strong>CONTRADICTED</strong>
+              <Typography>This charge fails the approved rule.</Typography>
+              <Box><span>Commercial action</span><b>Identify for dispute</b></Box>
+            </Box>
           </Box>
         </Box>
 
-        <Box id="control" className="landing-control-section">
-          <Box className="landing-control-heading">
-            <Typography className="landing-overline">A hard boundary around the model</Typography>
-            <Typography variant="h2">The LLM proposes. Deterministic code decides.</Typography>
-          </Box>
-          <Box className="landing-control-flow">
-            <Box><span>01</span><TemplateIcon name="contract" size={20} /><strong>Contract language</strong><small>Commercial terms supplied by the customer</small></Box>
-            <TemplateIcon name="arrow" size={18} />
-            <Box><span>02</span><TemplateIcon name="lab" size={20} /><strong>Rule proposal</strong><small>Schema-constrained and inert</small></Box>
-            <TemplateIcon name="arrow" size={18} />
-            <Box><span>03</span><TemplateIcon name="check" size={20} /><strong>Human approval</strong><small>Immutable version becomes active</small></Box>
-            <TemplateIcon name="arrow" size={18} />
-            <Box><span>04</span><TemplateIcon name="verify" size={20} /><strong>Invoice decision</strong><small>Evidence and rules determine money</small></Box>
-          </Box>
-        </Box>
-
-        <Box className="landing-example-section">
+        <Box className="landing-v3-boundary" id="boundary">
           <Box>
-            <Typography className="landing-overline">See the proof chain</Typography>
-            <Typography variant="h2">One failed refund. Three systems. One non-payable charge.</Typography>
+            <Typography className="landing-v3-kicker">THE MODEL STOPS BEFORE THE MONEY</Typography>
+            <Typography component="h2">The LLM interprets the contract. It never decides the invoice.</Typography>
+            <Typography>Evidue keeps interpretation and financial authority separate: the model proposes structured rules, a human approves them, and deterministic code evaluates evidence and calculates the result.</Typography>
           </Box>
-          <Box className="landing-example-facts">
-            <Box><span>Vendor assertion</span><strong>Refund resolved</strong><small>Agent execution log</small></Box>
-            <Box><span>Customer evidence</span><strong>Processor rejected</strong><small>Payment system of record</small></Box>
-            <Box><span>Determination</span><strong>Disputed</strong><small>Rule R3 · downstream completion</small></Box>
+          <Box className="landing-v3-boundary-diagram">
+            <Box><span>LLM</span><strong>Propose</strong><small>Contract → structured rule proposal</small></Box>
+            <b>→</b>
+            <Box><span>HUMAN</span><strong>Approve</strong><small>Versioned financial authority</small></Box>
+            <b>→</b>
+            <Box className="is-final"><span>ENGINE</span><strong>Decide dollars</strong><small>Rules + evidence → financial result</small></Box>
           </Box>
-          <Button variant="contained" endIcon={<TemplateIcon name="arrow" size={16} />} onClick={() => navigate("/demo/invoices/current?outcome=OUT-004821")}>
-            Open OUT-004821
-          </Button>
+        </Box>
+
+        <Box className="landing-v3-action-section">
+          <Box>
+            <Typography className="landing-v3-kicker">FROM FINDING TO VENDOR ACTION</Typography>
+            <Typography component="h2">The reconciliation ends with something finance can send.</Typography>
+            <Typography>Corrected invoice, disputed lines, evidence package, and a pre-written vendor dispute email—all generated from the persisted decision.</Typography>
+          </Box>
+          <Box className="landing-v3-email">
+            <Typography className="landing-v3-mono-label">VENDOR DISPUTE EMAIL</Typography>
+            <Typography component="p">We reconciled your June invoice against our agreement and customer systems.</Typography>
+            <Typography component="p"><strong>Of $15,000 billed, $12,480 is verified. We are disputing $2,520 across 1,680 claims.</strong></Typography>
+            <Typography component="p">Detailed line-level documentation and supporting evidence are attached.</Typography>
+          </Box>
+        </Box>
+
+        <Box className="landing-v3-final-cta">
+          <Box><Typography className="landing-v3-kicker">TRY THE CONTROL LOOP</Typography><Typography component="h2">Would you pay the vendor’s number?</Typography></Box>
+          <Button variant="contained" size="large" onClick={() => navigate("/try")}>Verify the sample invoice →</Button>
         </Box>
       </Container>
 
-      <Box component="footer" className="landing-footer">
-        <Container maxWidth="xl" className="landing-container">
+      <Box component="footer" className="landing-v3-footer">
+        <Container maxWidth={false} className="landing-v3-container">
           <Brand />
-          <Typography>Independent control for outcome-priced AI invoices</Typography>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <FeedbackCTA />
-            <Typography>Acme Commerce and Nova Support AI are fictional demonstration parties.</Typography>
-          </Stack>
+          <Typography>{disclosure}</Typography>
+          <FeedbackCTA />
         </Container>
       </Box>
     </Box>

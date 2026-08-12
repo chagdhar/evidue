@@ -810,18 +810,24 @@ function WorkspaceCommandHeader({
   activeStage: PilotStage;
   readinessPercent: number;
 }) {
+  const navigate = useNavigate();
   const stage = pilotStages.find((item) => item.id === activeStage);
   const currency = reconciliation?.currency || "USD";
+  const submitted = Number(reconciliation?.submitted_amount ?? 0);
+  const disputed = Number(reconciliation?.recommended_deduction ?? 0);
+  const disputePercent = submitted > 0 ? (disputed / submitted) * 100 : 0;
+
   return (
     <Paper variant="outlined" className="invoice-control-header">
       <Box className="invoice-control-identity">
         <Box>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75, flexWrap: "wrap" }}>
-            <Typography className="section-kicker">ACTIVE INVOICE REVIEW</Typography>
+          <Button className="invoice-control-back" color="inherit" size="small" onClick={() => navigate("/workspace/invoices")}>← Invoice register</Button>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1.15, mb: 0.65, flexWrap: "wrap" }}>
+            <Typography className="section-kicker">ACTIVE FINANCIAL REVIEW</Typography>
             <Chip size="small" variant="outlined" label={stage?.label ?? "Invoice"} />
           </Stack>
-          <Typography variant="h4" fontWeight={780}>
-            {contract ? `${contract.vendor}` : "Invoice reconciliation"}
+          <Typography component="h2" variant="h4" fontWeight={780}>
+            {contract ? contract.vendor : "Invoice reconciliation"}
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 0.35 }}>
             {status?.active_invoice_id || "Invoice not loaded"}
@@ -829,10 +835,19 @@ function WorkspaceCommandHeader({
           </Typography>
         </Box>
         <Box className="invoice-control-status">
-          <Typography variant="caption" color="text.secondary">Payment readiness</Typography>
+          <Typography variant="caption" color="text.secondary">Control readiness</Typography>
           <Typography variant="h5" fontWeight={800}>{readinessPercent}%</Typography>
+          <small>{stage?.hint ?? "Verify the invoice"}</small>
         </Box>
       </Box>
+
+      {reconciliation && (
+        <Box className="invoice-control-verdictline">
+          <span>FINANCIAL VERDICT</span>
+          <strong>{disputePercent.toFixed(1)}% of invoice value identified for dispute</strong>
+          <small>The model did not decide this amount. Approved rules and customer evidence did.</small>
+        </Box>
+      )}
 
       <Box className="invoice-control-numbers">
         <Box>

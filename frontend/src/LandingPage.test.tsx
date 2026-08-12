@@ -51,18 +51,13 @@ const summary = {
   recommended_deduction: "2520.00",
   needs_review_amount: "0.00",
   price_per_outcome: "1.50",
-  categories: {
-    R3: { label: "Failed downstream actions", count: 300, amount: "450.00" },
-  },
+  categories: { R3: { label: "Failed downstream actions", count: 300, amount: "450.00" } },
   synthetic_disclosure: "No real customer or vendor data is shown.",
 };
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.clearAllMocks();
-});
+afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); });
 
-it("states the product and financial result plainly with working launch calls to action", async () => {
+function mockPublicConfig(beta = true) {
   vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
     const url = String(input);
     const body = url.endsWith("/api/demo/status")
@@ -70,48 +65,33 @@ it("states the product and financial result plainly with working launch calls to
       : url.endsWith("/api/invoices/current")
         ? invoice
         : url.endsWith("/api/public-config")
-          ? { beta_form_configured: true, beta_form_url: "https://tally.so/r/test-form", contact_form_configured: true }
+          ? { beta_form_configured: beta, beta_form_url: beta ? "https://tally.so/r/test-form" : null, contact_form_configured: true }
           : summary;
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response);
   });
+}
 
+it("leads with the financial loss and makes the verification loop visible", async () => {
+  mockPublicConfig();
   render(<LandingPage />, { wrapper: Wrapper });
 
-  expect(
-    screen.getByText("Evidue checks outcome-priced AI vendor invoices against the contract and the customer’s own system evidence."),
-  ).toBeInTheDocument();
-  expect(
-    await screen.findByText("This technical preview reconciles 10,000 synthetic outcomes and determines that $12,480 of a $15,000 invoice is payable."),
-  ).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Try the reconciliation — no signup" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Inspect one disputed outcome" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /Stop paying AI vendors for outcomes that didn’t happen/i })).toBeInTheDocument();
+  expect((await screen.findAllByText("$15,000")).length).toBeGreaterThan(0);
+  expect(screen.getAllByText("$12,480").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("$2,520").length).toBeGreaterThan(0);
+  expect(screen.getByText(/1,680 charges fail approved contract verification/i)).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "Verify a sample invoice" }).length).toBeGreaterThan(0);
+  expect(screen.getByRole("button", { name: "Inspect a disputed claim" })).toBeInTheDocument();
+  expect(screen.getByText("The LLM interprets the contract. It never decides the invoice.")).toBeInTheDocument();
   const contactLink = await screen.findByRole("link", { name: "Contact" });
-  expect(contactLink).toHaveAttribute("href", "/contact");
   await userEvent.click(contactLink);
   expect(track).toHaveBeenCalledWith("talk_to_us_clicked");
-  expect(screen.queryByText("Join the beta waitlist")).not.toBeInTheDocument();
-  expect(screen.queryByText("Give feedback")).not.toBeInTheDocument();
-  expect(contactLink.closest("header")).not.toBeNull();
-  expect(document.querySelector(".landing-cta-band")).not.toBeInTheDocument();
 });
 
-it("falls back to direct contact when no beta form is configured", async () => {
-  vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-    const url = String(input);
-    const body = url.endsWith("/api/demo/status")
-      ? status
-      : url.endsWith("/api/invoices/current")
-        ? invoice
-        : url.endsWith("/api/public-config")
-          ? { beta_form_configured: false, beta_form_url: null, contact_form_configured: true }
-          : summary;
-    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) } as Response);
-  });
-
+it("keeps direct contact in the header when no beta form is configured", async () => {
+  mockPublicConfig(false);
   render(<LandingPage />, { wrapper: Wrapper });
-
   const contact = await screen.findByRole("link", { name: "Contact" });
   expect(contact).toHaveAttribute("href", "/contact");
   expect(contact.closest("header")).not.toBeNull();
-  expect(screen.queryByRole("link", { name: "Apply for the Evidue beta" })).not.toBeInTheDocument();
 });
