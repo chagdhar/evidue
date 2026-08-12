@@ -34,11 +34,11 @@ describe("Evidue reconciliation workspace", () => {
 
   it("requires a workspace access key before exposing customer data controls", () => {
     render(
-      <MemoryRouter initialEntries={["/pilot"]}>
+      <MemoryRouter initialEntries={["/workspace"]}>
         <PilotApp />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("heading", { name: /open your finance workspace/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /open your reconciliation workspace/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/access key/i)).toHaveAttribute("type", "password");
     expect(screen.queryByText(/choose invoice csv/i)).not.toBeInTheDocument();
   });

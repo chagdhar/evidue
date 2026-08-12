@@ -12,6 +12,13 @@ const HEADERS = [
   "Campaign",
   "Demo version",
   "Submission ID",
+  "Role",
+  "Billing model",
+  "Verification method",
+  "Evidence location",
+  "Commercial action",
+  "Feedback area",
+  "Open to 15-minute conversation",
 ];
 
 function jsonResponse(payload) {
@@ -79,6 +86,12 @@ function doPost(event) {
       sheet.appendRow(HEADERS);
       sheet.setFrozenRows(1);
       sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight("bold");
+    } else {
+      const existingWidth = sheet.getLastColumn();
+      if (existingWidth < HEADERS.length) {
+        sheet.getRange(1, existingWidth + 1, 1, HEADERS.length - existingWidth)
+          .setValues([HEADERS.slice(existingWidth)]);
+      }
     }
 
     sheet.appendRow([
@@ -94,6 +107,13 @@ function doPost(event) {
       safeCell(payload.campaign),
       safeCell(payload.demo_version),
       safeCell(payload.submission_id),
+      safeCell(payload.role),
+      safeCell(payload.billing_model),
+      safeCell(payload.verification_method),
+      safeCell(payload.evidence_location),
+      safeCell(payload.commercial_action),
+      safeCell(payload.feedback_area),
+      safeCell(payload.open_to_call),
     ]);
     submissionCache.put(submissionKey, "1", 21600);
 

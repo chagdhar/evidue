@@ -3,7 +3,6 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { Link as RouterLink } from "react-router-dom";
 import { api, PublicConfig } from "./api";
 import { track } from "./analytics";
-import { contactHref } from "./contact";
 
 type Props = { compact?: boolean };
 const PublicConfigContext = createContext<PublicConfig | null>(null);
@@ -22,6 +21,7 @@ export function PublicConfigProvider({ children }: { children: ReactNode }) {
         beta_form_configured: false,
         beta_form_url: null,
         contact_form_configured: false,
+        talk_booking_url: null,
       }));
   }, []);
 
@@ -33,7 +33,17 @@ export function BetaApplicationCTA({ compact = false }: Props) {
 
   if (config === null) return null;
   if (!config.contact_form_configured) {
-    return <Button variant={compact ? "text" : "outlined"} href={contactHref}>{compact ? "Contact" : "Talk to us"}</Button>;
+    if (!config.talk_booking_url) return null;
+    return (
+      <Button
+        variant={compact ? "text" : "outlined"}
+        href={config.talk_booking_url}
+        target="_blank"
+        rel="noreferrer"
+      >
+        {compact ? "Book time" : "Book a 15-minute conversation"}
+      </Button>
+    );
   }
   return (
     <Box className={compact ? "beta-cta compact" : "beta-cta"}>
@@ -53,9 +63,17 @@ export function BetaApplicationCTA({ compact = false }: Props) {
 export function FeedbackCTA() {
   const config = usePublicConfig();
   if (config === null) return null;
-  return config.contact_form_configured ? (
-    <Button component={RouterLink} to="/contact" variant="text" onClick={() => track("talk_to_us_clicked")}>
-      Talk to us
+  if (config.contact_form_configured) {
+    return (
+      <Button component={RouterLink} to="/contact" variant="text" onClick={() => track("talk_to_us_clicked")}>
+        Talk to us
+      </Button>
+    );
+  }
+  if (!config.talk_booking_url) return null;
+  return (
+    <Button href={config.talk_booking_url} target="_blank" rel="noreferrer" variant="text">
+      Book a 15-minute conversation
     </Button>
-  ) : <Button href={contactHref} variant="text">Email Dharun</Button>;
+  );
 }

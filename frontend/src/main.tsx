@@ -28,9 +28,13 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/" element={<LandingPage />} />
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/try" element={<TryEviduePage />} />
-          <Route path="/pilot" element={<PilotApp />} />
-          <Route path="/pilot/config" element={<PilotApp />} />
-          <Route path="/pilot/finance" element={<FinanceWorkspace />} />
+          <Route path="/workspace" element={<PilotApp />} />
+          <Route path="/workspace/settings" element={<PilotApp />} />
+          <Route path="/workspace/operations" element={<FinanceWorkspace />} />
+          <Route path="/pilot" element={<Navigate to="/workspace" replace />} />
+          <Route path="/pilot/config" element={<Navigate to="/workspace/settings" replace />} />
+          <Route path="/pilot/finance" element={<Navigate to="/workspace/operations" replace />} />
+          <Route path="/pilot/operations" element={<Navigate to="/workspace/operations" replace />} />
           <Route path="/demo" element={<ProductShell />}>
             <Route index element={<OverviewPage />} />
             <Route path="invoices" element={<InvoicesPage />} />

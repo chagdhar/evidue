@@ -34,6 +34,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import {
   api,
   Contract,
@@ -771,7 +772,7 @@ function OutcomeInspector({
             <Button variant="contained" onClick={() => void reevaluate()} disabled={evaluating}>
               {evaluating ? "Evaluating…" : "Re-evaluate deterministically"}
             </Button>
-            <Button href="mailto:chagdhar@gmail.com?subject=Evidue%20question%20about%20OUT-004821" variant="outlined">Challenge this determination</Button>
+            <Button component={RouterLink} to="/contact?topic=determination&outcome=OUT-004821" variant="outlined">Talk to us about this determination</Button>
           </Box>}
           {evaluationError && <Alert severity="error">{evaluationError}</Alert>}
           {evaluation && <Alert severity="info">

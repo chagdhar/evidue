@@ -4,7 +4,7 @@ Evidue separates contract interpretation from invoice adjudication.
 
 ## Product compiler
 
-The protected `/pilot` product uses the provider-independent native Agreement IR compiler described in
+The protected `/workspace` product uses the provider-independent native Agreement IR compiler described in
 [`CONTRACT_COMPILER.md`](CONTRACT_COMPILER.md):
 
 1. Evidue deterministically segments original contract documents into immutable source spans.

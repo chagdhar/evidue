@@ -1,6 +1,5 @@
 import {
   Alert,
-  AppBar,
   Box,
   Button,
   Card,
@@ -26,12 +25,12 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Toolbar,
   Typography,
 } from "@mui/material";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useEvidueThemeMode } from "./templateTheme";
+import WorkspaceShell from "./WorkspaceShell";
 import {
   AIRVersion,
   AgreementBundleView,
@@ -95,11 +94,11 @@ export function shouldFollowPilotRecommendation(
 }
 
 const pilotStages: Array<{ id: PilotStage; label: string; hint: string }> = [
-  { id: "agreement", label: "Agreement & rules", hint: "Define the payment policy" },
-  { id: "invoice", label: "Invoice", hint: "Verify the control totals" },
+  { id: "agreement", label: "Contract rules", hint: "Approve what counts" },
+  { id: "invoice", label: "Invoice", hint: "Confirm what was billed" },
   { id: "evidence", label: "Evidence", hint: "Prove what happened" },
-  { id: "decision", label: "Decision", hint: "See what finance should pay" },
-  { id: "export", label: "Send & export", hint: "Move the result into action" },
+  { id: "decision", label: "Reconcile", hint: "Determine supported dollars" },
+  { id: "export", label: "Export & action", hint: "Move the result into AP" },
 ];
 
 const requiredInvoiceFields = ["outcome_id", "customer_id", "intent", "closed_at", "billed_amount"];
@@ -445,8 +444,7 @@ function Determinations({ rows, currency = "USD" }: { rows: Determination[]; cur
 export default function PilotApp() {
   const { mode, toggleMode } = useEvidueThemeMode();
   const location = useLocation();
-  const navigate = useNavigate();
-  const configPage = location.pathname === "/pilot/config";
+  const configPage = location.pathname === "/workspace/settings" || location.pathname === "/pilot/config";
 
   useEffect(() => {
     if (mode !== "dark") toggleMode();
@@ -666,10 +664,10 @@ export default function PilotApp() {
             </Stack>
           </Box>
           <Box sx={{ p: { xs: 3.5, md: 6 }, bgcolor: "background.paper", alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            <Typography variant="overline" color="primary.main" fontWeight={820}>Private pilot</Typography>
-            <Typography variant="h3" fontWeight={720} sx={{ mt: 0.75 }}>Open your finance workspace</Typography>
+            <Typography variant="overline" color="primary.main" fontWeight={820}>Customer workspace</Typography>
+            <Typography variant="h3" fontWeight={720} sx={{ mt: 0.75 }}>Open your reconciliation workspace</Typography>
             <Typography color="text.secondary" sx={{ mt: 1.5 }}>
-              Use the access key provided for your Evidue pilot. Your workspace contains contracts, invoice data, evidence, and reconciliation history.
+              Use your workspace access key to open customer contracts, invoice data, evidence, reconciliation history, and finance actions in one place.
             </Typography>
             <Box sx={{ mt: 3, p: 2, borderRadius: 2, bgcolor: "action.hover", border: 1, borderColor: "divider" }}>
               <Typography variant="body2" fontWeight={700}>Authority boundary</Typography>
@@ -680,7 +678,7 @@ export default function PilotApp() {
             {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
             <Box component="form" onSubmit={authenticate} sx={{ mt: 3 }}>
               <Stack spacing={2}>
-                <TextField label="Pilot access key" type="password" value={tokenDraft} onChange={(event) => setTokenDraft(event.target.value)} autoFocus fullWidth helperText="Provided by your Evidue pilot administrator." />
+                <TextField label="Workspace access key" type="password" value={tokenDraft} onChange={(event) => setTokenDraft(event.target.value)} autoFocus fullWidth helperText="Provided by your Evidue workspace administrator." />
                 <Button type="submit" variant="contained" size="large">Open workspace</Button>
               </Stack>
             </Box>
@@ -696,79 +694,13 @@ export default function PilotApp() {
   const emptyWorkspace = Boolean(status && !status.active_contract_id);
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        color: "#F5F7FA",
-        bgcolor: "#0B0E13",
-        backgroundImage: [
-          "radial-gradient(circle at 78% -12%, rgba(124,92,252,.16), transparent 28%)",
-          "radial-gradient(circle at 18% 10%, rgba(42,183,255,.07), transparent 24%)",
-          "linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px)",
-          "linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px)",
-        ].join(","),
-        backgroundSize: "auto, auto, 36px 36px, 36px 36px",
-        "& .MuiPaper-root": { color: "#F5F7FA" },
-        "& .MuiOutlinedInput-root": {
-          color: "#F5F7FA",
-          bgcolor: "#0F141B",
-          "& fieldset": { borderColor: "#343D49" },
-          "&:hover fieldset": { borderColor: "#596577" },
-          "&.Mui-focused fieldset": { borderColor: "#8B76FF" },
-        },
-        "& .MuiInputLabel-root": { color: "#8995A6" },
-        "& .MuiInputLabel-root.Mui-focused": { color: "#B6A9FF" },
-        "& .MuiFormHelperText-root": { color: "#778395" },
-        "& .MuiDivider-root": { borderColor: "#2B333E" },
-        "& .MuiTableCell-root": { color: "#DCE2EA", borderColor: "#2B333E" },
-        "& .MuiTableCell-head": { color: "#94A0B1", bgcolor: "#171D26" },
-      }}
+    <WorkspaceShell
+      active={configPage ? "settings" : "reconciliation"}
+      workspaceId={status?.workspace_id}
+      busy={busy}
+      onRefresh={() => void refresh()}
+      onSignOut={signOut}
     >
-      <AppBar
-        position="sticky"
-        elevation={0}
-        sx={{
-          bgcolor: "rgba(8, 10, 14, 0.92)",
-          color: "#F8FAFC",
-          borderBottom: "1px solid #242B35",
-          backdropFilter: "blur(22px)",
-        }}
-      >
-        <Toolbar sx={{ gap: 1.5, minHeight: 64 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, flexGrow: 1 }}>
-            <Box
-              sx={{
-                width: 36,
-                height: 36,
-                borderRadius: 2,
-                background: "linear-gradient(135deg, #A996FF 0%, #7457F2 100%)",
-                color: "#090B10",
-                border: "1px solid rgba(255,255,255,0.38)",
-                boxShadow: "0 7px 20px rgba(0,0,0,0.18)",
-                display: "grid",
-                placeItems: "center",
-                fontWeight: 950,
-                letterSpacing: "-0.06em",
-              }}
-            >
-              E
-            </Box>
-            <Box>
-              <Typography fontWeight={820} lineHeight={1.05}>Evidue</Typography>
-              <Typography variant="caption" sx={{ color: "#7F8A9A" }}>Outcome invoice reconciliation</Typography>
-            </Box>
-          </Box>
-          {status?.workspace_id && <Chip size="small" label={status.workspace_id} sx={{ display: { xs: "none", md: "inline-flex" }, bgcolor: "#1E293B", color: "#E2E8F0", border: "1px solid #334155" }} />}
-          <Button color="inherit" variant={!configPage ? "outlined" : "text"} sx={{ borderColor: !configPage ? "#64748B" : "transparent" }} onClick={() => navigate("/pilot")}>Workspace</Button>
-          <Button color="inherit" variant={configPage ? "outlined" : "text"} sx={{ borderColor: configPage ? "#64748B" : "transparent" }} onClick={() => navigate("/pilot/config")}>Configuration</Button>
-          <Button color="inherit" onClick={() => navigate("/pilot/finance")}>Finance operations</Button>
-          <Button color="inherit" onClick={() => void refresh()} disabled={Boolean(busy)} sx={{ display: { xs: "none", sm: "inline-flex" } }}>Refresh</Button>
-          <Button color="inherit" onClick={signOut}>Sign out</Button>
-        </Toolbar>
-      </AppBar>
-
-      {busy && <LinearProgress sx={{ position: "sticky", top: 64, zIndex: 1200 }} />}
-
       {configPage ? (
         <Container maxWidth="lg" sx={{ py: 4 }}>
           {busy && <Alert severity="info" icon={false} sx={{ mb: 2 }}><strong>{busy}</strong>…</Alert>}
@@ -827,9 +759,9 @@ export default function PilotApp() {
                         variant="contained"
                         size="large"
                         disabled={Boolean(busy)}
-                        onClick={() => void act("Creating sample workspace", async () => { setStageTouched(false); await pilotApi.seedSample(); await refresh(); }, "Sample workspace is ready.")}
+                        onClick={() => void act("Creating sample workspace", async () => { setStageTouched(false); await pilotApi.seedSample(); await refresh(); }, "Guided sample is ready.")}
                       >
-                        Try sample workspace
+                        Load guided sample
                       </Button>
                       <Button
                         variant="outlined"
@@ -837,7 +769,7 @@ export default function PilotApp() {
                         sx={{ color: "#F8FAFC", borderColor: "#64748B", "&:hover": { borderColor: "#A5B4FC", bgcolor: "rgba(255,255,255,0.04)" } }}
                         onClick={() => { goToStage("agreement"); window.requestAnimationFrame(() => document.getElementById("contract")?.scrollIntoView({ behavior: "smooth" })); }}
                       >
-                        Use my own data
+                        Start with company data
                       </Button>
                     </Stack>
                   </Box>
@@ -917,7 +849,7 @@ export default function PilotApp() {
           </Stack>
         </Box>
       )}
-    </Box>
+    </WorkspaceShell>
   );
 }
 
@@ -951,7 +883,7 @@ function PilotStageRail({
       <Box sx={{ px: 1.2, pb: 2.1, borderBottom: "1px solid #242B35" }}>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-end">
           <Box>
-            <Typography variant="overline" sx={{ color: "#777FF2" }}>Readiness</Typography>
+            <Typography variant="overline" sx={{ color: "#777FF2" }}>Payment readiness</Typography>
             <Typography variant="h3" sx={{ mt: 0.2, fontWeight: 780, letterSpacing: "-.055em", color: "#F7F9FC" }}>{readinessPercent}%</Typography>
           </Box>
           <Typography variant="caption" sx={{ color: "#707C8D", pb: 0.45 }}>{completedStages}/4 controls</Typography>
@@ -1039,7 +971,7 @@ function PilotStageRail({
       <Box sx={{ mt: 1, p: 1.5, borderTop: "1px solid #242B35" }}>
         {reconciliation ? (
           <>
-            <Typography variant="caption" sx={{ color: "#6F7A8A" }}>Latest verified payable</Typography>
+            <Typography variant="caption" sx={{ color: "#6F7A8A" }}>Supported payable</Typography>
             <Typography variant="h5" sx={{ mt: 0.35, color: "#A9EEC9", fontWeight: 790, fontVariantNumeric: "tabular-nums" }}>{money(reconciliation.confirmed_payable_amount, reconciliation.currency)}</Typography>
           </>
         ) : (
@@ -1082,7 +1014,7 @@ function WorkspaceCommandHeader({
       <Box sx={{ p: { xs: 2.5, md: 3 }, display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0,1.4fr) minmax(280px,.6fr)" }, gap: 3, alignItems: "end" }}>
         <Box>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.2 }}>
-            <Chip size="small" label="LIVE WORKSPACE" sx={{ color: "#B7ABFF", bgcolor: "rgba(124,92,252,.10)", border: "1px solid rgba(124,92,252,.25)", letterSpacing: ".06em", fontSize: 10 }} />
+            <Chip size="small" label="CUSTOMER WORKSPACE" sx={{ color: "#B7ABFF", bgcolor: "rgba(124,92,252,.10)", border: "1px solid rgba(124,92,252,.25)", letterSpacing: ".06em", fontSize: 10 }} />
             <Typography variant="caption" sx={{ color: "#667385" }}>{stage?.label}</Typography>
           </Stack>
           <Typography variant="h3" sx={{ color: "#F8FAFC", fontWeight: 790, letterSpacing: "-.05em", maxWidth: 900 }}>
@@ -1119,10 +1051,10 @@ function WorkspaceCommandHeader({
       </Box>
       <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: "1px solid #252D37" }}>
         {[
-          ["Contract", status?.contract_approved ? "Approved" : "Needs review", Boolean(status?.contract_approved)],
+          ["Contract rules", status?.contract_approved ? "Approved" : "Needs review", Boolean(status?.contract_approved)],
           ["Invoice", status?.active_invoice_id ? `${status.claims ?? 0} claims` : "Not loaded", Boolean(status?.active_invoice_id)],
           ["Evidence", `${status?.events ?? 0} records`, Boolean(status?.events)],
-          ["Decision", reconciliation ? "Complete" : "Not run", Boolean(reconciliation)],
+          ["Reconciliation", reconciliation ? "Complete" : "Not run", Boolean(reconciliation)],
         ].map(([label, value, ready], index) => (
           <Box key={String(label)} sx={{ px: 2.25, py: 1.4, borderLeft: index ? "1px solid #252D37" : "none", bgcolor: ready ? "rgba(77,224,160,.025)" : "rgba(255,255,255,.01)" }}>
             <Typography variant="caption" sx={{ color: "#687486" }}>{label}</Typography>
@@ -1289,7 +1221,7 @@ function PilotConfigurationPage({
     await resetWorkspace();
     setResetText("");
     setResetOpen(false);
-    navigate("/pilot");
+    navigate("/workspace");
   }
 
   return (

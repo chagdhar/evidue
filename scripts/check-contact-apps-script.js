@@ -10,8 +10,15 @@ const cache = new Map();
 const sheet = {
   appendRow: (row) => rows.push(row),
   getLastRow: () => rows.length,
+  getLastColumn: () => rows.length ? rows[0].length : 0,
   setFrozenRows: () => undefined,
-  getRange: () => ({ setFontWeight: () => undefined }),
+  getRange: () => ({
+    setFontWeight: () => undefined,
+    setValues: (values) => {
+      if (!rows.length) rows.push([]);
+      rows[0].push(...values[0]);
+    },
+  }),
 };
 const context = {
   Date,
@@ -74,7 +81,14 @@ const payload = JSON.stringify({
   email: "alex@example.com",
   company: "Acme",
   discussion_type: "Product feedback",
+  role: "Finance",
+  billing_model: "",
+  verification_method: "",
+  evidence_location: "",
+  commercial_action: "",
+  feedback_area: "Demo clarity",
   message: "Useful feedback",
+  open_to_call: false,
   confirmed_no_confidential_data: true,
   submission_channel: "native_contact_form",
   attribution_source: "hacker_news",

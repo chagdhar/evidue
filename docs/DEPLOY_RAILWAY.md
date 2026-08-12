@@ -37,9 +37,10 @@ The native product-feedback form is optional. Configure both values or neither:
 ```text
 EVIDUE_CONTACT_SHEET_WEBHOOK_URL=https://script.google.com/macros/s/DEPLOYMENT_ID/exec
 EVIDUE_CONTACT_SHEET_SECRET=GENERATED_64_CHARACTER_HEX_SECRET
+EVIDUE_TALK_BOOKING_URL=https://cal.com/YOUR_HANDLE/15min  # optional
 ```
 
-`EVIDUE_BETA_FORM_URL` must be your actual HTTPS Tally URL; do not commit it.
+`EVIDUE_BETA_FORM_URL` must be your actual HTTPS Tally URL; do not commit it. `EVIDUE_TALK_BOOKING_URL` is optional and is shown only as a scheduling CTA; it must be HTTPS.
 Do not set `GEMINI_API_KEY`, Google Cloud credentials, Firestore variables, or
 Cloud Run variables for this service.
 

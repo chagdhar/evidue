@@ -15,7 +15,7 @@ This increment productizes the qualified agreement and verification kernel witho
 - Stateful vendor dispute cases created only after finance approval.
 - Dispute items sourced from both machine-confirmed disputes and review-resolved disputes.
 - Printable HTML and downloadable PDF vendor-dispute packages.
-- Finance-first web workspace at `/pilot/finance` with Overview, Vendors, Review queue, Settlement approval, and Disputes surfaces.
+- Finance-first operations surface at `/workspace/operations` with Overview, Vendors, Review queue, Settlement approval, and Disputes surfaces.
 - Protected `/api/pilot/product/*` API for product workflows.
 - Product architecture, domain, API, data, security, audit, connector, jobs, migration, and release design documents plus ADRs.
 - End-to-end product smoke coverage for review -> approval -> dispute.

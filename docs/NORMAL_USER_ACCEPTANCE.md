@@ -2,7 +2,7 @@
 
 A release is product-usable only if all answers below are yes without terminal/database intervention during the workflow.
 
-- [x] A user understands the purpose from `/pilot` before uploading anything.
+- [x] A user understands the purpose from `/workspace` before uploading anything.
 - [x] The empty state offers a safe sample workspace and a real-data path.
 - [x] A contract can be uploaded or pasted in a common supported format.
 - [x] The user can see what the compiler interpreted and the exact source clause behind it.

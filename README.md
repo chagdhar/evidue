@@ -3,7 +3,7 @@
 Evidue independently reconciles outcome-priced AI-agent vendor invoices against
 contractual billing rules and customer-owned operational evidence.
 
-This repository contains the protected product workflow (`/pilot`), a no-signup public
+This repository contains the protected product workflow (`/workspace`), a no-signup public
 product trial (`/try`), and the deeper synthetic reference workspace (`/demo`). The
 product path accepts operator-provided agreements, invoices, and customer-side evidence;
 the public surfaces use fictional Acme Commerce / Nova Support AI data only.
@@ -20,11 +20,11 @@ sed -i "s/^EVIDUE_PILOT_TOKEN=.*/EVIDUE_PILOT_TOKEN=$token/" .env
 ./scripts/dev.sh
 ```
 
-Open <http://localhost:5173/pilot>, enter the generated access key, and choose
+Open <http://localhost:5173/workspace>, enter the generated access key, and choose
 **Try sample workspace** or **Use my own data**. After reconciliation, open
-<http://localhost:5173/pilot/finance> for recurring vendor operations, exception review,
+<http://localhost:5173/workspace/operations> for recurring vendor operations, exception review,
 settlement approval, reproducibility fingerprints, and stateful vendor disputes.
-`/pilot/config` contains workspace defaults, preferred evidence systems, integration
+`/workspace/settings` contains workspace defaults, preferred evidence systems, integration
 readiness, and the protected reset control. Secrets remain server-side and are never
 exposed by that page. For arbitrary
 customer contracts, configure an Evidue-owned backend compiler provider (for example Gemini
@@ -78,7 +78,7 @@ deterministic reconciliation before showing the conversation CTA. Open
 <http://localhost:5173/demo> for the deeper reference workspace. The backend API is
 available at <http://localhost:8000/api/health>.
 
-The `/try` flow never accepts customer data and never mutates `/pilot` or the authoritative
+The `/try` flow never accepts customer data and never mutates `/workspace` or the authoritative
 demo reconciliation. If a server-side Gemini key is configured, one live compiler run is
 allowed per network per seven days; later runs transparently replay the validated recorded
 model proposal while continuing to execute the real deterministic reconciliation engine.
@@ -158,9 +158,11 @@ Railway deployment.
 
 ## Product surfaces
 
-- `/pilot` — protected agreement/invoice/evidence and verification workbench
-- `/pilot/finance` — protected vendor, review, settlement approval, trust, and dispute operations
-- `/pilot/config` — protected workspace configuration
+- `/workspace` — protected contract/invoice/evidence reconciliation workbench
+- `/workspace/operations` — protected review, settlement approval, trust, and vendor-dispute operations
+- `/workspace/settings` — protected workspace configuration
+
+Legacy `/pilot`, `/pilot/finance`, and `/pilot/config` UI routes redirect to the canonical `/workspace` surfaces. The backend API remains `/api/pilot/*` for compatibility.
 - `/try` — no-signup, synthetic, human-approved public reconciliation trial
 - `/demo` — deeper synthetic finance-control reference workspace
 - `/demo/invoices` — recurring invoice operations
@@ -264,7 +266,7 @@ Each reconciliation run is append-only. Use the comparison endpoint to show what
 
 ### Product frontend
 
-Open `/pilot` to use the protected workflow without raw curl commands. The access key is stored in browser `sessionStorage` only and sent as a bearer header. The default UI is written for finance/operators: guided multi-document contract review, deterministic plain-English contract rules, invoice control totals, a contract-driven evidence checklist, deterministic reconciliation, actionable line-level explanations, rerun deltas, and vendor-facing finance exports. AIR hashes, proof planning, derived facts, and audit history live under **Advanced details**. Workspace defaults and integration readiness live at `/pilot/config`; that page never reads server secrets.
+Open `/workspace` to use the protected workflow without raw curl commands. The access key is stored in browser `sessionStorage` only and sent as a bearer header. The default UI is written for finance/operators: guided multi-document contract review, deterministic plain-English contract rules, invoice control totals, a contract-driven evidence checklist, deterministic reconciliation, actionable line-level explanations, rerun deltas, and vendor-facing finance exports. AIR hashes, proof planning, derived facts, and audit history live under **Advanced details**. Workspace defaults and integration readiness live at `/workspace/settings`; that page never reads server secrets.
 A pending AIR can also be replayed against an existing invoice through the
 financial-impact API so Finance can see the exact dollar effect of a contract/rule change before
 approving it; the result is a simulation and does not replace the approved AIR.

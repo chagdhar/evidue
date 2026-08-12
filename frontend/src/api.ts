@@ -14,14 +14,22 @@ export type PublicConfig = {
   beta_form_configured: boolean;
   beta_form_url: string | null;
   contact_form_configured: boolean;
+  talk_booking_url: string | null;
 };
 
 export type ContactSubmissionPayload = {
   name: string;
   email: string;
   company: string;
+  role: string;
   discussion_type: string;
+  billing_model: string;
+  verification_method: string;
+  evidence_location: string;
+  commercial_action: string;
+  feedback_area: string;
   message: string;
+  open_to_call: boolean;
   confirmed_no_confidential_data: true;
   attribution_source: "hacker_news" | "indie_hackers" | "yc_demo" | "direct_outreach" | "unknown";
   campaign: "railway_beta";

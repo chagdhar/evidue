@@ -2,7 +2,7 @@
 
 ## Goal
 
-`/pilot` is a protected operator workspace for processing one real invoice. It is deliberately separate from `/demo`, which remains a synthetic, repeatable presentation.
+`/workspace` is the protected customer workspace for processing one real invoice. It is deliberately separate from `/demo`, which remains a synthetic, repeatable presentation.
 
 ## Workflow
 

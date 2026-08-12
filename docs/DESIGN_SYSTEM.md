@@ -4,7 +4,7 @@
 
 Evidue is a finance-assurance workspace, not a dashboard gallery and not an AI chat surface. The UI prioritizes financial hierarchy, evidence traceability, dense operational review, and calm decision-making.
 
-The protected `/pilot` product must feel usable by a finance/AP operator without exposing compiler plumbing. Technical reviewers can still reach provenance, AIR hashes, compiler assurance, fact derivation, and audit history under **Advanced**.
+The protected `/workspace` product must feel usable by a finance/AP operator without exposing compiler plumbing. Technical reviewers can still reach provenance, AIR hashes, compiler assurance, fact derivation, and audit history under **Advanced**.
 
 ## Information hierarchy
 

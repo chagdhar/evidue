@@ -21,7 +21,11 @@ rejects altered signatures and submissions older than five minutes.
 5. Save the Apps Script project as `Evidue contact intake`.
 
 The script creates a `Contact submissions` tab and its header row on the first
-successful submission. It also escapes values that Google Sheets could treat as
+successful submission. Existing sheets are migrated by appending the newer
+structured columns without moving the original columns, so historical rows stay
+aligned. The sheet captures role, billing model, verification method, evidence
+location, commercial action, feedback area, and call opt-in in addition to the original message and
+attribution fields. It also escapes values that Google Sheets could treat as
 formulas and rejects duplicate submission IDs for six hours.
 
 ## 2. Create the shared secret
@@ -48,6 +52,10 @@ Value: the generated secret
 4. Set access to **Anyone** so the Evidue server can call it without a Google
    login. The shared secret still prevents unauthorized writes.
 5. Select **Deploy**, authorize the script, and copy the URL ending in `/exec`.
+
+Whenever `integrations/google-sheets/Code.gs` changes, create a **new deployment
+version** (or edit the existing deployment to use a new version). Saving the
+script alone does not update the deployed web app.
 
 Do not use the `/dev` test URL; it only works for script editors.
 

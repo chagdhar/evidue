@@ -1,6 +1,5 @@
 import {
   Alert,
-  AppBar,
   Box,
   Button,
   Card,
@@ -16,6 +15,7 @@ import {
   FormControl,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
   Stack,
   Tab,
@@ -27,12 +27,13 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Toolbar,
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import WorkspaceShell from "./WorkspaceShell";
 import {
+  clearPilotToken,
   loadPilotToken,
   pilotApi,
   ProductDisputeCase,
@@ -116,7 +117,7 @@ export default function FinanceWorkspace() {
 
   const refresh = useCallback(async () => {
     if (!loadPilotToken()) {
-      navigate("/pilot");
+      navigate("/workspace");
       return;
     }
     setBusy("Loading finance operations");
@@ -264,41 +265,58 @@ export default function FinanceWorkspace() {
   }
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
-      <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}>
-        <Toolbar sx={{ gap: 1.5 }}>
-          <Box sx={{ flexGrow: 1 }}>
-            <Typography fontWeight={850}>Evidue Finance Operations</Typography>
-            <Typography variant="caption" color="text.secondary">
-              {overview?.organization.name ?? "Workspace"} · outcome invoice control
-            </Typography>
-          </Box>
-          <Button onClick={() => navigate("/pilot")}>Ingestion & verification</Button>
-          <Button onClick={() => navigate("/pilot/config")}>Configuration</Button>
-          <Button onClick={() => void refresh()} disabled={Boolean(busy)}>Refresh</Button>
-        </Toolbar>
-        {busy && <Box sx={{ px: 2, pb: 0.75 }}><Typography variant="caption" color="text.secondary">{busy}</Typography></Box>}
-      </AppBar>
-
-      <Container maxWidth="xl" sx={{ py: 3 }}>
+    <WorkspaceShell
+      active="operations"
+      workspaceId={overview?.organization.name ?? "Workspace"}
+      busy={busy}
+      onRefresh={() => void refresh()}
+      onSignOut={() => { clearPilotToken(); navigate("/workspace"); }}
+    >
+      <Container maxWidth="xl" sx={{ py: { xs: 2.5, md: 3.5 } }}>
         <Stack spacing={2.5}>
-          <Box>
-            <Typography variant="h3" fontWeight={800}>Financial control workspace</Typography>
-            <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-              Move qualified machine determinations through review, payable approval, and vendor dispute resolution without rewriting the audit trail.
-            </Typography>
-          </Box>
+          <Paper
+            variant="outlined"
+            sx={{
+              overflow: "hidden",
+              borderRadius: 3,
+              borderColor: "#2B333E",
+              bgcolor: "#11161E",
+              backgroundImage: "radial-gradient(circle at 90% 0%, rgba(124,92,252,.18), transparent 32%)",
+            }}
+          >
+            <Box sx={{ p: { xs: 2.5, md: 3.25 }, display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0,1.35fr) minmax(260px,.65fr)" }, gap: 3, alignItems: "end" }}>
+              <Box>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                  <Chip size="small" label="FINANCE OPERATIONS" sx={{ color: "#B7ABFF", bgcolor: "rgba(124,92,252,.10)", border: "1px solid rgba(124,92,252,.25)", letterSpacing: ".06em", fontSize: 10 }} />
+                  <Typography variant="caption" sx={{ color: "#6F7C8D" }}>{overview?.organization.name ?? "Customer workspace"}</Typography>
+                </Stack>
+                <Typography variant="h3" fontWeight={800}>Invoice control center</Typography>
+                <Typography sx={{ mt: 0.8, color: "#8E9AAA", maxWidth: 760 }}>
+                  Review exceptions, approve supported payable amounts, and manage vendor disputes without changing the deterministic reconciliation record.
+                </Typography>
+              </Box>
+              <Box sx={{ borderLeft: { md: "1px solid #2B333E" }, pl: { md: 3 } }}>
+                <Typography variant="overline" sx={{ color: "#6F7C8D" }}>Open review exposure</Typography>
+                <Typography variant="h3" sx={{ mt: 0.25, color: overview?.latest_invoice_totals.open_review_amount && Number(overview.latest_invoice_totals.open_review_amount) > 0 ? "#FFD694" : "#A9EEC9", fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
+                  {money(overview?.latest_invoice_totals.open_review_amount, currency)}
+                </Typography>
+                <Typography variant="caption" sx={{ color: "#748093" }}>{overview?.counts.open_review_cases ?? 0} review case(s) · {overview?.counts.active_disputes ?? 0} active dispute(s)</Typography>
+              </Box>
+            </Box>
+          </Paper>
 
           {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
           {notice && <Alert severity="success" onClose={() => setNotice("")}>{notice}</Alert>}
 
-          <Tabs value={section} onChange={(_, value: Section) => setSection(value)} variant="scrollable" scrollButtons="auto">
+          <Paper variant="outlined" sx={{ px: 1, borderRadius: 2.25, bgcolor: "#11161E", borderColor: "#2B333E" }}>
+            <Tabs value={section} onChange={(_, value: Section) => setSection(value)} variant="scrollable" scrollButtons="auto" aria-label="Finance operation views">
             <Tab value="overview" label="Overview" />
             <Tab value="vendors" label="Vendors" />
             <Tab value="reviews" label={`Review queue${openReviews.length ? ` (${openReviews.length})` : ""}`} />
             <Tab value="settlements" label="Settlement approval" />
             <Tab value="disputes" label={`Disputes${disputes.length ? ` (${disputes.length})` : ""}`} />
-          </Tabs>
+            </Tabs>
+          </Paper>
 
           {section === "overview" && overview && (
             <Stack spacing={2}>
@@ -311,7 +329,7 @@ export default function FinanceWorkspace() {
               <Card><CardContent>
                 <Typography variant="h6" fontWeight={750}>Operating queue</Typography>
                 <Typography color="text.secondary" sx={{ mb: 2 }}>Each invoice advances from deterministic reconciliation to exception review, approval, and dispute.</Typography>
-                {!overview.invoices.length && <Alert severity="info" sx={{ mb: 2 }}>No invoices are available yet. Import and reconcile an invoice in Ingestion & verification to create the first finance work item.</Alert>}
+                {!overview.invoices.length && <Alert severity="info" sx={{ mb: 2 }}>No invoices are available yet. Import and reconcile an invoice in Reconciliation to create the first finance work item.</Alert>}
                 <TableContainer><Table size="small"><TableHead><TableRow><TableCell>Vendor</TableCell><TableCell>Period</TableCell><TableCell>Invoice</TableCell><TableCell align="right">Submitted</TableCell><TableCell align="right">Payable</TableCell><TableCell align="right">Review</TableCell><TableCell>Status</TableCell><TableCell /></TableRow></TableHead><TableBody>
                   {overview.invoices.map((invoice) => <TableRow key={invoice.invoice_id}><TableCell>{invoice.vendor}</TableCell><TableCell>{date(invoice.billing_period_start)} – {date(invoice.billing_period_end)}</TableCell><TableCell><Typography component="code" variant="caption">{invoice.invoice_id}</Typography></TableCell><TableCell align="right">{invoice.submitted_amount ? money(invoice.submitted_amount, currency) : "—"}</TableCell><TableCell align="right">{invoice.recommended_payable_amount ? money(invoice.recommended_payable_amount, currency) : "—"}</TableCell><TableCell align="right">{invoice.open_review_amount ? money(invoice.open_review_amount, currency) : "—"}</TableCell><TableCell><Chip size="small" label={invoice.statement_status.replaceAll("_", " ")} color={statusColor(invoice.statement_status)} /></TableCell><TableCell>{invoice.latest_run_id && <Button size="small" onClick={() => void openSettlement(invoice)}>Open</Button>}</TableCell></TableRow>)}
                 </TableBody></Table></TableContainer>
@@ -323,7 +341,7 @@ export default function FinanceWorkspace() {
             <Card><CardContent>
               <Typography variant="h5" fontWeight={750}>Vendor engagements</Typography>
               <Typography color="text.secondary" sx={{ mb: 2 }}>Recurring commercial relationships, not a single active invoice.</Typography>
-              {!overview.vendors.length && <Alert severity="info" sx={{ mb: 2 }}>No vendor engagements exist yet. Add an agreement in Ingestion & verification to create one automatically.</Alert>}
+              {!overview.vendors.length && <Alert severity="info" sx={{ mb: 2 }}>No vendor engagements exist yet. Add an agreement in Reconciliation to create one automatically.</Alert>}
               <TableContainer><Table><TableHead><TableRow><TableCell>Vendor</TableCell><TableCell>Contracts</TableCell><TableCell>Invoices</TableCell><TableCell align="right">Submitted</TableCell><TableCell align="right">Machine payable</TableCell><TableCell align="right">Disputed</TableCell><TableCell>Open reviews</TableCell></TableRow></TableHead><TableBody>
                 {overview.vendors.map((vendor) => <TableRow key={vendor.id}><TableCell><Typography fontWeight={700}>{vendor.name}</Typography><Chip size="small" label={vendor.status} color="success" variant="outlined" /></TableCell><TableCell>{vendor.contracts}</TableCell><TableCell>{vendor.invoices}</TableCell><TableCell align="right">{money(vendor.submitted_amount, currency)}</TableCell><TableCell align="right">{money(vendor.machine_payable_amount, currency)}</TableCell><TableCell align="right">{money(vendor.machine_disputed_amount, currency)}</TableCell><TableCell>{vendor.open_review_cases}</TableCell></TableRow>)}
               </TableBody></Table></TableContainer>
@@ -404,6 +422,6 @@ export default function FinanceWorkspace() {
         </DialogContent>
         <DialogActions><Button onClick={() => setReviewDialog(null)}>Cancel</Button><Button variant="contained" disabled={reviewRationale.trim().length < 3 || Boolean(busy)} onClick={() => void decideReview()}>Record decision</Button></DialogActions>
       </Dialog>
-    </Box>
+    </WorkspaceShell>
   );
 }

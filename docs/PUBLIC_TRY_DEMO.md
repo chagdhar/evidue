@@ -1,7 +1,7 @@
 # Public Try Evidue demo
 
 `/try` is the public validation surface intended for Indie Hackers, Hacker News, direct
-outreach, and other zero-trust visitors. It is deliberately different from `/pilot`.
+outreach, and other zero-trust visitors. It is deliberately different from `/workspace`.
 
 ## Product goal
 
@@ -25,7 +25,7 @@ Support AI are fictional.
 
 The public route does not weaken the protected product.
 
-- `/pilot/*` remains bearer-token protected and workspace-scoped.
+- `/workspace/*` is the authenticated customer UI; its `/api/pilot/*` data boundary remains bearer-token protected and workspace-scoped.
 - public contract analysis is ephemeral and does not create an authoritative AIR/rule version.
 - the visitor must explicitly approve the proposed demo rules before money is calculated.
 - reconciliation runs in memory against the synthetic 100-claim sample.

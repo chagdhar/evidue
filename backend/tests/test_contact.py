@@ -32,8 +32,15 @@ def submission_payload(**overrides):
         "name": "Alex Buyer",
         "email": "alex@example.com",
         "company": "Acme Commerce",
+        "role": "VP Finance",
         "discussion_type": "Product feedback",
+        "billing_model": "",
+        "verification_method": "",
+        "evidence_location": "",
+        "commercial_action": "",
+        "feedback_area": "Demo clarity",
         "message": "Evidence matching takes too long for the finance team.",
+        "open_to_call": False,
         "confirmed_no_confidential_data": True,
         "attribution_source": "hacker_news",
         "campaign": "railway_beta",
@@ -107,6 +114,45 @@ def test_contact_api_forwards_valid_submission(monkeypatch, client):
     assert captured["attribution_source"] == "hacker_news"
 
 
+def test_contact_api_accepts_anonymous_product_feedback(monkeypatch, client):
+    monkeypatch.setattr("app.main.deliver_contact_submission", lambda _submission: None)
+    response = client.post(
+        "/api/contact-submissions",
+        json=submission_payload(name="", email="", company="", role=""),
+    )
+    assert response.status_code == 201
+
+
+def test_contact_api_requires_high_signal_fields_for_invoice_review(monkeypatch, client):
+    monkeypatch.setattr("app.main.deliver_contact_submission", lambda _submission: None)
+    base = submission_payload(
+        discussion_type="Invoice review",
+        feedback_area="",
+        billing_model="Per outcome",
+        verification_method="Reconcile exports",
+        evidence_location="Multiple customer systems",
+        commercial_action="Request a credit",
+    )
+    assert client.post("/api/contact-submissions", json=base).status_code == 201
+
+    for field in (
+        "billing_model",
+        "verification_method",
+        "evidence_location",
+        "commercial_action",
+    ):
+        invalid = {**base, field: "", "submission_id": str(uuid4())}
+        assert client.post("/api/contact-submissions", json=invalid).status_code == 422
+
+
+def test_contact_api_requires_email_when_open_to_call(client):
+    response = client.post(
+        "/api/contact-submissions",
+        json=submission_payload(email="", open_to_call=True),
+    )
+    assert response.status_code == 422
+
+
 @pytest.mark.parametrize(
     "override",
     [
@@ -115,6 +161,7 @@ def test_contact_api_forwards_valid_submission(monkeypatch, client):
         {"confirmed_no_confidential_data": False},
         {"confirmed_no_confidential_data": None},
         {"message": "short"},
+        {"feedback_area": ""},
     ],
 )
 def test_contact_api_rejects_invalid_and_unconfirmed_submissions(override, client):
@@ -298,6 +345,9 @@ def test_google_sheet_delivery_is_signed_and_keeps_secret_server_side(monkeypatc
     payload = json.loads(serialized)
     assert payload["submission_channel"] == "native_contact_form"
     assert payload["campaign"] == "railway_beta"
+    assert payload["role"] == "VP Finance"
+    assert payload["feedback_area"] == "Demo clarity"
+    assert payload["open_to_call"] is False
     assert "website" not in payload
 
 

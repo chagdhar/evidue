@@ -38,7 +38,7 @@ export EVIDUE_LLM_ASSURANCE_MODEL='...'
 This second compilation is a safety check, not a vote. Material semantic disagreement or an
 unavailable explicitly-required assurance provider blocks approval and requires human review.
 
-Open `/pilot` and enter the matching workspace access key. The product configuration surface returns only secret-free inference readiness metadata and never provider keys.
+Open `/workspace` and enter the matching workspace access key. The product configuration surface returns only secret-free inference readiness metadata and never provider keys.
 
 ## Container
 

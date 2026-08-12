@@ -231,10 +231,12 @@ def test_public_config_is_safe_without_google_credentials(monkeypatch):
     monkeypatch.delenv("EVIDUE_FIRESTORE_PROJECT_ID", raising=False)
     monkeypatch.delenv("EVIDUE_CONTACT_SHEET_WEBHOOK_URL", raising=False)
     monkeypatch.delenv("EVIDUE_CONTACT_SHEET_SECRET", raising=False)
+    monkeypatch.delenv("EVIDUE_TALK_BOOKING_URL", raising=False)
     assert public_config() == {
         "beta_form_configured": False,
         "beta_form_url": None,
         "contact_form_configured": False,
+        "talk_booking_url": None,
     }
     with TestClient(app) as client:
         assert client.get("/api/demo/status").json()["public_demo"] is True
@@ -242,6 +244,7 @@ def test_public_config_is_safe_without_google_credentials(monkeypatch):
             "beta_form_configured": False,
             "beta_form_url": None,
             "contact_form_configured": False,
+            "talk_booking_url": None,
         }
 
 
@@ -260,10 +263,12 @@ def test_public_config_rejects_unsafe_beta_urls(monkeypatch, configured_url):
     monkeypatch.setenv("EVIDUE_BETA_FORM_URL", configured_url)
     monkeypatch.delenv("EVIDUE_CONTACT_SHEET_WEBHOOK_URL", raising=False)
     monkeypatch.delenv("EVIDUE_CONTACT_SHEET_SECRET", raising=False)
+    monkeypatch.delenv("EVIDUE_TALK_BOOKING_URL", raising=False)
     assert public_config() == {
         "beta_form_configured": False,
         "beta_form_url": None,
         "contact_form_configured": False,
+        "talk_booking_url": None,
     }
 
 
@@ -272,11 +277,41 @@ def test_public_config_allows_tally_https_url(monkeypatch):
     monkeypatch.setenv("EVIDUE_BETA_FORM_URL", configured_url)
     monkeypatch.delenv("EVIDUE_CONTACT_SHEET_WEBHOOK_URL", raising=False)
     monkeypatch.delenv("EVIDUE_CONTACT_SHEET_SECRET", raising=False)
+    monkeypatch.delenv("EVIDUE_TALK_BOOKING_URL", raising=False)
     assert public_config() == {
         "beta_form_configured": True,
         "beta_form_url": configured_url,
         "contact_form_configured": False,
+        "talk_booking_url": None,
     }
+
+
+@pytest.mark.parametrize(
+    "configured_url",
+    [
+        "http://cal.com/evidue/15min",
+        "javascript:alert(1)",
+        "//cal.com/evidue/15min",
+        "https://user:pass@cal.com/evidue/15min",
+        "https://cal.com:8443/evidue/15min",
+        "https://cal.com/evidue/15min#fragment",
+    ],
+)
+def test_public_config_rejects_unsafe_talk_booking_urls(monkeypatch, configured_url):
+    monkeypatch.setenv("EVIDUE_TALK_BOOKING_URL", configured_url)
+    monkeypatch.delenv("EVIDUE_BETA_FORM_URL", raising=False)
+    monkeypatch.delenv("EVIDUE_CONTACT_SHEET_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("EVIDUE_CONTACT_SHEET_SECRET", raising=False)
+    assert public_config()["talk_booking_url"] is None
+
+
+def test_public_config_allows_https_talk_booking_url(monkeypatch):
+    configured_url = "https://cal.com/evidue/15min?source=evidue"
+    monkeypatch.setenv("EVIDUE_TALK_BOOKING_URL", configured_url)
+    monkeypatch.delenv("EVIDUE_BETA_FORM_URL", raising=False)
+    monkeypatch.delenv("EVIDUE_CONTACT_SHEET_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("EVIDUE_CONTACT_SHEET_SECRET", raising=False)
+    assert public_config()["talk_booking_url"] == configured_url
 
 
 def test_production_shaped_ingestion_readiness_and_source_samples():

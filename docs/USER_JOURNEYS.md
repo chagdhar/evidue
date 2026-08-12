@@ -2,7 +2,7 @@
 
 ## First-time evaluator
 
-1. Open `/pilot` and enter a workspace access key.
+1. Open `/workspace` and enter a workspace access key.
 2. Choose **Try sample workspace**.
 3. See one payable, one disputed, and one needs-review line.
 4. Open the line decisions to inspect contract clauses and evidence timelines.

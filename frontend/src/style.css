@@ -1762,6 +1762,29 @@ body {
 .contact-form-heading p { margin-top: 5px; color: #66727D; font-size: .78rem; }
 .contact-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .contact-field-wide { grid-column: 1 / -1; }
+.contact-intent-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 26px; }
+.contact-intent-option.MuiButton-root {
+  min-height: 92px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 16px;
+  text-align: left;
+  text-transform: none;
+  border-radius: 5px;
+}
+.contact-intent-option strong { font-size: .82rem; }
+.contact-intent-option span { color: #66727D; font-size: .7rem; font-weight: 500; line-height: 1.4; }
+.contact-intent-option.MuiButton-contained span { color: rgba(255,255,255,.82); }
+.contact-section-heading { margin: 28px 0 14px; padding-top: 24px; border-top: 1px solid #E0E5E9; }
+.contact-section-heading h6 { font-size: .92rem; }
+.contact-section-heading p { margin-top: 4px; color: #66727D; font-size: .75rem; line-height: 1.5; }
+.contact-message-heading { margin-bottom: 12px; }
+.contact-call-opt-in.MuiFormControlLabel-root { margin: 18px 0 0; }
+.contact-submit-row { display: flex; align-items: center; gap: 16px; }
+.contact-submit-row > p { color: #7A8791; font-size: .7rem; }
+.contact-success-detail { color: #53616C; font-size: .8rem !important; }
 .contact-form .MuiOutlinedInput-root { background: #FFFFFF; border-radius: 4px; }
 .contact-form .MuiInputLabel-root { color: #53616C; }
 .contact-privacy-note { margin: 24px 0 14px; color: #405563 !important; background: #EDF3F7 !important; border-color: #C8D8E2 !important; }
@@ -1792,6 +1815,8 @@ body {
   .contact-form { padding: 22px 18px; }
   .contact-form-grid { grid-template-columns: 1fr; }
   .contact-field-wide { grid-column: auto; }
+  .contact-intent-grid { grid-template-columns: 1fr; }
+  .contact-submit-row { align-items: flex-start; flex-direction: column; gap: 8px; }
 }
 
 @media (max-width: 1180px) {

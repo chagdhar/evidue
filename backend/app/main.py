@@ -50,8 +50,7 @@ from app.upload.router import router as pilot_router
 logger = logging.getLogger(__name__)
 MAX_CONTACT_REQUEST_BYTES = 24 * 1024
 PUBLIC_CONTACT_ERROR = (
-    "Your response could not be submitted right now. "
-    "Please try again or use the email contact option."
+    "Your response could not be submitted right now. Please try again in a moment."
 )
 
 
@@ -166,7 +165,7 @@ async def security_and_cache_headers(request, call_next):
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; font-src 'self' data:; connect-src "
         + " ".join(connect_sources)
-        + "; base-uri 'self'; frame-ancestors 'none'; form-action 'self' mailto:"
+        + "; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
     )
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -193,6 +192,27 @@ async def security_and_cache_headers(request, call_next):
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def talk_booking_url() -> str | None:
+    configured = os.getenv("EVIDUE_TALK_BOOKING_URL", "").strip()
+    if not configured:
+        return None
+    parsed = urlsplit(configured)
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or port not in {None, 443}
+        or parsed.fragment
+    ):
+        return None
+    return configured
 
 
 def beta_form_url() -> str | None:
@@ -224,6 +244,7 @@ def public_config() -> dict[str, object]:
         "beta_form_configured": configured_url is not None,
         "beta_form_url": configured_url,
         "contact_form_configured": contact_sheet_configured(),
+        "talk_booking_url": talk_booking_url(),
     }
 
 

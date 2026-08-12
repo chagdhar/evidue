@@ -26,7 +26,7 @@ The model proposes contract interpretation. It never adjudicates invoice lines. 
 
 ## Primary surface
 
-`/pilot` is the product/operator surface. `/demo` remains a synthetic public narrative demo and is not the source of truth for product workflow validation.
+`/workspace` is the customer product surface. `/workspace/operations` handles finance review/approval/disputes and `/workspace/settings` handles configuration. `/demo` remains a synthetic public narrative demo and is not the source of truth for product workflow validation.
 
 ## Current product boundary
 

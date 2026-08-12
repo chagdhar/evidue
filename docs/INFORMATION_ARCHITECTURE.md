@@ -24,7 +24,7 @@ Workspace
 
 ## Primary user workflow
 
-The `/pilot` UI deliberately presents six concepts only: **Contract → Rules → Invoice → Evidence → Reconcile → Export**. Advanced details expose hashes, AIR IDs, compiler assurance, verification plans, derived facts, and audit events without making them prerequisites for routine use.
+The `/workspace` UI deliberately presents six concepts only: **Contract → Rules → Invoice → Evidence → Reconcile → Export**. Advanced details expose hashes, AIR IDs, compiler assurance, verification plans, derived facts, and audit events without making them prerequisites for routine use.
 
 ## Server-side isolation
 
