@@ -69,10 +69,11 @@ it("delivers one successful reconciliation before asking for contact", async () 
 
   await user.click(screen.getByRole("button", { name: "Verify the invoice" }));
   expect(await screen.findByText("No same-intent recontact")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Approve rules & verify invoice" }));
+  await user.click(screen.getByRole("button", { name: "Approve 1 contract rule" }));
+  await user.click(screen.getByRole("button", { name: "Verify 100 claims" }));
 
-  expect(await screen.findByText("$124.50")).toBeInTheDocument();
-  expect(screen.getByText("$25.50")).toBeInTheDocument();
+  expect((await screen.findAllByText("$124.50")).length).toBeGreaterThan(0);
+  expect(screen.getAllByText("$25.50").length).toBeGreaterThan(0);
   expect(screen.getByText("17 claims contradicted an approved contract rule.")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "R3 · OUT-004821" })).toHaveAttribute("href", "/demo/invoices/current?outcome=OUT-004821");
   expect(screen.getByRole("link", { name: "Share your workflow" })).toHaveAttribute("href", "/contact");

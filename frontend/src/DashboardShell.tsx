@@ -72,7 +72,7 @@ function Brand() {
       </Box>
       <Box sx={{ minWidth: 0 }}>
         <Typography className="evidue-wordmark" noWrap>Evidue</Typography>
-        <Typography className="evidue-brand-caption" noWrap>Outcome invoice control</Typography>
+        <Typography className="evidue-brand-caption" noWrap>Invoice control</Typography>
       </Box>
     </Stack>
   );
@@ -130,7 +130,7 @@ export function DashboardShell({ onOpenHowItWorks }: { onOpenHowItWorks: () => v
   }, []);
 
   const route = useMemo(
-    () => routeTitles[location.pathname] ?? { title: "Evidue", context: "Outcome invoice control" },
+    () => routeTitles[location.pathname] ?? { title: "Evidue", context: "AI vendor invoice control" },
     [location.pathname],
   );
 

@@ -20,7 +20,7 @@ export function useEvidueThemeMode() {
 export function EvidueThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<EvidueMode>(() => {
     const version = window.localStorage.getItem("evidue-theme-version");
-    if (version !== "finance-v2") return "light";
+    if (version !== "decision-ledger-v3") return "light";
     const saved = window.localStorage.getItem("evidue-theme");
     return saved === "light" || saved === "dark" ? saved : "light";
   });
@@ -28,7 +28,7 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.evidueMode = mode;
     window.localStorage.setItem("evidue-theme", mode);
-    window.localStorage.setItem("evidue-theme-version", "finance-v2");
+    window.localStorage.setItem("evidue-theme-version", "decision-ledger-v3");
   }, [mode]);
 
   const theme = useMemo(() => {
@@ -93,7 +93,7 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
         button: { fontWeight: 680, textTransform: "none", letterSpacing: "-0.01em" },
         overline: { fontWeight: 760, letterSpacing: "0.09em", fontSize: "0.68rem" },
       },
-      shape: { borderRadius: 8 },
+      shape: { borderRadius: 5 },
       components: {
         MuiCssBaseline: {
           styleOverrides: {
@@ -117,7 +117,7 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
           defaultProps: { disableElevation: true },
           styleOverrides: {
             root: {
-              borderRadius: 7,
+              borderRadius: 5,
               minHeight: 38,
               paddingInline: 15,
               transition: "background-color 120ms ease, border-color 120ms ease, color 120ms ease",
@@ -135,7 +135,7 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
           },
         },
         MuiChip: {
-          styleOverrides: { root: { borderRadius: 5, fontWeight: 650 } },
+          styleOverrides: { root: { borderRadius: 4, fontWeight: 680 } },
         },
         MuiTableCell: {
           styleOverrides: {
@@ -154,14 +154,14 @@ export function EvidueThemeProvider({ children }: { children: ReactNode }) {
           styleOverrides: { root: { borderRadius: 999, height: 5 }, bar: { borderRadius: 999 } },
         },
         MuiAlert: {
-          styleOverrides: { root: { borderRadius: 7, border: `1px solid ${colors.divider}` } },
+          styleOverrides: { root: { borderRadius: 5, border: `1px solid ${colors.divider}` } },
         },
         MuiAppBar: { styleOverrides: { root: { boxShadow: "none" } } },
         MuiTextField: { defaultProps: { size: "small" } },
         MuiOutlinedInput: {
           styleOverrides: {
             root: {
-              borderRadius: 7,
+              borderRadius: 5,
               backgroundColor: colors.paper,
               transition: "box-shadow 120ms ease",
               "&.Mui-focused": { boxShadow: dark ? "0 0 0 2px rgba(127,166,188,0.14)" : "0 0 0 2px rgba(13,111,117,0.11)" },

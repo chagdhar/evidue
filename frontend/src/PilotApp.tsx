@@ -30,6 +30,7 @@ import {
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import WorkspaceShell from "./WorkspaceShell";
+import { AuthorityBoundary, ClaimDecisionLedger, DecisionFlow, FinancialEquation } from "./DecisionLedger";
 import {
   AIRVersion,
   AgreementBundleView,
@@ -561,14 +562,8 @@ export default function PilotApp() {
             <Typography>
               Reconcile outcome-priced AI invoices against approved contract rules and customer-controlled evidence before money moves.
             </Typography>
-            <Box className="workspace-auth-principles">
-              {[
-                ["01", "Contract-backed", "AI proposes the interpretation; finance approves the governing rules."],
-                ["02", "Evidence-backed", "Customer-owned records prove what happened after the vendor claim."],
-                ["03", "Deterministic dollars", "Approved rules—not an LLM—produce the financial determination."],
-              ].map(([number, title, text]) => (
-                <Box key={number}><span>{number}</span><div><strong>{title}</strong><p>{text}</p></div></Box>
-              ))}
+            <Box className="workspace-auth-decision-flow">
+              <DecisionFlow compact />
             </Box>
           </Box>
           <Box className="workspace-auth-form">
@@ -1134,6 +1129,14 @@ export function Overview({ status, reconciliation }: { status: PilotStatus | nul
         ))}
       </Box>
 
+      <FinancialEquation
+        billed={money(reconciliation.submitted_amount, reconciliation.currency)}
+        disputed={money(reconciliation.recommended_deduction, reconciliation.currency)}
+        substantiated={money(reconciliation.confirmed_payable_amount, reconciliation.currency)}
+        review={money(reconciliation.needs_review_amount, reconciliation.currency)}
+        caption="Machine result only: approved contract authority + normalized customer proof."
+      />
+
       <Box className="amount-waterfall" aria-label="Invoice disposition">
         <Box className="amount-waterfall-labels">
           <span>Disposition of billed amount</span>
@@ -1536,10 +1539,12 @@ function RuleReview({
         <Box className="workspace-section-heading compact">
           <Box>
             <Typography className="section-kicker">RULE REVIEW</Typography>
-            <Typography variant="h6" fontWeight={740}>Compare the contract language with Evidue’s interpretation</Typography>
-            <Typography color="text.secondary">The left side is the governing source. The right side is the finance rule the deterministic engine will execute after approval.</Typography>
+            <Typography variant="h6" fontWeight={740}>Compare source authority with the proposed payment rule</Typography>
+            <Typography color="text.secondary">The contract is the source. The AI proposal is inert until you approve it. Only the approved version can govern deterministic verification.</Typography>
           </Box>
         </Box>
+
+        <AuthorityBoundary />
 
         <Stack spacing={1.25}>
           {rules.map((rule, index) => {
@@ -1548,7 +1553,7 @@ function RuleReview({
               <Paper key={rule.id} variant="outlined" className={`contract-rule-review ${state}`}>
                 <Box className="contract-rule-source">
                   <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="center">
-                    <Typography className="section-kicker">SOURCE CLAUSE {index + 1}</Typography>
+                    <Typography className="section-kicker">AUTHORITY SOURCE · CLAUSE {index + 1}</Typography>
                     <Typography variant="caption" color="text.secondary">{rule.source_clauses[0]?.document_id ?? "Agreement"}</Typography>
                   </Stack>
                   {rule.source_clauses.length ? rule.source_clauses.map((clause) => (
@@ -1559,7 +1564,7 @@ function RuleReview({
                 <Box className="contract-rule-interpretation">
                   <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
                     <Box>
-                      <Typography className="section-kicker">PROPOSED CONTRACT RULE</Typography>
+                      <Typography className="section-kicker">PROPOSED PAYMENT RULE</Typography>
                       <Typography variant="h6" fontWeight={740}>{rule.description}</Typography>
                     </Box>
                     <Chip size="small" variant="outlined" color={state === "reviewed" ? "success" : state === "flagged" ? "error" : "default"} label={state === "reviewed" ? "Reviewed" : state === "flagged" ? "Flagged" : "Pending"} />
@@ -1989,6 +1994,26 @@ function ReviewWorkspace({
   const disputed = rows.filter((row) => row.status === "disputed");
   const payable = rows.filter((row) => row.status === "payable");
   const currency = reconciliation.currency || "USD";
+  const representative = disputed[0] ?? needsReview[0] ?? payable[0] ?? null;
+  const representativeClause = representative?.contract_clauses?.[0];
+  const representativeEvidence = (representative?.evidence ?? []).slice(0, 4).map((item) => ({
+    when: item.timestamp ? new Date(item.timestamp).toLocaleString() : "Evidence",
+    source: item.source_system,
+    event: `${readable(item.event_type)} · ${item.source_record_id}`,
+    tone: representative?.status === "disputed" ? "bad" as const : "neutral" as const,
+  }));
+  const representativeImpact = representative
+    ? representative.status === "disputed"
+      ? money(representative.confirmed_disputed_amount, currency)
+      : representative.status === "needs_review"
+        ? money(representative.needs_review_amount, currency)
+        : money(representative.confirmed_payable_amount, currency)
+    : "—";
+  const representativeAction = representative?.status === "disputed"
+    ? "Dispute / request credit / true-up per contract"
+    : representative?.status === "needs_review"
+      ? "Hold for review"
+      : "Pay substantiated amount";
 
   return (
     <Box id="review">
@@ -2020,6 +2045,28 @@ function ReviewWorkspace({
               </Stack>
             </Box>
           </Box>
+
+          {representative && (
+            <Box className="workspace-decision-ledger-block">
+              <Box className="workspace-section-heading compact">
+                <Box>
+                  <Typography className="section-kicker">DECISION LEDGER</Typography>
+                  <Typography variant="h6" fontWeight={740}>Inspect one line from claim to dollar consequence</Typography>
+                  <Typography color="text.secondary">The ledger below uses the persisted clause and evidence references attached to this determination.</Typography>
+                </Box>
+              </Box>
+              <ClaimDecisionLedger
+                claimId={representative.outcome_id}
+                claim="Vendor submitted this outcome as a billable invoice line."
+                authorityId={representative.rule_id ?? representativeClause?.id ?? "Approved contract authority"}
+                authority={representativeClause?.text ?? representative.rule_description ?? representative.reason}
+                evidence={representativeEvidence.length ? representativeEvidence : [{ source: "Deterministic record", event: representative.reason, tone: representative.status === "disputed" ? "bad" : "neutral" }]}
+                determination={representative.status === "payable" ? "Substantiated" : representative.status === "disputed" ? "Contradicted" : "Insufficient evidence"}
+                impact={`${representativeImpact} ${representative.status === "disputed" ? "identified for dispute" : representative.status === "needs_review" ? "held for review" : "substantiated"}`}
+                action={representativeAction}
+              />
+            </Box>
+          )}
 
           {needsReview.length > 0 && (
             <Paper variant="outlined" className="recommended-action-panel">

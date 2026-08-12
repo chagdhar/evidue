@@ -33,9 +33,9 @@ describe("validation-critical finance presentation", () => {
     expect(screen.getByText("Identified for dispute")).toBeInTheDocument();
     expect(screen.getByText("Needs review")).toBeInTheDocument();
     expect(screen.getByText("17.0% of invoice value identified for dispute.")).toBeInTheDocument();
-    expect(screen.getByText("$150.00")).toBeInTheDocument();
-    expect(screen.getByText("$124.50")).toBeInTheDocument();
-    expect(screen.getByText("$25.50")).toBeInTheDocument();
+    expect(screen.getAllByText("$150.00").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("$124.50").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("$25.50").length).toBeGreaterThanOrEqual(1);
   });
 
 

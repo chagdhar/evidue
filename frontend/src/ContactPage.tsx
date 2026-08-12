@@ -18,6 +18,7 @@ import { usePublicConfig } from "./BetaApplicationCTA";
 import { api } from "./api";
 import { type ContactDiscussionType, type ContactSubmission } from "./contact";
 import { TemplateIcon } from "./TemplateIcons";
+import { DecisionFlow } from "./DecisionLedger";
 
 const initialSubmission: ContactSubmission = {
   name: "",
@@ -173,6 +174,10 @@ export default function ContactPage() {
           <Box className="contact-expectations">
             <Typography variant="h5">We want the inconvenient answer.</Typography>
             <Typography>If you never verify vendor charges, say that. If the demo was confusing or unconvincing, say that too.</Typography>
+          </Box>
+          <Box className="contact-decision-grammar">
+            <Typography className="contact-section-kicker">THE CONTROL WE ARE TESTING</Typography>
+            <DecisionFlow compact />
           </Box>
         </Box>
 

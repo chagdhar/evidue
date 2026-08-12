@@ -20,6 +20,7 @@ import {
   Typography,
 } from "@mui/material";
 import { TemplateIcon } from "./TemplateIcons";
+import { DecisionFlow } from "./DecisionLedger";
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -46,21 +47,9 @@ export function ProductShell() {
       <Drawer anchor="right" open={aboutOpen} onClose={() => setAboutOpen(false)}>
         <Box className="template-about-drawer">
           <Typography variant="overline" color="primary">Product workflow</Typography>
-          <Typography variant="h4" sx={{ mt: 0.5 }}>One outcome record, two independent controls</Typography>
-          <Stack spacing={0} sx={{ mt: 3 }} divider={<Divider flexItem />}>
-            {[
-              ["01", "Instrument the outcome", "The vendor emits a stable outcome ID, claimed action, agent version, and evidence references."],
-              ["02", "Preflight before invoicing", "Evidue Prove identifies unsupported claims, duplicates, and missing operational proof."],
-              ["03", "Reconcile independently", "Evidue joins customer-owned evidence to customer-approved contract rules."],
-              ["04", "Determine each charge", "Every claim becomes payable, disputed, or needs review with decisive evidence."],
-              ["05", "Settle with proof", "Finance receives a corrected payable amount and an exportable dispute package."],
-            ].map(([number, title, body]) => (
-              <Box className="template-workflow-row" key={number}>
-                <span>{number}</span>
-                <Box><Typography fontWeight={700}>{title}</Typography><Typography variant="body2" color="text.secondary">{body}</Typography></Box>
-              </Box>
-            ))}
-          </Stack>
+          <Typography variant="h4" sx={{ mt: 0.5 }}>One financial decision, one authority chain</Typography>
+          <Typography color="text.secondary" sx={{ mt: 1 }}>Every Evidue surface uses the same control grammar: interpret the contract, authorize the rule set, verify customer proof, then act on the dollars.</Typography>
+          <Box sx={{ mt: 3 }}><DecisionFlow /></Box>
           <Alert severity="info" sx={{ mt: 3 }}>
             Vendor preflight cannot alter customer-approved rules or private evidence. No model decides whether a charge is payable, and the customer retains final payment authority.
           </Alert>

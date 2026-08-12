@@ -28,6 +28,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import WorkspaceShell from "./WorkspaceShell";
+import { DecisionFlow, FinancialEquation } from "./DecisionLedger";
 import {
   clearPilotToken,
   loadPilotToken,
@@ -201,6 +202,14 @@ export function WorkspaceOverview() {
             emphasis: attentionCount > 0 ? "warning" : "neutral",
           },
         ]} />
+
+        <Paper variant="outlined" className="workspace-control-grammar">
+          <Box>
+            <Typography className="section-kicker">HOW EVERY DECISION IS BUILT</Typography>
+            <Typography variant="h6" fontWeight={740}>Claim → authority → proof → financial action</Typography>
+          </Box>
+          <DecisionFlow compact />
+        </Paper>
 
         <Paper variant="outlined" className="recommended-action-panel">
           <Box>
@@ -553,6 +562,13 @@ export function InvoiceRecordPage() {
             <Box><Typography className="section-kicker">WHAT FINANCE CAN DO</Typography><Typography variant="h6" fontWeight={760}>{commercialAction}</Typography><Typography color="text.secondary">The commercial action depends on the approved agreement, review state, and settlement authority.</Typography></Box>
           </Paper>
           {invoice.statement_status === "not_reconciled" && <Paper variant="outlined" className="recommended-action-panel"><Box><Typography className="section-kicker">NEXT STEP</Typography><Typography variant="h6" fontWeight={760}>Complete the active verification case</Typography><Typography color="text.secondary">Review contract rules, invoice mapping, customer evidence, and deterministic verification.</Typography></Box><Button variant="contained" onClick={() => navigate("/workspace/invoices/current")}>Continue verification</Button></Paper>}
+          {statement && <FinancialEquation
+            billed={money(statement.submitted_amount, currency)}
+            disputed={money(statement.recommended_final_disputed_amount, currency)}
+            substantiated={money(statement.recommended_final_payable_amount, currency)}
+            review={money(statement.open_review_amount, currency)}
+            caption="Settlement view of the persisted verification result."
+          />}
           {statement && <StatStrip items={[
             { label: "Vendor billed", value: money(statement.submitted_amount, currency), detail: "Submitted invoice" },
             { label: "Verified payable", value: money(statement.recommended_final_payable_amount, currency), detail: statement.status === "approved" ? "Approved" : "Recommended" },

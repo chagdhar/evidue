@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { api, PublicTryAnalysis, PublicTryResult } from "./api";
+import { AuthorityBoundary, DecisionFlow, FinancialEquation } from "./DecisionLedger";
 import { track } from "./analytics";
 import { formatUsd } from "./presentation";
 
@@ -22,19 +23,21 @@ function Brand() {
   );
 }
 
-function StageRail({ analysis, result }: { analysis: PublicTryAnalysis | null; result: PublicTryResult | null }) {
+function StageRail({ analysis, rulesApproved, result }: { analysis: PublicTryAnalysis | null; rulesApproved: boolean; result: PublicTryResult | null }) {
   const stages = [
     ["01", "Read contract", Boolean(analysis)],
-    ["02", "Approve rules", Boolean(result)],
-    ["03", "Verify evidence", Boolean(result)],
+    ["02", "Approve rules", rulesApproved],
+    ["03", "Verify claims", Boolean(result)],
     ["04", "Act on dollars", Boolean(result)],
   ] as const;
+  const activeIndex = !analysis ? 0 : !rulesApproved ? 1 : !result ? 2 : 3;
   return (
-    <Box className="try-v3-rail" aria-label="Reconciliation progress">
+    <Box className="try-v4-rail" aria-label="Reconciliation progress">
       {stages.map(([number, label, done], index) => (
-        <Box key={label} className={`${done ? "done" : ""}${(!analysis && index === 0) || (analysis && !result && index === 1) ? " active" : ""}`}>
-          <span>{done ? "✓" : number}</span><strong>{label}</strong>
-          {index < stages.length - 1 && <b>→</b>}
+        <Box key={label} className={`${done ? "done" : ""}${index === activeIndex ? " active" : ""}`}>
+          <span>{done ? "✓" : number}</span>
+          <strong>{label}</strong>
+          {index < stages.length - 1 && <b aria-hidden="true">→</b>}
         </Box>
       ))}
     </Box>
@@ -43,6 +46,7 @@ function StageRail({ analysis, result }: { analysis: PublicTryAnalysis | null; r
 
 export default function TryEviduePage() {
   const [analysis, setAnalysis] = useState<PublicTryAnalysis | null>(null);
+  const [rulesApproved, setRulesApproved] = useState(false);
   const [result, setResult] = useState<PublicTryResult | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [reconciling, setReconciling] = useState(false);
@@ -58,7 +62,7 @@ export default function TryEviduePage() {
   }, [result]);
 
   async function analyze() {
-    setError(""); setAnalyzing(true); setResult(null); track("try_evidue_analyze_started");
+    setError(""); setAnalyzing(true); setResult(null); setRulesApproved(false); track("try_evidue_analyze_started");
     try {
       const value = await api.analyzePublicTry();
       setAnalysis(value);
@@ -68,9 +72,15 @@ export default function TryEviduePage() {
     } finally { setAnalyzing(false); }
   }
 
-  async function approveAndRun() {
-    if (!analysis?.sandbox_id) return;
-    setError(""); setReconciling(true); track("try_evidue_rules_approved", { rule_count: analysis.rules.length });
+  function approveRules() {
+    if (!analysis?.approval_ready) return;
+    setRulesApproved(true);
+    track("try_evidue_rules_authority_confirmed", { rule_count: analysis.rules.length });
+  }
+
+  async function verifyClaims() {
+    if (!analysis?.sandbox_id || !rulesApproved) return;
+    setError(""); setReconciling(true); track("try_evidue_verification_started", { rule_count: analysis.rules.length });
     try {
       const value = await api.approvePublicTry(analysis.sandbox_id);
       setResult(value);
@@ -81,7 +91,7 @@ export default function TryEviduePage() {
   }
 
   return (
-    <Box className="try-v3-page">
+    <Box className="try-v4-page decision-ledger-site">
       <Box component="header" className="try-v3-header">
         <Container maxWidth={false} className="try-v3-container try-v3-header-inner">
           <Brand />
@@ -92,49 +102,64 @@ export default function TryEviduePage() {
         </Container>
       </Box>
 
-      <Box className="try-v3-hero">
-        <Container maxWidth={false} className="try-v3-container try-v3-hero-grid">
-          <Box>
+      <Box className="try-v4-hero">
+        <Container maxWidth={false} className="try-v3-container try-v4-hero-grid">
+          <Box className="try-v4-hero-copy">
             <Typography className="try-v3-kicker">PUBLIC RECONCILIATION · SYNTHETIC DATA</Typography>
             <Typography component="h1">Nova AI billed Acme $150 for 100 outcomes.</Typography>
-            <Typography className="try-v3-question">Would you pay it?</Typography>
-            <Typography className="try-v3-lede">Run the contract → approval → evidence → financial-decision loop yourself. No signup. No customer data.</Typography>
+            <Typography className="try-v4-question">Would you pay it?</Typography>
+            <Typography className="try-v4-lede">Do not trust the vendor number—or the model. Establish contract authority, then verify every claim against customer-side proof.</Typography>
             <Button variant="contained" size="large" onClick={() => void analyze()} disabled={analyzing}>
               {analyzing ? <><CircularProgress size={17} sx={{ mr: 1 }} />Reading contract…</> : analysis ? "Read contract again" : "Verify the invoice"}
             </Button>
           </Box>
-          <Box className="try-v3-challenge">
-            <Box className="try-v3-challenge-top"><span>NOVA SUPPORT AI</span><b>INV-JUN-2026</b></Box>
-            <Box className="try-v3-challenge-money"><span>Amount due</span><strong>$150.00</strong><small>100 claimed outcomes × $1.50</small></Box>
-            <Box className="try-v3-challenge-claim"><span>Vendor assertion</span><strong>All 100 outcomes are billable</strong></Box>
-            <Box className="try-v3-challenge-footer">Your contract and systems—not the vendor report—decide what is supported.</Box>
+          <Box className={`try-v4-challenge${result ? " resolved" : ""}`}>
+            <Box className="try-v4-challenge-head"><span>NOVA SUPPORT AI</span><b>INV-JUN-2026</b></Box>
+            {!result ? (
+              <>
+                <Box className="try-v4-vendor-claim"><span>VENDOR ASSERTION</span><strong>100 / 100 outcomes billable</strong></Box>
+                <Box className="try-v4-amount-due"><span>AMOUNT DUE</span><strong>$150.00</strong><small>100 claimed outcomes × $1.50</small></Box>
+                <Box className="try-v4-challenge-note">The invoice is an assertion. Evidue asks what the contract and your systems can actually substantiate.</Box>
+              </>
+            ) : (
+              <>
+                <Box className="try-v4-resolved-label">VERIFIED AGAINST APPROVED AUTHORITY</Box>
+                <FinancialEquation billed={formatUsd(result.submitted_amount)} disputed={formatUsd(result.recommended_deduction)} substantiated={formatUsd(result.confirmed_payable_amount)} />
+                <Box className="try-v4-challenge-note">{result.disputed_outcomes} claims contradicted approved rules · {result.needs_review_outcomes} require review</Box>
+              </>
+            )}
           </Box>
         </Container>
       </Box>
 
-      <Container maxWidth={false} className="try-v3-container">
-        <StageRail analysis={analysis} result={result} />
+      <Container maxWidth={false} className="try-v3-container try-v4-body">
+        <StageRail analysis={analysis} rulesApproved={rulesApproved} result={result} />
         {error && <Alert severity="error" sx={{ my: 3 }}>{error}</Alert>}
 
-        <Box className="try-v3-flow">
-          <Box className="try-v3-flow-label"><span>01</span><strong>Contract</strong><small>What counts as billable?</small></Box>
-          <Box className="try-v3-flow-body">
+        <Box className="try-v4-flow-intro">
+          <Typography className="try-v3-kicker">THE CONTROL LOOP</Typography>
+          <Typography component="h2">Authority before calculation.</Typography>
+          <DecisionFlow compact />
+        </Box>
+
+        <Box className="try-v4-step" data-step="01">
+          <Box className="try-v4-step-rail"><span>01</span><strong>INTERPRET</strong><small>What does the contract make billable?</small></Box>
+          <Box className="try-v4-step-body">
             <Box className="try-v3-section-head">
-              <Box><Typography className="try-v3-kicker">AI PROPOSES · HUMAN REVIEWS</Typography><Typography component="h2">Turn contract language into explicit payment rules.</Typography></Box>
+              <Box><Typography className="try-v3-kicker">AI PROPOSAL · NOT YET AUTHORITY</Typography><Typography component="h2">Turn source language into explicit payment rules.</Typography></Box>
               <Button variant="text" onClick={() => setShowContract((value) => !value)}>{showContract ? "Hide source contract" : "View source contract"}</Button>
             </Box>
             {!analysis && <Typography className="try-v3-muted">Start with “Verify the invoice.” Evidue will load the synthetic agreement and propose a structured rule set.</Typography>}
             {showContract && <Box component="pre" className="try-v3-contract-source">{analysis?.contract_text ?? "Run contract analysis to load the exact synthetic contract used by this demo."}</Box>}
             {analysis && (
               <>
-                <Box className="try-v3-model-row"><span>{analysis.live_model_call ? `Live ${analysis.model}` : "Validated recorded model proposal"}</span><b>{analysis.rules.length} rules awaiting approval</b></Box>
+                <Box className="try-v4-proposal-meta"><span>{analysis.live_model_call ? `LIVE ${analysis.model}` : "VALIDATED RECORDED MODEL PROPOSAL"}</span><b>{analysis.rules.length} proposed rules</b></Box>
                 {analysis.fallback_reason && <Alert severity="warning" sx={{ mb: 2 }}>{analysis.fallback_reason} The financial reconciliation still runs the real deterministic engine.</Alert>}
-                <Box className="try-v3-rules">
+                <Box className="try-v4-rule-ledger">
                   {analysis.rules.map((rule) => (
-                    <Box key={rule.id} className="try-v3-rule">
-                      <Box><span>{rule.id}</span><strong>{rule.title}</strong><p>{rule.description}</p></Box>
-                      <Box><small>EVIDENCE NEEDED</small><b>{rule.evidence_required.join(", ") || "None"}</b></Box>
-                      <Box><small>FINANCIAL EFFECT</small><b>{rule.consequence.replaceAll("_", " ")}</b></Box>
+                    <Box key={rule.id} className="try-v4-rule-row">
+                      <Box className="try-v4-rule-source"><span>SOURCE CLAUSE · {rule.id}</span><blockquote>“{rule.clause_text}”</blockquote></Box>
+                      <Box className="try-v4-rule-authority"><span>PROPOSED PAYMENT RULE</span><strong>{rule.title}</strong><p>{rule.description}</p><small>If violated: {rule.consequence.replaceAll("_", " ")}</small></Box>
                     </Box>
                   ))}
                 </Box>
@@ -143,33 +168,66 @@ export default function TryEviduePage() {
           </Box>
         </Box>
 
-        <Box className="try-v3-flow">
-          <Box className="try-v3-flow-label"><span>02</span><strong>Approval</strong><small>The model stops here.</small></Box>
-          <Box className="try-v3-flow-body try-v3-approval">
-            <Box><Typography className="try-v3-kicker">HUMAN AUTHORITY BOUNDARY</Typography><Typography component="h2">Approve the interpretation—not the invoice.</Typography><Typography>The approved rule set becomes the only authority the deterministic engine can use for this run.</Typography></Box>
-            <Button variant="contained" size="large" onClick={() => void approveAndRun()} disabled={!analysis?.approval_ready || reconciling || !analysis?.sandbox_id}>
-              {reconciling ? <><CircularProgress size={18} sx={{ mr: 1 }} />Checking 100 claims…</> : "Approve rules & verify invoice"}
+        <Box className="try-v4-step" data-step="02">
+          <Box className="try-v4-step-rail"><span>02</span><strong>AUTHORIZE</strong><small>The model stops here.</small></Box>
+          <Box className="try-v4-step-body">
+            <Typography className="try-v3-kicker">HUMAN AUTHORITY BOUNDARY</Typography>
+            <Typography component="h2">Approve the interpretation—not the invoice.</Typography>
+            <Typography className="try-v4-step-copy">Only a reviewed rule set can govern the financial run. Clicking approve does not itself classify a single invoice claim.</Typography>
+            <AuthorityBoundary />
+            <Box className={`try-v4-approval-action${rulesApproved ? " approved" : ""}`}>
+              <Box>
+                <span>{rulesApproved ? "AUTHORITY CONFIRMED" : "AWAITING HUMAN APPROVAL"}</span>
+                <strong>{rulesApproved ? `Approved ${analysis?.rules.length ?? 0} contract rule${analysis?.rules.length === 1 ? "" : "s"} for this run` : "No payment rule is active yet"}</strong>
+              </Box>
+              <Button variant={rulesApproved ? "outlined" : "contained"} size="large" onClick={approveRules} disabled={!analysis?.approval_ready || rulesApproved}>
+                {rulesApproved ? "Rules approved" : `Approve ${analysis?.rules.length ?? 0} contract rule${analysis?.rules.length === 1 ? "" : "s"}`}
+              </Button>
+            </Box>
+          </Box>
+        </Box>
+
+        <Box className="try-v4-step" data-step="03">
+          <Box className="try-v4-step-rail"><span>03</span><strong>VERIFY</strong><small>Now apply authority to proof.</small></Box>
+          <Box className="try-v4-step-body try-v4-verification-step">
+            <Box>
+              <Typography className="try-v3-kicker">DETERMINISTIC EXECUTION</Typography>
+              <Typography component="h2">Check 100 claims against approved rules and evidence.</Typography>
+              <Typography className="try-v4-step-copy">The model is no longer in the decision loop. Every line becomes substantiated, contradicted, or insufficient evidence.</Typography>
+            </Box>
+            <Button variant="contained" size="large" onClick={() => void verifyClaims()} disabled={!rulesApproved || reconciling || Boolean(result)}>
+              {reconciling ? <><CircularProgress size={18} sx={{ mr: 1 }} />Checking 100 claims…</> : result ? "100 claims verified" : "Verify 100 claims"}
             </Button>
           </Box>
         </Box>
 
         {result && (
-          <Box className="try-v3-result-shell">
-            <Box className="try-v3-result-intro">
-              <Typography className="try-v3-kicker">THE PAYOFF</Typography>
-              <Typography component="h2">The vendor billed $150. Evidue can substantiate $124.50.</Typography>
-              <Typography>{deductionPercent?.toFixed(1)}% of invoice value is identified for dispute after deterministic verification.</Typography>
+          <Box className="try-v4-result-shell" data-step="04">
+            <Box className="try-v4-result-head">
+              <Box>
+                <Typography className="try-v3-kicker">04 · ACT ON DOLLARS</Typography>
+                <Typography component="h2">The vendor billed $150. Evidue substantiated $124.50.</Typography>
+                <Typography>{deductionPercent?.toFixed(1)}% of invoice value is identified for dispute after deterministic verification.</Typography>
+              </Box>
+              <span className="try-v4-result-state">DECISION COMPLETE</span>
             </Box>
+
+            <FinancialEquation
+              billed={formatUsd(result.submitted_amount)}
+              disputed={formatUsd(result.recommended_deduction)}
+              substantiated={formatUsd(result.confirmed_payable_amount)}
+              caption={`${result.payable_outcomes} substantiated · ${result.disputed_outcomes} contradicted · ${result.needs_review_outcomes} insufficient evidence`}
+            />
+
             <Box className="try-v3-result-money">
               <Box><span>Vendor billed</span><strong>{formatUsd(result.submitted_amount)}</strong><small>{result.sample_size} claims</small></Box>
-              <Box><span>Verified payable</span><strong>{formatUsd(result.confirmed_payable_amount)}</strong><small>{result.payable_outcomes} claims</small></Box>
+              <Box><span>Substantiated</span><strong>{formatUsd(result.confirmed_payable_amount)}</strong><small>{result.payable_outcomes} claims</small></Box>
               <Box className="is-dispute"><span>Identified for dispute</span><strong>{formatUsd(result.recommended_deduction)}</strong><small>{result.disputed_outcomes} claims</small></Box>
               <Box><span>Needs review</span><strong>{result.needs_review_outcomes}</strong><small>insufficient evidence</small></Box>
             </Box>
-            <Box className="try-v3-result-bar"><Box className="verified" sx={{ width: `${100 - (deductionPercent ?? 0)}%` }} /><Box className="disputed" sx={{ width: `${deductionPercent ?? 0}%` }} /></Box>
 
             <Box className="try-v3-result-detail">
-              <Box><Typography className="try-v3-kicker">WHAT HAPPENED</Typography><strong>{result.disputed_outcomes} claims contradicted an approved contract rule.</strong><Typography>The factual determination comes from rules plus customer evidence.</Typography></Box>
+              <Box><Typography className="try-v3-kicker">WHAT HAPPENED</Typography><strong>{result.disputed_outcomes} claims contradicted an approved contract rule.</strong><Typography>The factual state comes from approved authority plus customer evidence.</Typography></Box>
               <Box><Typography className="try-v3-kicker">WHAT FINANCE CAN DO</Typography><strong>Dispute, request credit, true-up, or escalate.</strong><Typography>The commercial remedy remains separate from the factual result.</Typography></Box>
             </Box>
 
