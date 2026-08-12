@@ -38,7 +38,7 @@ def submission_payload(**overrides):
         "verification_method": "",
         "evidence_location": "",
         "commercial_action": "",
-        "feedback_area": "Demo clarity",
+        "feedback_area": "Try flow clarity",
         "message": "Evidence matching takes too long for the finance team.",
         "open_to_call": False,
         "confirmed_no_confidential_data": True,
@@ -346,7 +346,7 @@ def test_google_sheet_delivery_is_signed_and_keeps_secret_server_side(monkeypatc
     assert payload["submission_channel"] == "native_contact_form"
     assert payload["campaign"] == "railway_beta"
     assert payload["role"] == "VP Finance"
-    assert payload["feedback_area"] == "Demo clarity"
+    assert payload["feedback_area"] == "Try flow clarity"
     assert payload["open_to_call"] is False
     assert "website" not in payload
 

@@ -77,7 +77,7 @@ class ContactSubmissionRequest(StrictModel):
     feedback_area: Literal[
         "",
         "Product idea",
-        "Demo clarity",
+        "Try flow clarity",
         "Trust / evidence",
         "User experience",
         "Bug",
